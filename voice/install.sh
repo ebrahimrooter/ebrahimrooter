@@ -154,12 +154,32 @@ LINES="    'voice_url' => '$VOICE_URL',
 if [ -n "$PHP_CONFIG" ] && [ -f "$PHP_CONFIG" ]; then
   say "Writing voice settings into $PHP_CONFIG"
   cp -p "$PHP_CONFIG" "$PHP_CONFIG.bak.$(date +%s)"
-  # drop old voice/stt/tts lines, then add the new ones right after "return ["
-  sed -i -E "/^\s*'(voice_url|voice_token|voice_cli|stt_url|stt_key|stt_model|tts_url|tts_key|tts_model|tts_voice)'\s*=>/d" "$PHP_CONFIG"
-  TMP=$(mktemp)
-  awk -v lines="$LINES" '{print} !done && /^return \[/ {print lines; done=1}' "$PHP_CONFIG" > "$TMP"
-  cat "$TMP" > "$PHP_CONFIG"; rm -f "$TMP"
-  php -l "$PHP_CONFIG" >/dev/null && echo "config.php ok"
+  # Edited with PHP into a temporary copy; the real file is replaced only if
+  # the result passes "php -l", so config.php can never be left broken.
+  if VOICE_URL="$VOICE_URL" VOICE_TOKEN="$TOKEN" VOICE_CLI="$VOICE_CLI" CFG="$PHP_CONFIG" php <<'PHP'
+<?php
+$cfg = getenv('CFG');
+$s = file_get_contents($cfg);
+$keys = 'voice_url|voice_token|voice_cli|stt_url|stt_key|stt_model|tts_url|tts_key|tts_model|tts_voice';
+$s = preg_replace("/^[ \t]*'(?:$keys)'[ \t]*=>.*\R/m", '', $s);      // old voice/stt/tts lines
+$add = "    'voice_url' => " . var_export(getenv('VOICE_URL'), true) . ",\n"
+     . "    'voice_token' => " . var_export(getenv('VOICE_TOKEN'), true) . ",\n"
+     . "    'voice_cli' => " . var_export(getenv('VOICE_CLI'), true) . ",\n";
+$s = preg_replace('/^(return\s*\[[ \t]*\R)/m', '$1' . str_replace('$', '\\$', $add), $s, 1, $n);
+if ($n !== 1) { fwrite(STDERR, "no 'return [' line found\n"); exit(1); }
+$tmp = $cfg . '.new';
+file_put_contents($tmp, $s);
+exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $out, $rc);
+if ($rc !== 0) { @unlink($tmp); fwrite(STDERR, implode("\n", $out) . "\n"); exit(1); }
+$st = stat($cfg);
+rename($tmp, $cfg);
+@chown($cfg, $st['uid']); @chgrp($cfg, $st['gid']); @chmod($cfg, $st['mode'] & 0777);
+echo "config.php ok\n";
+PHP
+  then :; else
+    warn "could not update $PHP_CONFIG automatically (left unchanged). Add these lines inside its array by hand:"
+    echo "$LINES"
+  fi
 else
   say "Put these lines into server/config.php (inside the array):"
   echo "$LINES"

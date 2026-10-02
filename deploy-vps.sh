@@ -112,6 +112,16 @@ PHP
   NEW_CFG=1
 else
   say "config.php already exists - kept (passwords unchanged)"
+  if ! php -l "$CFG" >/dev/null 2>&1; then
+    # e.g. a failed edit: go back to the newest backup that is valid PHP
+    for b in $(ls -t "$CFG".bak.* 2>/dev/null); do
+      if php -l "$b" >/dev/null 2>&1; then
+        warn "config.php was broken - restored from $(basename "$b")"
+        cp -p "$b" "$CFG"
+        break
+      fi
+    done
+  fi
   # the domain may have changed from http to https
   sed -i -E "s#^(\s*'app_url' => ')[^']*'#\1$BASE/app/'#; s#^(\s*'api_url' => ')[^']*'#\1$BASE/api.php'#" "$CFG"
 fi
