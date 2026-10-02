@@ -11,6 +11,7 @@ require_once __DIR__ . '/acc_core.php';
 require_once __DIR__ . '/acc_ops.php';
 require_once __DIR__ . '/acc_sms.php';
 require_once __DIR__ . '/acc_more.php';
+require_once __DIR__ . '/acc_bank.php';
 
 function acc_routes()
 {

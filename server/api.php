@@ -557,11 +557,13 @@ case 'ignore':
     require_post();
     $db->prepare("UPDATE transactions SET status = 'ignored', note = COALESCE(?, note) WHERE id = ?")
         ->execute([trim((string)($in['note'] ?? '')) ?: null, (int)($in['id'] ?? 0)]);
+    ba_acc_link_tx((int)($in['id'] ?? 0));
     out(['ok' => true]);
 
 case 'reopen':
     require_post();
     $db->prepare("UPDATE transactions SET status = 'pending' WHERE id = ?")->execute([(int)($in['id'] ?? 0)]);
+    ba_acc_link_tx((int)($in['id'] ?? 0));
     out(['ok' => true]);
 
 case 'manual':
@@ -593,6 +595,7 @@ case 'tx_delete':
     // Only hand-made entries; bank SMS entries are evidence and stay.
     require_post();
     $db->prepare("DELETE FROM transactions WHERE id = ? AND source = 'manual'")->execute([(int)($in['id'] ?? 0)]);
+    ba_acc_link_tx((int)($in['id'] ?? 0));
     out(['ok' => true]);
 
 case 'categories':

@@ -26,6 +26,7 @@ function accountingApp() {
       single: { person_id: "", mobile: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} },
       group: { target: "all", group: "", min_balance: 0, ids: [], numbers: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} } },
     brands: [], departments: [],
+    bankLink: { enabled: false, wallets: [], imported: 0, last_error: null },
     more: { tab: "phonebook", rows: [], q: "", form: {}, csv: "", importKind: "persons", result: "", labelIds: [], copies: 1 },
     rep: { tab: "trade", from: "", to: "", group: "sale", method: "avg", days: 30, cover: 30, account: "", year: "", season: 1, data: null, open: null },
     user: { name: "مدیر سیستم", role: "admin", permissions: ["*"] },
@@ -376,6 +377,22 @@ function accountingApp() {
       try { await this.req("/api/treasury/" + t.id, { method: "DELETE" }); await this.refreshAll(); } catch (e) { alert(e.message); }
     },
 
+    async saveBankLink() {
+      try {
+        this.bankLink = await this.req("/api/bank-link", { method: "PUT", body: JSON.stringify({ enabled: this.bankLink.enabled,
+          wallets: this.bankLink.wallets.map(w => ({ id: w.id, account_id: Number(w.account_id) || null })) }) });
+        alert("ذخیره شد");
+      } catch (e) { alert(e.message); }
+    },
+    async syncBankLink() {
+      try {
+        await this.saveBankLink();
+        const r = await this.req("/api/bank-link/sync", { method: "POST" });
+        alert(r.imported + " تراکنش ثبت شد" + (r.errors.length ? "\nخطاها:\n" + r.errors.join("\n") : ""));
+        await this.refreshAll();
+      } catch (e) { alert(e.message); }
+    },
+
     async changePassword() {
       try {
         await this.req("/api/me/password", { method: "PUT", body: JSON.stringify(this.pwForm) });
@@ -482,6 +499,7 @@ function accountingApp() {
       this.currencies = currencies;
       this.statements = statements;
       [this.brands, this.departments] = await Promise.all([get("/api/brands", []), get("/api/departments", [])]);
+      if (this.user.role === "admin") this.bankLink = await get("/api/bank-link", this.bankLink);
       if (this.currentPage === "sms") this.smsLoad();
       if (this.currentPage === "more") this.moreLoad();
       if (this.currentPage === "mreports") this.repLoad();

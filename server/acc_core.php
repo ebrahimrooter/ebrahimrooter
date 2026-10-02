@@ -140,6 +140,7 @@ const ACC_COLUMNS = [
     ['acc_company', 'invoice_footer', "TEXT DEFAULT ''"],
     ['acc_company', 'postal_code', "TEXT DEFAULT ''"],
     ['acc_treasury', 'counter_account_id', 'INTEGER'],
+    ['acc_treasury', 'ba_tx_id', 'INTEGER'],                // transaction of the bank assistant it came from
 ];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */

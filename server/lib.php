@@ -1268,7 +1268,26 @@ function ba_confirm_tx($id, $description, $party, $category_id, $note = null, $c
     }
     $tx = ba_get_transaction($id);
     $tx['synced_now'] = ba_sync_to_accounting($tx);
+    ba_acc_link_tx($id);
     return $tx;
+}
+
+/**
+ * When the accounting module is linked (حسابداری ← تنظیمات), a confirmed,
+ * changed, ignored or deleted transaction is mirrored in its books. A failure
+ * there never blocks the bank assistant; it is shown in the accounting settings.
+ */
+function ba_acc_link_tx($id) {
+    if (empty(ba_kv_get('acc_bank_link', [])['enabled'])) {
+        return;
+    }
+    try {
+        require_once __DIR__ . '/acc_bank.php';
+        acc_bank_sync_tx((int)$id);
+    } catch (Throwable $e) {
+        error_log('acc bank link: ' . $e->getMessage());
+        ba_kv_set('acc_bank_link_error', '#' . (int)$id . ': ' . $e->getMessage());
+    }
 }
 
 /* ------------------------------------------------------------------ */

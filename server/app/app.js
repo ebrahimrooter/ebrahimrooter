@@ -999,6 +999,8 @@
       return '<select name="kind" style="width:auto">' + ['pl', 'party', 'transfer'].map(function (x) { return '<option value="' + x + '"' + (k === x ? ' selected' : '') + '>' + kindLabel[x] + '</option>'; }).join('') + '</select>';
     };
     app.innerHTML = '<h1>تنظیمات</h1>' +
+      '<h2>حسابداری</h2><div class="card"><p class="muted">فاکتور، انبار، چک، پیامک و گزارش‌ها در برنامه حسابداری است. با روشن کردن «اتصال به دستیار بانک» در تنظیمات آن، هر تراکنشی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شود.</p>' +
+      '<div class="btns"><a class="btn ghost" href="../acc/" target="_blank" rel="noopener">باز کردن برنامه حسابداری</a></div></div>' +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
       '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
       voiceInfo() +

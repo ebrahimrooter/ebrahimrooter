@@ -412,6 +412,40 @@ $cy = ok('POST', '/tools/close-year');
 check('new fiscal year', $cy['year'], (string)((int)$cy['closed'] + 1));
 books('year closed');
 
+echo "-- bank assistant link\n";
+$bankphp = function ($code) use ($S) {
+    exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "lib.php"; require "acc_bank.php"; ' . $code), $o);
+    return implode("\n", $o);
+};
+ok('POST', '/tools/repair');
+$bl = ok('PUT', '/bank-link', ['enabled' => true]);
+check('bank wallets listed', count($bl['wallets']) >= 2, true);
+// a payment to a person, an expense and a transfer, confirmed in the bank assistant
+$ids = $bankphp('$db = ba_db(); $cat = fn($k, $d) => (int)$db->query("SELECT id FROM categories WHERE kind = \'$k\' AND direction IN (\'$d\', \'both\') ORDER BY id LIMIT 1")->fetchColumn();
+    $mk = function ($dir, $amt) use ($db) { $db->prepare("INSERT INTO transactions (source, direction, amount, bank_date, occurred_at, status, wallet_id) VALUES (\'manual\', ?, ?, \'1405/07/10\', \'2026-10-02 10:00:00\', \'pending\', 1)")->execute([$dir, $amt]); return (int)$db->lastInsertId(); };
+    $a = $mk("out", 5000); ba_confirm_tx($a, "قرض", "علی بانکی", $cat("party", "out"));
+    $b = $mk("out", 700); ba_confirm_tx($b, "ناهار", "", $cat("pl", "out"));
+    $c = $mk("in", 2000); ba_confirm_tx($c, "فروش نقدی", "", $cat("pl", "in"));
+    echo json_encode([$a, $b, $c]);');
+[$ta, $tb, $tc] = json_decode($ids, true) ?: [0, 0, 0];
+$ali = array_values(array_filter(ok('GET', '/persons'), fn($p) => $p['name'] === 'علی بانکی'))[0] ?? null;
+check('person made from the bank party, owes us', $ali ? $ali['balance'] : null, 5000);
+$bankAcc = array_values(array_filter(ok('GET', '/accounts'), fn($a) => $a['name'] === 'بانک ملت'))[0] ?? null;
+check('wallet became a bank account', $bankAcc ? $bankAcc['balance'] : null, -3700);
+books('bank link');
+// changing the answer replaces the entry; ignoring reverses it
+$bankphp('ba_confirm_tx(' . (int)$ta . ', "قرض", "علی بانکی", (int)ba_db()->query("SELECT id FROM categories WHERE kind = \'party\' AND direction IN (\'out\', \'both\') ORDER BY id LIMIT 1")->fetchColumn(), "", null);
+    ba_db()->prepare("UPDATE transactions SET amount = 6000 WHERE id = ?")->execute([' . (int)$ta . ']); ba_acc_link_tx(' . (int)$ta . ');');
+check('edit replaces entry', person($ali['id']), 6000);
+$bankphp('ba_db()->prepare("UPDATE transactions SET status = \'ignored\' WHERE id = ?")->execute([' . (int)$tb . ']); ba_acc_link_tx(' . (int)$tb . ');');
+check('ignored transaction reversed', cash($bankAcc['id']), -6000 + 2000);
+check('one treasury row per transaction', ok('GET', '/bank-link')['imported'], 2);
+ok('PUT', '/bank-link', ['enabled' => false]);
+check('sync while off refused', api('POST', '/bank-link/sync')[0], 400);
+ok('PUT', '/bank-link', ['enabled' => true]);
+check('sync all: nothing new', ok('POST', '/bank-link/sync')['imported'], 0);
+books('bank link final');
+
 books('final');
 
 proc_terminate($srv);
