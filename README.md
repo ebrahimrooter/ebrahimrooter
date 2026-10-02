@@ -103,22 +103,20 @@ php /home/USER/public_html/bank/cron.php health
 ```
 یادآوری روزانه و گزارش هفتگی بدون cron هم اجرا می‌شوند، چون گزارش ۱۰ دقیقه‌ای ESP32 آن‌ها را راه می‌اندازد.
 
-### نصب روی VPS لینوکسی (با ویس فارسی محلی) 🖥
-برای ویس، PHP و سرویس صدا باید روی **یک سرور** باشند (ارتباطشان فقط از `127.0.0.1` است). روی Ubuntu 22.04/24.04:
-```bash
-sudo apt install apache2 php php-sqlite3 php-curl php-mbstring certbot python3-certbot-apache unzip
-sudo mkdir -p /var/www/html/bank && sudo cp -r server/. /var/www/html/bank/
-sudo chown -R www-data:www-data /var/www/html/bank
-sudo a2enmod rewrite && sudo sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
-sudo systemctl restart apache2
-sudo certbot --apache -d دامنه‌ات            # https رایگان (ربات بله فقط https)
+### نصب روی VPS لینوکسی (با ویس فارسی محلی) 🖥 — با یک دستور
+یک سرور ابری/VPS با **Ubuntu 22.04 یا 24.04**، حداقل ۴ گیگ رم و ۲۵ گیگ دیسک بگیر و یک دامنه (رکورد A) را به IP آن وصل کن. بعد روی ویندوز در **PowerShell**:
+```powershell
+scp .\bank-assistant-local-voice.zip root@IP-سرور:/root/
+ssh root@IP-سرور
 ```
-`AllowOverride All` لازم است تا `.htaccess` جلوی دانلود `config.php` و دیتابیس را بگیرد. بعد مثل بالا `https://دامنه‌ات/bank/install.php` را باز کن، و سپس:
+و روی سرور:
 ```bash
-cd voice && sudo ./install.sh --php-config /var/www/html/bank/config.php
-php /var/www/html/bank/cron.php voice-test
+apt update && apt install -y unzip
+unzip bank-assistant-local-voice.zip && cd bank-assistant
+bash deploy-vps.sh --domain دامنه‌ات
 ```
-Cron هم با `crontab -e -u www-data` (همان سه خط بخش «۱. سرور»).
+`deploy-vps.sh` همه‌چیز را انجام می‌دهد: Apache و PHP، کپی برنامه در `/var/www/html/bank`، https رایگان، ساخت `config.php` با رمزهای تازه، cron، و نصب صدای محلی (۱۰ تا ۲۰ دقیقه). آخرش آدرس اپ، **رمز اپ و PIN** (فقط همان یک بار) و دو خط ESP32 را نشان می‌دهد. اجرای دوباره‌اش (مثلاً برای به‌روزرسانی) رمزها و دیتابیس را نگه می‌دارد.
+اگر سرور به Hugging Face دسترسی ندارد: `--models-from` (راهنما در [`voice/README.md`](voice/README.md)). بدون ویس: `--no-voice`.
 
 
 ```
