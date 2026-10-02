@@ -1,0 +1,287 @@
+<?php
+/**
+ * Accounting module test over HTTP:  php tests/acc_test.php
+ * A copy of the server in a temp dir, PHP's built-in server, a full business
+ * scenario; after every step the books must balance.
+ */
+
+$src = realpath(__DIR__ . '/..');
+$tmp = sys_get_temp_dir() . '/acc-test-' . getmypid();
+exec('mkdir -p ' . escapeshellarg($tmp) . ' && cp -r ' . escapeshellarg($src) . ' ' . escapeshellarg($tmp . '/s'));
+$S = $tmp . '/s';
+@unlink("$S/config.php");
+array_map('unlink', glob("$S/data/*.sqlite*") ?: []);
+file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', 'device_token' => 'd', 'timezone' => 'Asia/Tehran'];");
+$port = 31000 + getmypid() % 2000;
+$srv = proc_open(['php', '-S', "127.0.0.1:$port", '-t', $S, "$S/router.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', "$tmp/server.log", 'w']], $pipes);
+usleep(500000);
+
+$fails = 0;
+function check($name, $got, $want)
+{
+    global $fails;
+    $same = $got === $want || (is_numeric($got) && is_numeric($want) && abs($got - $want) < 0.01)
+        || (is_array($got) && is_array($want) && json_encode(acc_t_norm($got)) === json_encode(acc_t_norm($want)));
+    if ($same) {
+        echo "  ok   $name\n";
+    } else {
+        $fails++;
+        echo "  FAIL $name\n       got:  " . json_encode($got, JSON_UNESCAPED_UNICODE) . "\n       want: " . json_encode($want, JSON_UNESCAPED_UNICODE) . "\n";
+    }
+}
+
+/** numbers as rounded floats, for comparing arrays */
+function acc_t_norm($v)
+{
+    return is_array($v) ? array_map('acc_t_norm', $v) : (is_numeric($v) && !is_string($v) ? round((float)$v, 2) : $v);
+}
+
+$TOKEN = '';
+/** [status, decoded body] */
+function api($method, $path, $body = null, $token = null)
+{
+    global $port, $TOKEN;
+    [$p, $q] = array_pad(explode('?', $path, 2), 2, '');
+    $ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=" . rawurlencode($p) . ($q !== '' ? "&$q" : ''));
+    $h = ['Content-Type: application/json'];
+    $t = $token ?? $TOKEN;
+    if ($t !== '') {
+        $h[] = "Authorization: Bearer $t";
+    }
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $h,
+        CURLOPT_POSTFIELDS => $body === null ? null : json_encode($body, JSON_UNESCAPED_UNICODE)]);
+    $out = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $j = json_decode($out, true);
+    return [$code, $j ?? $out];
+}
+function ok($method, $path, $body = null)
+{
+    [$c, $j] = api($method, $path, $body);
+    if ($c !== 200) {
+        global $fails;
+        $fails++;
+        echo "  FAIL $method $path -> $c " . json_encode($j, JSON_UNESCAPED_UNICODE) . "\n";
+    }
+    return $j;
+}
+/** Trial balance must balance and the balance sheet must too. */
+function books($label)
+{
+    $tb = ok('GET', '/trial-balance');
+    $bs = ok('GET', '/reports/balance-sheet');
+    check("$label: trial balance debit = credit", round($tb['total_debit'], 2), round($tb['total_credit'], 2));
+    check("$label: balance sheet balances", $bs['balanced'], true);
+    return $bs;
+}
+function person($id)
+{
+    foreach (ok('GET', '/persons') as $p) {
+        if ($p['id'] === $id) {
+            return $p['balance'];
+        }
+    }
+    return null;
+}
+function product($id)
+{
+    foreach (ok('GET', '/products') as $p) {
+        if ($p['id'] === $id) {
+            return $p;
+        }
+    }
+    return null;
+}
+function cash($id)
+{
+    foreach (ok('GET', '/accounts') as $a) {
+        if ($a['id'] === $id) {
+            return $a['balance'];
+        }
+    }
+    return null;
+}
+
+echo "Login\n";
+check('no token -> 401', api('GET', '/persons')[0], 401);
+check('wrong password -> 401', api('POST', '/login', ['username' => 'admin', 'password' => '1234'])[0], 401);
+[$c, $j] = api('POST', '/login', ['username' => 'admin', 'password' => 'apppass123']);
+check('admin logs in with the app password', [$c, $j['user']['role'] ?? null], [200, 'admin']);
+$TOKEN = $j['token'];
+check('me', ok('GET', '/me')['username'], 'admin');
+
+echo "Setup with opening balances\n";
+$bank = ok('POST', '/accounts', ['name' => 'بانک تست', 'kind' => 'bank', 'balance' => 1000000])['id'];
+check('bank opening balance', cash($bank), 1000000.0);
+$cust = ok('POST', '/persons', ['name' => 'مشتری الف', 'type' => 'customer', 'national_id' => '1234567890'])['id'];
+$supp = ok('POST', '/persons', ['name' => 'تأمین‌کننده ب', 'type' => 'supplier', 'opening' => -200])['id'];
+check('supplier opening (we owe 200)', person($supp), -200.0);
+$prod = ok('POST', '/products', ['name' => 'کالای تست', 'buy_price' => 100, 'sale_price' => 200, 'stock' => 10, 'reorder_point' => 2])['id'];
+check('opening stock 10', product($prod)['stock'], 10.0);
+books('after openings');
+check('opening entries exist', ok('POST', '/journals/opening')['number'], '3 سند افتتاحیه');
+
+echo "Purchase (discount spread + freight into cost)\n";
+$inv = ok('POST', '/invoices', ['kind' => 'purchase', 'person_id' => $supp, 'date' => '1405/07/01', 'freight' => 50,
+    'items' => [['product_id' => $prod, 'qty' => 5, 'price' => 120]]]);
+check('purchase total = 600 + 60 VAT + 50 freight', $inv['total'], 710.0);
+$p = product($prod);
+check('stock 15', $p['stock'], 15.0);
+check('average cost (10x100 + 5x130) / 15 = 110', round($p['avg_cost'], 4), 110.0);
+check('supplier owes us -910', person($supp), -910.0);
+books('after purchase');
+
+echo "Sale with percent discount\n";
+$sale = ok('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'date' => '1405/07/02', 'discount_percent' => 10,
+    'items' => [['product_id' => $prod, 'qty' => 3, 'price' => 200]]]);
+check('sale total = 540 + 54', $sale['total'], 594.0);
+check('customer owes 594', person($cust), 594.0);
+check('stock 12', product($prod)['stock'], 12.0);
+$pl = ok('GET', '/reports/profit-loss');
+check('profit = sales 540 - cost 330', $pl['profit'], 210.0);
+check('tax invoice made for the sale', count(ok('GET', '/tax-invoices?kind=sale')), 1);
+books('after sale');
+
+echo "Receipt and payment\n";
+ok('POST', '/treasury', ['kind' => 'receive', 'account_id' => $bank, 'person_id' => $cust, 'invoice_id' => $sale['id'], 'amount' => 594, 'date' => '1405/07/03']);
+check('customer settled', person($cust), 0.0);
+check('bank 1,000,594', cash($bank), 1000594.0);
+$list = ok('GET', '/invoices?kind=sale');
+check('sale marked settled', $list[0]['settled'], true);
+ok('POST', '/treasury', ['kind' => 'pay', 'account_id' => $bank, 'person_id' => $supp, 'amount' => 910, 'date' => '1405/07/03']);
+check('supplier settled', person($supp), 0.0);
+$cashbox = ok('GET', '/accounts')[0]['id'];
+ok('POST', '/treasury', ['kind' => 'transfer', 'account_id' => $bank, 'to_account_id' => $cashbox, 'amount' => 1000, 'date' => '1405/07/03']);
+check('transfer moved money', [cash($bank), cash($cashbox)], [998684.0, 1000.0]);
+ok('POST', '/treasury', ['kind' => 'pay', 'account_id' => $cashbox, 'amount' => 100, 'description' => 'آب و برق']);
+check('expense without person reduces cash', cash($cashbox), 900.0);
+books('after treasury');
+
+echo "Cheques\n";
+$ch = ok('POST', '/cheques', ['number' => '111', 'direction' => 'received', 'person_id' => $cust, 'amount' => 300, 'due_date' => '1405/08/01']);
+check('received cheque credits customer', person($cust), -300.0);
+check('collect without account refused', api('POST', '/cheques/' . $ch['id'] . '/action', ['action' => 'collect'])[0], 400);
+ok('POST', '/cheques/' . $ch['id'] . '/action', ['action' => 'collect', 'account_id' => $bank]);
+check('collected into bank', cash($bank), 998984.0);
+check('collected cheque cannot bounce', api('POST', '/cheques/' . $ch['id'] . '/action', ['action' => 'return'])[0], 400);
+$ch2 = ok('POST', '/cheques', ['number' => '222', 'direction' => 'received', 'person_id' => $cust, 'amount' => 50]);
+ok('POST', '/cheques/' . $ch2['id'] . '/action', ['action' => 'return']);
+check('bounced cheque back on customer', person($cust), -300.0);
+$ch3 = ok('POST', '/cheques', ['number' => '333', 'direction' => 'received', 'person_id' => $cust, 'amount' => 70]);
+check('spend needs the receiver', api('POST', '/cheques/' . $ch3['id'] . '/action', ['action' => 'spend'])[0], 400);
+ok('POST', '/cheques/' . $ch3['id'] . '/action', ['action' => 'spend', 'person_id' => $supp]);
+check('spent cheque: customer credited, supplier debited', [person($cust), person($supp)], [-370.0, 70.0]);
+$pc = ok('POST', '/cheques', ['number' => '444', 'direction' => 'payable', 'person_id' => $supp, 'amount' => 70, 'account_id' => $bank]);
+check('issued cheque', person($supp), 140.0);
+ok('POST', '/cheques/' . $pc['id'] . '/action', ['action' => 'return']);
+check('returned own cheque', person($supp), 70.0);
+books('after cheques');
+
+echo "Edit and delete invoices\n";
+$s2 = ok('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'date' => '1405/07/05', 'items' => [['product_id' => $prod, 'qty' => 4, 'price' => 200]]]);
+check('stock 8 after sale of 4', product($prod)['stock'], 8.0);
+ok('PUT', '/invoices/' . $s2['id'], ['kind' => 'sale', 'person_id' => $cust, 'date' => '1405/07/05', 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 200]]]);
+check('edited to 1: stock 11', product($prod)['stock'], 11.0);
+check('customer: -370 + 220', person($cust), -150.0);
+check('edit keeps a single live tax invoice', count(ok('GET', '/tax-invoices?kind=sale')), 2);
+ok('DELETE', '/invoices/' . $s2['id']);
+check('deleted: stock back to 12', product($prod)['stock'], 12.0);
+check('deleted: customer back', person($cust), -370.0);
+books('after edit/delete');
+
+echo "Returns, pro-forma\n";
+$sr = ok('POST', '/invoices', ['kind' => 'sale_return', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 200]]]);
+check('sale return total', $sr['total'], 220.0);
+check('stock 13', product($prod)['stock'], 13.0);
+$pf = ok('POST', '/invoices', ['kind' => 'sale_proforma', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 2, 'price' => 250]]]);
+check('pro-forma: no tax, no stock change', [$pf['tax'], product($prod)['stock']], [0.0, 13.0]);
+$fin = ok('POST', '/invoices/' . $pf['id'] . '/finalize');
+check('finalized to sale with VAT', [$fin['kind'], $fin['total']], ['sale', 550.0]);
+check('stock 11', product($prod)['stock'], 11.0);
+books('after returns');
+
+echo "Warehouses\n";
+$w2 = ok('POST', '/warehouses', ['name' => 'انبار دوم'])['id'];
+$w1 = ok('GET', '/warehouses')[0]['id'];
+ok('POST', '/warehouse-docs', ['kind' => 'transfer', 'warehouse_id' => $w1, 'to_warehouse_id' => $w2, 'items' => [['product_id' => $prod, 'qty' => 4]]]);
+$st = array_column(ok('GET', '/stock?warehouse_id=' . $w2), 'qty');
+check('transfer: 4 in second warehouse, total unchanged', [$st, product($prod)['stock']], [[4.0], 11.0]);
+ok('POST', '/warehouse-docs', ['kind' => 'issue', 'warehouse_id' => $w2, 'items' => [['product_id' => $prod, 'qty' => 1]]]);
+ok('POST', '/stock-counts', ['warehouse_id' => $w1, 'items' => [['product_id' => $prod, 'counted_qty' => 5]]]);
+check('count: main warehouse 7 -> 5', product($prod)['stock'], 8.0);
+$k = ok('GET', '/kardex/' . $prod);
+check('kardex ends at current stock', end($k['rows'])['balance'], 8.0);
+books('after warehouse');
+$bs = ok('GET', '/reports/balance-sheet');
+check('inventory account = stock x average cost', round($bs['assets']['inventory'], 2), round(8 * product($prod)['avg_cost'], 2));
+
+echo "Manual journal, void, closing\n";
+$coa = array_column(ok('GET', '/coa'), 'id', 'code');
+check('unbalanced journal refused', api('POST', '/journals', ['description' => 'x', 'lines' => [['account_id' => $coa['5102'], 'debit' => 10], ['account_id' => $coa['3101'], 'credit' => 9]]])[0], 400);
+check('kol account refused', api('POST', '/journals', ['description' => 'x', 'lines' => [['account_id' => $coa['51'], 'debit' => 10], ['account_id' => $coa['3101'], 'credit' => 10]]])[0], 400);
+$mj = ok('POST', '/journals', ['description' => 'هزینه دستی', 'lines' => [['account_id' => $coa['5102'], 'debit' => 10], ['account_id' => $coa['3101'], 'credit' => 10]]]);
+ok('POST', '/journals/' . $mj['id'] . '/void');
+check('void twice refused', api('POST', '/journals/' . $mj['id'] . '/void')[0], 400);
+$auto = array_values(array_filter(ok('GET', '/journals'), fn($j) => $j['source_type'] === 'invoice' && $j['status'] === 'final'))[0];
+check('automatic entry cannot be voided by hand', api('POST', '/journals/' . $auto['id'] . '/void')[0], 400);
+$profit = ok('GET', '/reports/profit-loss')['profit'];
+$cl = ok('POST', '/journals/closing');
+check('closing moves the profit', round($cl['profit'], 2), round($profit, 2));
+$open_pl = array_filter(ok('GET', '/trial-balance')['rows'], fn($r) => in_array($r['code'][0], ['4', '5'], true) && abs($r['balance']) > 0.01);
+check('after closing every income/expense account is zero', array_values($open_pl), []);
+check('P&L report still shows the year (closing excluded)', round(ok('GET', '/reports/profit-loss')['profit'], 2), round($profit, 2));
+check('second closing refused', api('POST', '/journals/closing')[0], 400);
+books('after closing');
+
+echo "Fiscal lock, users and permissions\n";
+ok('POST', '/fiscal/lock');
+check('locked: no invoice', api('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 1]]])[0], 400);
+ok('POST', '/fiscal/unlock');
+check('short password refused', api('POST', '/users', ['username' => 'ali', 'password' => '1', 'role' => 'seller'])[0], 400);
+ok('POST', '/users', ['username' => 'ali', 'password' => 'seller-pass', 'full_name' => 'علی', 'role' => 'seller']);
+$st = api('POST', '/login', ['username' => 'ali', 'password' => 'seller-pass'])[1]['token'];
+check('seller: no journals', api('GET', '/journals', null, $st)[0], 403);
+check('seller: no purchases', api('POST', '/invoices', ['kind' => 'purchase', 'person_id' => $supp, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 1]]], $st)[0], 403);
+check('seller: can sell', api('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 200]]], $st)[0], 200);
+check('seller: no users list', api('GET', '/users', null, $st)[0], 403);
+check('person with history cannot be deleted', api('DELETE', '/persons/' . $cust)[0], 400);
+check('activity log', in_array('create_invoice', array_column(ok('GET', '/logs'), 'action'), true), true);
+
+check('password change needs the old one', api('PUT', '/me/password', ['old_password' => 'x', 'new_password' => 'new-pass-1'])[0], 400);
+ok('PUT', '/me/password', ['old_password' => 'apppass123', 'new_password' => 'new-pass-1']);
+check('old sessions end after a password change', api('GET', '/me')[0], 401);
+check('old password no longer works', api('POST', '/login', ['username' => 'admin', 'password' => 'apppass123'])[0], 401);
+$TOKEN = api('POST', '/login', ['username' => 'admin', 'password' => 'new-pass-1'])[1]['token'];
+check('new password works', api('GET', '/me')[0], 200);
+
+echo "Files and printing\n";
+[$c, $html] = api('GET', '/invoices/' . $sale['id'] . '/print?token=' . $TOKEN, null, '');
+check('print works with ?token= (links)', [$c, strpos($html, 'فاکتور فروش') !== false], [200, true]);
+[$c, $csv] = api('GET', '/export/csv?what=sales&token=' . $TOKEN, null, '');
+check('CSV with BOM for Excel', [$c, substr($csv, 0, 3)], [200, "\xEF\xBB\xBF"]);
+$ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=/attachments&object_type=invoice&object_id=" . $sale['id']);
+file_put_contents("$tmp/a.txt", 'hello');
+curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $TOKEN"],
+    CURLOPT_POSTFIELDS => ['file' => new CURLFile("$tmp/a.txt", 'text/plain', '../../evil.txt')]]);
+$att = json_decode(curl_exec($ch), true);
+curl_close($ch);
+check('upload: name cleaned', $att['filename'] ?? null, 'evil.txt');
+[$c, $data] = api('GET', '/attachments/' . $att['id'] . '/download?token=' . $TOKEN, null, '');
+check('download', [$c, $data], [200, 'hello']);
+check('internal files not served', (function () use ($port) {
+    $r = [];
+    foreach (['acc_core.php', 'data/bank.sqlite', 'config.php'] as $f) {
+        $ch = curl_init("http://127.0.0.1:$port/$f");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_exec($ch);
+        $r[] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    }
+    return $r;
+})(), [404, 404, 404]);
+books('final');
+
+proc_terminate($srv);
+exec('rm -rf ' . escapeshellarg($tmp));
+echo $fails ? "\n$fails FAILED\n" : "\nall passed\n";
+exit($fails ? 1 : 0);

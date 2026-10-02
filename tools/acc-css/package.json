@@ -1,0 +1,12 @@
+{
+  "name": "acc-css",
+  "private": true,
+  "description": "Builds the accounting UI stylesheet and copies Alpine.js and the Vazirmatn font (all served from the server, no CDN)",
+  "scripts": {
+    "build": "tailwindcss -c tailwind.config.js -i in.css -o ../../server/acc/vendor/app.css --minify && cp node_modules/alpinejs/dist/cdn.min.js ../../server/acc/vendor/alpine.min.js"
+  },
+  "devDependencies": {
+    "alpinejs": "3.14.9",
+    "tailwindcss": "3.4.17"
+  }
+}

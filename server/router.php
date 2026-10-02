@@ -4,7 +4,7 @@
  *   php -S 0.0.0.0:8080 -t server server/router.php
  * The built-in server ignores .htaccess, so this is what keeps the
  * database, config.php and the PHP internals unreachable from the network.
- * Only api.php and the app/ folder are served.
+ * Only api.php, the app/ folder and the accounting app (acc/) are served.
  */
 
 $path = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
@@ -16,6 +16,23 @@ if ($path === '/' || $path === '/app') {
 if ($path === '/api.php') {
     require __DIR__ . '/api.php';
     return true;
+}
+if ($path === '/acc' || $path === '/acc/') {
+    if ($path === '/acc') {
+        header('Location: /acc/');
+        exit;
+    }
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/acc/index.html');
+    return true;
+}
+if ($path === '/acc/api.php') {
+    require __DIR__ . '/acc/api.php';
+    return true;
+}
+if (strpos($path, '/acc/') === 0 && strpos($path, '..') === false && is_file(__DIR__ . $path)
+    && preg_match('/\.(js|css|woff2?|png|svg|ico|html)$/', $path)) {
+    return false;   // static file of the accounting app
 }
 if (strpos($path, '/app/') === 0 && strpos($path, '..') === false) {
     if ($path === '/app/') {
