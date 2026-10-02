@@ -1,7 +1,7 @@
 // Caches the app shell so it opens instantly from the home screen.
 // API calls always go to the network (live site data is never cached).
-var CACHE = 'bank-assistant-v8';
-var SHELL = ['./', 'index.html', 'app.css?v=8', 'app.js?v=8', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png'];
+var CACHE = 'bank-assistant-v9';
+var SHELL = ['./', 'index.html', 'app.css?v=9', 'app.js?v=9', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
@@ -38,6 +38,7 @@ self.addEventListener('push', function (e) {
     badge: 'icon-192.png',
     lang: 'fa',
     dir: 'rtl',
+    actions: m.tag ? [{ action: 'answer', title: '🎙 جواب بده' }, { action: 'later', title: 'بعداً' }] : [],
     data: { url: m.url || '#/' }
   })];
   // Number on the app icon = transactions still waiting for an answer.
@@ -51,6 +52,7 @@ self.addEventListener('push', function (e) {
 // app then shows the orb for it.
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
+  if (e.action === 'later') return;
   var target = new URL('./' + ((e.notification.data && e.notification.data.url) || '#/'), self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     for (var i = 0; i < list.length; i++) {

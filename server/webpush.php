@@ -159,7 +159,7 @@ function wp_notify_transaction($tx) {
     $pending = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
     return wp_notify_all([
         'title' => ($tx['direction'] === 'in' ? '🟢 واریز ' : '🔴 برداشت ') . ba_toman($tx['amount']),
-        'body' => 'بابت چی بود؟ بزن تا بپرسم.',
+        'body' => 'بابت چی بود؟ بزن تا دستیار بپرسد.',
         'url' => '#/orb/' . $tx['id'],
         'tag' => 'tx-' . $tx['id'],
         'badge' => $pending,

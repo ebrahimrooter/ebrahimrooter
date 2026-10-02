@@ -1001,6 +1001,10 @@
     app.innerHTML = '<h1>تنظیمات</h1>' +
       '<h2>حسابداری</h2><div class="card"><p class="muted">فاکتور، انبار، چک، پیامک و گزارش‌ها در برنامه حسابداری است. با روشن کردن «اتصال به دستیار بانک» در تنظیمات آن، هر تراکنشی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شود.</p>' +
       '<div class="btns"><a class="btn ghost" href="../acc/" target="_blank" rel="noopener">باز کردن برنامه حسابداری</a></div></div>' +
+      '<h2>سیری آیفون (بدون باز کردن اپ)</h2><div class="card"><p class="muted">در اپ Shortcuts یک میان‌بر به اسم Bank بساز (مراحلش در README، بخش «میان‌بر سیری»). این دو آدرس و هدر <span class="num">X-App-Token</span> با رمز همین اپ را لازم دارد:</p>' +
+      '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_next</div>' +
+      '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_answer</div>' +
+      '<p class="muted">بعد بگو «Hey Siri, Bank» یا با دو ضربه به پشت گوشی (Back Tap) اجرایش کن.</p></div>' +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
       '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
       voiceInfo() +
@@ -1179,15 +1183,15 @@
 
   /** Opened from a notification (#/orb/<id>): show the orb for that transaction. */
   function openOrbFor(id) {
-    history.replaceState(null, '', '#/');
+    document.body.classList.add('siri-mode');   // straight to the orb, the app stays behind it
     return Promise.resolve(viewMoney()).then(function () {
       return api('transaction', { query: '&id=' + id });
     }).then(function (d) {
       var tx = d.item;
-      if (tx.status !== 'pending') { toast('این تراکنش قبلاً جواب گرفته'); return; }
+      if (tx.status !== 'pending') { document.body.classList.remove('siri-mode'); history.replaceState(null, '', '#/'); toast('این تراکنش قبلاً جواب گرفته'); return; }
       if (+tx.id > (+store('ba_orb_last') || 0)) store('ba_orb_last', String(tx.id));   // the poller won't announce it again
-      orbShow(tx);   // one tap on «جواب بده» starts the voice (iPhone needs that tap for sound and mic)
-    }).catch(function (e) { toast(e.message); });
+      siriOpen(tx);
+    }).catch(function (e) { document.body.classList.remove('siri-mode'); toast(e.message); });
   }
 
   /* -- Bale bot connection (host) -- */
@@ -1340,6 +1344,34 @@
     orbMode('');
     var st = document.getElementById('orbStage');
     if (st) st.classList.remove('open');
+    if (document.body.classList.contains('siri-mode')) siriExit();
+  }
+
+  /* ---- حالت سیری: باز شدن از نوتیف ← فقط orb تمام‌صفحه، می‌پرسد، ثبت می‌کند و می‌رود ---- */
+
+  function siriOpen(tx) {
+    orbBuild();
+    orb.tx = tx;
+    document.body.classList.add('siri-mode');
+    var st = document.getElementById('orbStage');
+    st.classList.add('open');
+    orbSay((tx.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(tx.amount) + (tx.bank_time ? '، ساعت ' + faDigits(tx.bank_time) : ''), 'روی دستیار بزن تا بپرسد');
+    var go = function (e) {
+      if (e && e.target.closest('button')) return;
+      st.removeEventListener('click', go);
+      Voice.unlock();
+      orbStart(tx);
+    };
+    // a tap on the notification counts as the user's go-ahead where the browser allows it (Android);
+    // iPhone needs one tap on the orb for sound and microphone
+    if (navigator.userActivation && navigator.userActivation.isActive && Voice.canListen()) go();
+    else st.addEventListener('click', go);
+  }
+
+  function siriExit() {
+    document.body.classList.remove('siri-mode');
+    try { window.close(); } catch (e) { /* only works where the window was opened by the notification */ }
+    if (/^#\/orb/.test(location.hash)) { history.replaceState(null, '', '#/'); viewMoney(); }
   }
 
   /** جلسه‌ی صوتی: بپرس ← بشنو ← بفهم ← تأیید ← ثبت */
@@ -1365,6 +1397,7 @@
     // اگر صدا کار نکرد یا جواب نامفهوم بود: فرم همان تراکنش را باز کن
     var manual = function (guess, why) {
       if (!alive()) return;
+      document.body.classList.remove('siri-mode');   // the form opens instead (no closing of the window)
       orbCloseStage();
       history.replaceState(null, '', '#/ask/' + tx.id);
       Promise.resolve(viewAsk(tx.id)).then(function () { if (guess) fillForm(guess); });

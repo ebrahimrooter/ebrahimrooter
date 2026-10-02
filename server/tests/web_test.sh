@@ -66,6 +66,11 @@ for i in 1 2 3 4 5 6; do grep -q '🟢' "$T/bale.log" 2>/dev/null && break; slee
 check "the owner is asked about the deposit in Bale" "$(grep sendMessage "$T/bale.log" | grep '"chat_id":"555"' | grep '🟢 واریز' | grep -c 'بابت چی بود')" "1"
 check "nothing goes to the stranger" "$(grep sendMessage "$T/bale.log" | grep '"chat_id":"666"' | grep -c '🟢')" "0"
 check "heartbeat ok (runs due jobs, returns clean JSON)" "$(curl -s -H "X-Device-Token: $DEV" --data 'csq=17&creg=1&used=0&uptime=5' "$U/api.php?r=heartbeat")" '{"ok":true}'
+echo "iPhone Shortcut (Siri)"
+check "next question in words" "$(curl -s -H "$A" "$U/api.php?r=siri_next" | grep -c 'واریز پنج هزار تومان، ساعت 00:40. بابت چی بود')" "1"
+check "spoken answer saved" "$(curl -s -H "$A" -F id=1 -F 'text=فروش بذر به علی' "$U/api.php?r=siri_answer" | grep -c '"saved":true')" "1"
+check "nothing left to ask" "$(curl -s -H "$A" "$U/api.php?r=siri_next" | grep -c '"id":0')" "1"
+check "Shortcut needs the app password" "$(curl -s -o /dev/null -w '%{http_code}' "$U/api.php?r=siri_next")" "401"
 check "config.php not downloadable" "$(curl -s -o /dev/null -w '%{http_code}' $U/config.php.txt)" "404"
 
 kill $S1 $S2; rm -rf "$T"

@@ -720,6 +720,10 @@ function ba_toman($rial) {
     return number_format(intdiv(abs((int)$rial), 10)) . ' تومان';
 }
 
+function ba_spoken_toman($rial) {
+    return ba_num_words(intdiv(abs((int)$rial), 10)) . ' تومان';
+}
+
 /** Small key/value store (bot conversation state, device heartbeat). */
 /**
  * One CSV row for Excel: whole numbers without ".0", and text that Excel

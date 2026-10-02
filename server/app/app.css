@@ -212,3 +212,18 @@ td .muted, tr.muted td { font-size: 13px; }
 .dir.out { background: color-mix(in srgb, var(--out) 14%, transparent); }
 .txlist .amt { white-space: nowrap; font-size: 15px; }
 #money .stat { margin-bottom: 4px; }
+
+/* حالت سیری (باز شدن از نوتیف): orb تمام‌صفحه روی پس‌زمینه‌ی تیره، با نور رنگی دور صفحه */
+body.siri-mode #app, body.siri-mode .tabbar, body.siri-mode .notif { visibility: hidden; }
+body.siri-mode { background: #0b0a10; }
+body.siri-mode .stage { height: 100vh; height: 100dvh; min-height: 0; border-radius: 0; gap: 14px; background: radial-gradient(120% 80% at 50% 100%, rgba(255,140,120,.22), rgba(11,10,16,.96) 60%); color: #fff; box-shadow: none; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 48px); }
+body.siri-mode .stage::before { display: none; }
+body.siri-mode .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; padding: 6px; background: conic-gradient(from var(--a, 0deg), #ff9fb2, #ffb06a, #ffd23f, #7ad7ff, #b48cff, #ff9fb2); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; filter: blur(10px); opacity: .9; animation: siriedge 4s linear infinite; }
+body.siri-mode .stage .orb { --size: min(64vw, 300px); cursor: pointer; }
+body.siri-mode .stage-line { color: #fff; font-size: 21px; }
+body.siri-mode .stage-sub { color: rgba(255,255,255,.7); font-size: 15px; }
+body.siri-mode .stage .close { color: #fff; background: rgba(255,255,255,.14); top: calc(env(safe-area-inset-top, 0px) + 14px); }
+@property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes siriedge { to { --a: 360deg; } }
+body.siri-mode .stage.listening::after { animation-duration: 1.6s; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { body.siri-mode .stage::after { animation: none; } }

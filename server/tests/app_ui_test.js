@@ -46,6 +46,16 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   const opened = await page.evaluate(() => ((document.getElementById('orbStage') || {}).className || '') + ' ' + location.hash);
   check('orb starts the assistant', /open|ask/.test(opened), opened);
   await page.screenshot({ path: OUT + '/app-orb.png' });
+  // opened from a push notification: only the orb, full screen
+  await page.evaluate(() => { location.hash = '#/orb/2'; });
+  await page.waitForTimeout(1500);
+  const siri = await page.evaluate(() => ({ mode: document.body.classList.contains('siri-mode'), open: document.getElementById('orbStage').classList.contains('open'),
+    line: document.getElementById('orbLine').textContent, appHidden: getComputedStyle(document.getElementById('app')).visibility === 'hidden' }));
+  check('notification opens the full-screen orb', siri.mode && siri.open && siri.appHidden && siri.line.includes('برداشت'), JSON.stringify(siri));
+  await page.screenshot({ path: OUT + '/app-siri.png' });
+  await page.click('#orbClose');
+  await page.waitForTimeout(600);
+  check('closing the orb goes back to the list', await page.evaluate(() => !document.body.classList.contains('siri-mode') && location.hash === '#/'));
   check('no JavaScript errors', errors.length === 0, JSON.stringify(errors.slice(0, 5)));
   await browser.close();
   srv.kill();

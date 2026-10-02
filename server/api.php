@@ -84,6 +84,16 @@ if ($method === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/j
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
 }
 
+/** Answer for the iPhone Shortcut: the sentence and where to get it spoken. */
+function siri_reply(array $data, $say) {
+    $api = (string)(ba_config()['api_url'] ?? '');
+    if ($api === '') {
+        $https = ($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+        $api = ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/api.php', '?');
+    }
+    return ['ok' => true] + $data + ['say' => $say, 'audio_url' => $api . '?r=say&text=' . rawurlencode($say)];
+}
+
 function token_ok($given, $expected) {
     return is_string($given) && $expected !== '' && strpos($expected, 'CHANGE-ME') !== 0 && hash_equals($expected, $given);
 }
@@ -480,9 +490,13 @@ case 'push_test':
     out(['ok' => true, 'sent' => $n]);
 
 case 'tts':
+case 'say':
     // Persian speech made on this server (local Piper) for phones without a Persian voice (iPhone).
-    require_post();
-    $text = trim((string)($in['text'] ?? ''));
+    // 'say' is the GET form, for the iPhone Shortcut (Siri).
+    if ($route === 'tts') {
+        require_post();
+    }
+    $text = trim((string)($in['text'] ?? ($_GET['text'] ?? '')));
     if ($text === '' || mb_strlen($text) > 400) {
         fail('متن نامعتبر');
     }
@@ -669,6 +683,59 @@ case 'transcribe':
         fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
     }
     out(['ok' => true, 'text' => $text]);
+
+case 'siri_next':
+    // iPhone Shortcut / Siri: what to ask about next. 'audio_url' is the same
+    // sentence spoken by this server's Persian voice (fetch it with the X-App-Token header).
+    $id = (int)($_GET['id'] ?? 0);
+    $tx = $id ? ba_get_transaction($id) : $db->query("SELECT * FROM transactions WHERE status = 'pending' ORDER BY occurred_at, id LIMIT 1")->fetch();
+    $left = (int)$db->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
+    if (!$tx || $tx['status'] !== 'pending') {
+        out(siri_reply(['id' => 0, 'remaining' => $left], 'همه‌ی تراکنش‌ها جواب گرفته‌اند.'));
+    }
+    out(siri_reply(['id' => (int)$tx['id'], 'direction' => $tx['direction'], 'amount_rial' => (int)$tx['amount'], 'remaining' => $left],
+        ($tx['direction'] === 'in' ? 'واریز ' : 'برداشت ') . ba_spoken_toman($tx['amount']) . ($tx['bank_time'] ? '، ساعت ' . $tx['bank_time'] : '') . '. بابت چی بود؟'));
+
+case 'siri_answer':
+    // iPhone Shortcut / Siri: the spoken answer (audio file, or text) for transaction id.
+    require_post();
+    $tx = ba_get_transaction((int)($in['id'] ?? 0));
+    if (!$tx || $tx['status'] !== 'pending') {
+        out(siri_reply(['saved' => false], 'این تراکنش قبلاً جواب گرفته.'));
+    }
+    $heard = trim((string)($in['text'] ?? ''));
+    if ($heard === '' && isset($_FILES['audio']) && is_uploaded_file($_FILES['audio']['tmp_name'])) {
+        try {
+            $heard = trim(ba_transcribe($_FILES['audio']['tmp_name'], $_FILES['audio']['type'], $_FILES['audio']['name']));
+        } catch (RuntimeException $e) {
+            out(siri_reply(['saved' => false, 'heard' => ''], 'صدا را نتوانستم بشنوم. ' . $e->getMessage()));
+        }
+    }
+    $a = ba_norm_text($heard);
+    $saved = false;
+    if ($a === '') {
+        $say = 'چیزی نشنیدم. بعداً دوباره می‌پرسم.';
+    } elseif (preg_match('/^(بعدی|رد کن|ردش کن|بعدا|بگذر|نمیدونم|نمی دونم)/u', $a)) {
+        $say = 'باشه، بعداً می‌پرسم.';
+    } elseif (preg_match('/(نادیده|حساب نکن|ثبت نکن|تکراری)/u', $a)) {
+        $db->prepare("UPDATE transactions SET status = 'ignored' WHERE id = ?")->execute([$tx['id']]);
+        ba_acc_link_tx($tx['id']);
+        $say = 'نادیده گرفتم.';
+    } else {
+        $g = ba_interpret($heard, $tx['direction']);
+        try {
+            ba_confirm_tx($tx['id'], $g['description'], $g['party'], $g['category_id']);
+            $saved = true;
+            $say = 'ثبت شد' . ($g['party'] !== '' ? '، ' . ($tx['direction'] === 'in' ? 'از ' : 'به ') . $g['party'] : '') . '.';
+        } catch (InvalidArgumentException $e) {
+            $say = $e->getMessage();
+        }
+    }
+    $left = (int)$db->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
+    if ($saved && $left) {
+        $say .= ' ' . ba_num_words($left) . ' تراکنش دیگر مانده.';
+    }
+    out(siri_reply(['saved' => $saved, 'heard' => $heard, 'remaining' => $left], $say));
 
 case 'export':
     // Excel-friendly CSV of confirmed transactions, for importing into the accounting program.
