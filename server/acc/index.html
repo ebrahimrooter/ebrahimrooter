@@ -54,7 +54,7 @@
       
       <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         <template x-for="item in visibleMenu" :key="item.id">
-          <a href="#" @click.prevent="currentPage = item.id; if (item.id === 'sms') smsLoad()" 
+          <a href="#" @click.prevent="currentPage = item.id; if (item.id === 'sms') smsLoad(); if (item.id === 'more') moreLoad(); if (item.id === 'mreports') repLoad()" 
              :class="{'active': currentPage === item.id}"
              class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition">
             <span x-html="item.icon" class="w-5 h-5"></span>
@@ -158,7 +158,7 @@
                   <tbody>
                     <template x-for="inv in salesInvoices.slice(0,5)" :key="inv.id">
                       <tr class="table-row border-b border-slate-50">
-                        <td class="py-2.5" x-text="inv.number"></td><td class="py-2" x-show="currentPage==='sales'||currentPage==='purchases'"><button class="text-xs text-primary-600" @click="printInvoice(inv)" class="text-xs text-primary-600">چاپ</button> <button @click="editInvoice(inv)" class="text-xs text-slate-700">اصلاح</button> <button @click="deleteInvoice(inv)" class="text-xs text-red-600">حذف</button><button x-show="false" class="text-xs text-primary-600">چاپ</button><button x-show="(inv.kind||'').includes('proforma')||(inv.kind||'').includes('order')" @click="finalizeInvoice(inv)" class="text-xs text-emerald-600">نهایی کردن</button><button @click="loadAttachments('invoice', inv.id)" class="text-xs text-slate-600">پیوست>چاپ></td>
+                        <td class="py-2.5" x-text="inv.number"></td><td class="py-2" x-show="currentPage==='sales'||currentPage==='purchases'"><button class="text-xs text-primary-600" @click="printInvoice(inv)" class="text-xs text-primary-600">چاپ</button> <button @click="editInvoice(inv)" class="text-xs text-slate-700">اصلاح</button> <button @click="deleteInvoice(inv)" class="text-xs text-red-600">حذف</button><button x-show="(inv.kind||'').includes('proforma')||(inv.kind||'').includes('order')" @click="finalizeInvoice(inv)" class="text-xs text-emerald-600">نهایی کردن</button><button @click="loadAttachments('invoice', inv.id)" class="text-xs text-slate-600">پیوست</button></td>
                         <td class="py-2.5" x-text="inv.person_name || getPersonName(inv.person_id)"></td>
                         <td class="py-2.5 font-medium" x-text="formatNumber(inv.total)"></td>
                         <td class="py-2.5">
@@ -653,6 +653,8 @@
                   <th class="text-right py-2 px-3">نوع</th>
                   <th class="text-right py-2 px-3">حساب</th>
                   <th class="text-right py-2 px-3">مبلغ</th>
+                  <th class="text-right py-2 px-3">شرح</th>
+                  <th class="py-2 px-3"></th>
                 </tr></thead>
                 <tbody>
                   <template x-for="t in txns" :key="t.id">
@@ -661,6 +663,8 @@
                       <td class="py-2 px-3" x-text="t.kind_label"></td>
                       <td class="py-2 px-3" x-text="t.account_name"></td>
                       <td class="py-2 px-3 font-medium" x-text="formatNumber(t.amount)"></td>
+                      <td class="py-2 px-3 text-xs text-slate-500" x-text="(t.date || '') + ' ' + (t.description || '')"></td>
+                      <td class="py-2 px-3"><button @click="deleteTxn(t)" class="text-xs text-red-600">حذف</button></td>
                     </tr>
                   </template>
                 </tbody>
@@ -695,6 +699,456 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <!-- MORE FEATURES -->
+        <div x-show="currentPage === 'more'" class="space-y-4">
+          <div class="flex flex-wrap gap-2">
+            <template x-for="t in moreTabs" :key="t[0]">
+              <button @click="moreSetTab(t[0])" class="px-3 py-1.5 rounded-lg text-sm border"
+                :class="more.tab === t[0] ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700'" x-text="t[1]"></button>
+            </template>
+          </div>
+
+          <!-- phone book -->
+          <div x-show="more.tab === 'phonebook'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">شماره جدید</div>
+              <input x-model="more.form.name" placeholder="نام" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="more.form.phones" placeholder="شماره‌ها" class="w-full px-3 py-2 border rounded-lg text-sm" dir="ltr">
+              <input x-model="more.form.note" placeholder="توضیح / آدرس" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm" x-text="more.form.id ? 'ذخیره تغییر' : 'افزودن'"></button>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl border overflow-hidden">
+              <div class="p-3 border-b"><input x-model="more.q" @input.debounce.300ms="moreLoad()" placeholder="جستجو در نام، شماره و توضیح" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50"><tr><th class="text-right py-2 px-3">نام</th><th class="text-right py-2 px-3">شماره</th><th class="text-right py-2 px-3">توضیح</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="r in rowsFor('phonebook')" :key="r.source + r.id">
+                    <tr class="border-t">
+                      <td class="py-2 px-3"><span x-text="r.name"></span> <span x-show="r.source === 'person'" class="text-xs text-slate-400">(طرف حساب)</span></td>
+                      <td class="py-2 px-3" dir="ltr" x-text="r.phones"></td>
+                      <td class="py-2 px-3 text-slate-500" x-text="r.note"></td>
+                      <td class="py-2 px-3 whitespace-nowrap" x-show="r.source === 'phonebook'">
+                        <button @click="more.form = { id: r.id, name: r.name, phones: r.phones, note: r.note }" class="text-xs text-slate-700">ویرایش</button>
+                        <button @click="moreDelete('phonebook/' + r.id)" class="text-xs text-red-600">حذف</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- guarantees -->
+          <div x-show="more.tab === 'guarantees'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">سند ضمانتی (سفته، ضمانت‌نامه، چک ضمانت...)</div>
+              <select x-model="more.form.direction" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="received">دریافتی از طرف حساب</option><option value="given">داده‌شده به طرف حساب</option></select>
+              <select x-model="more.form.person_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">طرف حساب</option>
+                <template x-for="p in persons" :key="'g'+p.id"><option :value="p.id" x-text="p.name"></option></template>
+              </select>
+              <input x-model="more.form.kind" placeholder="نوع سند" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="more.form.number" placeholder="شماره" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input type="number" x-model.number="more.form.amount" placeholder="مبلغ" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <input x-model="more.form.date" placeholder="تاریخ" class="px-3 py-2 border rounded-lg text-sm">
+                <input x-model="more.form.due_date" placeholder="سررسید" class="px-3 py-2 border rounded-lg text-sm">
+              </div>
+              <select x-model="more.form.status" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="active">جاری</option><option value="returned">عودت‌شده</option><option value="claimed">اجرا/وصول‌شده</option><option value="cancelled">باطل</option>
+              </select>
+              <input x-model="more.form.description" placeholder="شرح" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm" x-text="more.form.id ? 'ذخیره تغییر' : 'ثبت'"></button>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl border overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50"><tr><th class="text-right py-2 px-3">نوع</th><th class="text-right py-2 px-3">طرف حساب</th><th class="text-right py-2 px-3">شماره</th><th class="text-right py-2 px-3">مبلغ</th><th class="text-right py-2 px-3">سررسید</th><th class="text-right py-2 px-3">وضعیت</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="g in rowsFor('guarantees')" :key="'gr'+g.id">
+                    <tr class="border-t">
+                      <td class="py-2 px-3" x-text="g.kind + ' ' + g.direction_label"></td>
+                      <td class="py-2 px-3" x-text="g.person_name"></td>
+                      <td class="py-2 px-3" x-text="g.number"></td>
+                      <td class="py-2 px-3" x-text="formatNumber(g.amount)"></td>
+                      <td class="py-2 px-3" x-text="g.due_date"></td>
+                      <td class="py-2 px-3" x-text="g.status_label"></td>
+                      <td class="py-2 px-3"><button @click="more.form = { ...g }" class="text-xs text-slate-700">ویرایش</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- loans -->
+          <div x-show="more.tab === 'loans'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">وام / قرض جدید</div>
+              <select x-model="more.form.direction" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="received">وام دریافتی (از بانک یا شخص)</option><option value="given">قرض داده‌شده به شخص</option></select>
+              <select x-model="more.form.person_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="" x-text="more.form.direction === 'given' ? 'به چه کسی' : 'وام‌دهنده (اختیاری)'"></option>
+                <template x-for="p in persons" :key="'l'+p.id"><option :value="p.id" x-text="p.name"></option></template>
+              </select>
+              <select x-model="more.form.account_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">واریز/برداشت از حساب</option>
+                <template x-for="a in accounts" :key="'la'+a.id"><option :value="a.id" x-text="a.name"></option></template>
+              </select>
+              <label class="block text-xs text-slate-500">مبلغ اصل</label>
+              <input type="number" x-model.number="more.form.amount" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <label class="block text-xs text-slate-500">کل سود و کارمزد</label>
+              <input type="number" x-model.number="more.form.interest_total" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="block text-xs text-slate-500">تعداد اقساط</label><input type="number" x-model.number="more.form.installments" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                <div><label class="block text-xs text-slate-500">فاصله (ماه)</label><input type="number" x-model.number="more.form.interval_months" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+              </div>
+              <input x-model="more.form.start_date" placeholder="تاریخ قسط اول (پیش‌فرض: یک ماه بعد)" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="more.form.description" placeholder="شرح" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">ثبت وام</button>
+            </div>
+            <div class="lg:col-span-2 space-y-3">
+              <template x-for="l in rowsFor('loans')" :key="'ln'+l.id">
+                <div class="bg-white rounded-xl border">
+                  <div class="px-4 py-3 border-b flex flex-wrap justify-between gap-2 text-sm">
+                    <span class="font-semibold" x-text="l.direction_label + ' - ' + (l.person_name || l.account_name) + (l.description ? ' - ' + l.description : '')"></span>
+                    <span>اصل <b x-text="formatNumber(l.amount)"></b> · سود <b x-text="formatNumber(l.interest_total)"></b> · مانده <b class="text-red-600" x-text="formatNumber(l.remaining)"></b> · <span x-text="l.paid_count + ' از ' + l.installments + ' قسط'"></span></span>
+                  </div>
+                  <div class="max-h-60 overflow-y-auto">
+                    <table class="w-full text-sm">
+                      <tbody>
+                        <template x-for="i in l.schedule" :key="'li'+i.id">
+                          <tr class="border-t" :class="i.paid ? 'text-slate-400' : ''">
+                            <td class="py-1.5 px-3" x-text="'قسط ' + i.no"></td>
+                            <td class="py-1.5 px-3" x-text="i.due_date"></td>
+                            <td class="py-1.5 px-3" x-text="formatNumber(i.amount)"></td>
+                            <td class="py-1.5 px-3">
+                              <span x-show="i.paid" x-text="'تسویه ' + (i.paid_at || '')"></span>
+                              <button x-show="!i.paid" @click="payInstallment(i)" class="text-xs text-primary-600" x-text="l.direction === 'given' ? 'دریافت قسط' : 'پرداخت قسط'"></button>
+                            </td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </template>
+              <div x-show="!rowsFor('loans').length" class="text-sm text-slate-400">وامی ثبت نشده.</div>
+            </div>
+          </div>
+
+          <!-- advances -->
+          <div x-show="more.tab === 'advances'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">ثبت پیش‌دریافت / پیش‌پرداخت</div>
+              <select x-model="more.form.kind" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="prereceive">پیش‌دریافت از مشتری</option><option value="prepay">پیش‌پرداخت به تأمین‌کننده</option></select>
+              <select x-model="more.form.person_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">طرف حساب</option>
+                <template x-for="p in persons" :key="'ad'+p.id"><option :value="p.id" x-text="p.name"></option></template>
+              </select>
+              <select x-model="more.form.account_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">صندوق / بانک</option>
+                <template x-for="a in accounts" :key="'aa'+a.id"><option :value="a.id" x-text="a.name"></option></template>
+              </select>
+              <input type="number" x-model.number="more.form.amount" placeholder="مبلغ" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="more.form.date" placeholder="تاریخ" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="more.form.description" placeholder="شرح" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">ثبت</button>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl border overflow-hidden">
+              <div class="px-4 py-3 border-b font-semibold">مانده‌ی پیش‌دریافت‌ها و پیش‌پرداخت‌ها</div>
+              <table class="w-full text-sm">
+                <tbody>
+                  <template x-for="a in rowsFor('advances')" :key="a.kind + a.person_id">
+                    <tr class="border-t">
+                      <td class="py-2 px-3" x-text="a.kind_label"></td>
+                      <td class="py-2 px-3" x-text="a.person_name"></td>
+                      <td class="py-2 px-3" x-text="formatNumber(a.amount)"></td>
+                      <td class="py-2 px-3"><button @click="applyAdvance(a)" class="text-xs text-primary-600">تسویه با حساب شخص</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="!rowsFor('advances').length" class="p-4 text-sm text-slate-400">مانده‌ای نیست.</div>
+            </div>
+          </div>
+
+          <!-- expense / income types -->
+          <div x-show="more.tab === 'expense'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">نوع جدید</div>
+              <select x-model="more.form.kind" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="expense">هزینه</option><option value="income">درآمد</option></select>
+              <input x-model="more.form.name" placeholder="مثلاً اجاره، حقوق، آب و برق" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">افزودن</button>
+              <p class="text-xs text-slate-500">برای ثبت هزینه یا درآمد: خزانه‌داری ← پرداخت یا دریافت ← «بابت» را همین نوع انتخاب کن.</p>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl border overflow-hidden">
+              <table class="w-full text-sm">
+                <tbody>
+                  <template x-for="t in rowsFor('expense')" :key="'et'+t.id">
+                    <tr class="border-t"><td class="py-2 px-3" x-text="t.code"></td><td class="py-2 px-3" x-text="t.name"></td><td class="py-2 px-3" x-text="t.kind === 'income' ? 'درآمد' : 'هزینه'"></td></tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- cheque books -->
+          <div x-show="more.tab === 'cheque-books'" class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">دسته چک جدید</div>
+              <select x-model="more.form.account_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">حساب بانک</option>
+                <template x-for="a in accounts" :key="'cb'+a.id"><option :value="a.id" x-text="a.name"></option></template>
+              </select>
+              <input x-model="more.form.bank_name" placeholder="نام بانک" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <input x-model="more.form.serial_from" placeholder="سریال اولین برگ" class="px-3 py-2 border rounded-lg text-sm" dir="ltr">
+                <input x-model="more.form.serial_to" placeholder="سریال آخرین برگ" class="px-3 py-2 border rounded-lg text-sm" dir="ltr">
+              </div>
+              <button @click="moreSave()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">ثبت</button>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl border overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50"><tr><th class="text-right py-2 px-3">حساب</th><th class="text-right py-2 px-3">سریال</th><th class="text-right py-2 px-3">مصرف‌شده</th><th class="text-right py-2 px-3">باقی</th><th class="text-right py-2 px-3">برگ بعدی</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="b in rowsFor('cheque-books')" :key="'cbk'+b.id">
+                    <tr class="border-t">
+                      <td class="py-2 px-3" x-text="b.account_name + (b.bank_name ? ' - ' + b.bank_name : '')"></td>
+                      <td class="py-2 px-3" dir="ltr" x-text="b.serial_from + ' - ' + b.serial_to"></td>
+                      <td class="py-2 px-3" x-text="b.used"></td>
+                      <td class="py-2 px-3" x-text="b.remaining"></td>
+                      <td class="py-2 px-3" x-text="b.next || 'تمام شده'"></td>
+                      <td class="py-2 px-3"><button @click="moreDelete('cheque-books/' + b.id)" class="text-xs text-red-600">حذف</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- production -->
+          <div x-show="more.tab === 'production'" class="grid lg:grid-cols-2 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold" x-text="more.form.id ? 'ویرایش فرمول تولید' : 'فرمول تولید جدید'"></div>
+              <select x-model="more.form.product_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">کالای ساخته‌شده</option>
+                <template x-for="p in products" :key="'bp'+p.id"><option :value="p.id" x-text="p.name"></option></template>
+              </select>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="block text-xs text-slate-500">هر بار تولید چند واحد</label><input type="number" x-model.number="more.form.qty_out" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+                <div><label class="block text-xs text-slate-500">سربار هر بار (دستمزد، انرژی)</label><input type="number" x-model.number="more.form.extra_cost" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+              </div>
+              <div class="text-sm font-medium">مواد اولیه</div>
+              <template x-for="(it, k) in (more.form.items || [])" :key="'bi'+k">
+                <div class="flex gap-2">
+                  <select x-model="it.product_id" class="flex-1 px-3 py-2 border rounded-lg text-sm">
+                    <option value="">ماده اولیه</option>
+                    <template x-for="p in products" :key="'bip'+p.id"><option :value="p.id" x-text="p.name"></option></template>
+                  </select>
+                  <input type="number" x-model.number="it.qty" class="w-24 px-3 py-2 border rounded-lg text-sm">
+                  <button @click="more.form.items.splice(k, 1)" class="text-red-600 text-sm">×</button>
+                </div>
+              </template>
+              <button @click="more.form.items.push({ product_id: '', qty: 1 })" class="text-primary-600 text-xs">+ ماده اولیه</button>
+              <button @click="saveBom()" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">ذخیره فرمول</button>
+              <div class="border-t pt-3 mt-3 space-y-2">
+                <div class="font-semibold">ثبت تولید</div>
+                <select x-model="more.form.run_bom" class="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="">فرمول</option>
+                  <template x-for="b in rowsFor('production')" :key="'rb'+b.id"><option :value="b.id" x-text="b.name"></option></template>
+                </select>
+                <div class="grid grid-cols-2 gap-2">
+                  <input type="number" x-model.number="more.form.run_qty" placeholder="تعداد تولید" class="px-3 py-2 border rounded-lg text-sm">
+                  <select x-model="more.form.warehouse_id" class="px-3 py-2 border rounded-lg text-sm">
+                    <option value="">انبار پیش‌فرض</option>
+                    <template x-for="w in warehouses" :key="'pw'+w.id"><option :value="w.id" x-text="w.name"></option></template>
+                  </select>
+                </div>
+                <button @click="runProduction()" class="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm">تولید کن (کسر مواد، افزایش محصول)</button>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div class="bg-white rounded-xl border overflow-hidden">
+                <div class="px-4 py-3 border-b font-semibold">فرمول‌ها</div>
+                <template x-for="b in rowsFor('production')" :key="'bm'+b.id">
+                  <div class="border-t px-4 py-2 text-sm">
+                    <div class="flex justify-between"><b x-text="b.name + ' (' + b.qty_out + ' واحد)'"></b><button @click="editBom(b)" class="text-xs text-slate-700">ویرایش</button></div>
+                    <div class="text-slate-500" x-text="b.items.map(i => i.name + ' ×' + i.qty).join('، ')"></div>
+                    <div class="text-xs">بهای تقریبی هر واحد: <span x-text="formatNumber(Math.round(b.unit_cost))"></span></div>
+                  </div>
+                </template>
+              </div>
+              <div class="bg-white rounded-xl border overflow-hidden">
+                <div class="px-4 py-3 border-b font-semibold">تولیدهای ثبت‌شده</div>
+                <table class="w-full text-sm">
+                  <tbody>
+                    <template x-for="p in (more.runs || [])" :key="'pr'+p.id">
+                      <tr class="border-t" :class="p.status === 'void' ? 'text-slate-400 line-through' : ''">
+                        <td class="py-2 px-3" x-text="p.number"></td><td class="py-2 px-3" x-text="p.date"></td>
+                        <td class="py-2 px-3" x-text="p.product_name + ' ×' + p.qty"></td>
+                        <td class="py-2 px-3" x-text="formatNumber(Math.round(p.cost))"></td>
+                        <td class="py-2 px-3"><button x-show="p.status !== 'void'" @click="deleteProduction(p)" class="text-xs text-red-600">حذف</button></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- brands & departments -->
+          <div x-show="more.tab === 'brands'" class="grid lg:grid-cols-2 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">برندها</div>
+              <div class="flex gap-2"><input x-model="more.form.brand" placeholder="نام برند" class="flex-1 px-3 py-2 border rounded-lg text-sm"><button @click="saveNamed('brands')" class="bg-primary-600 text-white px-4 rounded-lg text-sm">افزودن</button></div>
+              <template x-for="b in brands" :key="'br'+b.id">
+                <div class="flex justify-between border-t pt-2 text-sm"><span x-text="b.name"></span><button @click="moreDelete('brands/' + b.id)" class="text-xs text-red-600">حذف</button></div>
+              </template>
+            </div>
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">بخش‌ها (برای گزارش سود هر بخش)</div>
+              <div class="flex gap-2"><input x-model="more.form.department" placeholder="نام بخش" class="flex-1 px-3 py-2 border rounded-lg text-sm"><button @click="saveNamed('departments')" class="bg-primary-600 text-white px-4 rounded-lg text-sm">افزودن</button></div>
+              <template x-for="d in departments" :key="'dp'+d.id">
+                <div class="flex justify-between border-t pt-2 text-sm"><span x-text="d.name"></span><button @click="moreDelete('departments/' + d.id)" class="text-xs text-red-600">حذف</button></div>
+              </template>
+            </div>
+          </div>
+
+          <!-- barcode labels -->
+          <div x-show="more.tab === 'labels'" class="bg-white rounded-xl border p-4 space-y-3">
+            <div class="font-semibold">چاپ برچسب بارکد</div>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 max-h-72 overflow-y-auto">
+              <template x-for="p in products" :key="'lb'+p.id">
+                <label class="flex items-center gap-2 text-sm border rounded-lg px-2 py-1.5"><input type="checkbox" :value="p.id" x-model="more.labelIds"> <span x-text="p.name"></span></label>
+              </template>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm">تعداد از هر کالا</span><input type="number" min="1" x-model.number="more.copies" class="w-20 px-3 py-2 border rounded-lg text-sm">
+              <button @click="printLabels()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm" x-text="more.labelIds.length ? 'چاپ برچسب‌ها' : 'چاپ برچسب همه کالاها'"></button>
+            </div>
+            <p class="text-xs text-slate-500">بارکد Code128 از روی فیلد «بارکد» کالا ساخته می‌شود و اگر خالی باشد از کد کالا.</p>
+          </div>
+
+          <!-- import -->
+          <div x-show="more.tab === 'import'" class="bg-white rounded-xl border p-4 space-y-3 max-w-2xl">
+            <div class="font-semibold">ورود لیست اشخاص یا کالاها</div>
+            <select x-model="more.importKind" class="px-3 py-2 border rounded-lg text-sm"><option value="persons">اشخاص</option><option value="products">کالاها</option></select>
+            <p class="text-xs text-slate-500" x-show="more.importKind === 'persons'">ستون‌ها (سطر اول): نام، موبایل، نوع (مشتری/تأمین‌کننده/...)، کد ملی، آدرس، مانده، گروه</p>
+            <p class="text-xs text-slate-500" x-show="more.importKind === 'products'">ستون‌ها (سطر اول): نام، کد، واحد، قیمت خرید، قیمت فروش، موجودی، بارکد، گروه</p>
+            <p class="text-xs text-slate-500">در اکسل «Save As ← CSV» بگیر و فایل را انتخاب کن (یا متن را اینجا بچسبان).</p>
+            <input type="file" accept=".csv,.txt" @change="readCsvFile($event)" class="text-sm">
+            <textarea x-model="more.csv" rows="8" class="w-full px-3 py-2 border rounded-lg text-sm font-mono" dir="auto"></textarea>
+            <button @click="runImport()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ورود اطلاعات</button>
+            <div x-show="more.result" class="text-sm text-emerald-700" x-text="more.result"></div>
+          </div>
+
+          <!-- tools -->
+          <div x-show="more.tab === 'tools'" class="grid md:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">ترمیم اطلاعات</div>
+              <p class="text-xs text-slate-500">مانده اشخاص، صندوق و بانک‌ها و موجودی کالاها را از روی اسناد دوباره حساب می‌کند.</p>
+              <button @click="runTool('repair')" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">ترمیم</button>
+            </div>
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">فشرده‌سازی دیتابیس</div>
+              <p class="text-xs text-slate-500">فضای خالی فایل اطلاعات را آزاد می‌کند.</p>
+              <button @click="runTool('vacuum')" class="w-full bg-primary-600 text-white py-2 rounded-lg text-sm">فشرده‌سازی</button>
+            </div>
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold">بستن سال مالی <span class="text-slate-400 text-sm" x-text="fiscal.name"></span></div>
+              <p class="text-xs text-slate-500">سند اختتامیه (بستن درآمد و هزینه به سود انباشته) صادر و سال بعد شروع می‌شود. مانده اشخاص و موجودی‌ها منتقل می‌مانند.</p>
+              <button @click="runTool('close-year')" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm">بستن سال</button>
+            </div>
+            <div x-show="more.result" class="md:col-span-3 text-sm text-emerald-700" x-text="more.result"></div>
+          </div>
+        </div>
+
+        <!-- MANAGEMENT REPORTS -->
+        <div x-show="currentPage === 'mreports'" class="space-y-4">
+          <div class="flex flex-wrap gap-2">
+            <template x-for="t in repTabs" :key="t[0]">
+              <button @click="repSetTab(t[0])" class="px-3 py-1.5 rounded-lg text-sm border"
+                :class="rep.tab === t[0] ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700'" x-text="t[1]"></button>
+            </template>
+          </div>
+          <div class="bg-white rounded-xl border p-3 flex flex-wrap items-end gap-2 text-sm">
+            <template x-if="!['due', 'accounts', 'order', 'unused', 'ttms'].includes(rep.tab)">
+              <div class="flex gap-2">
+                <div><label class="block text-xs text-slate-500">از تاریخ</label><input x-model="rep.from" placeholder="1405/01/01" class="w-28 px-2 py-1.5 border rounded-lg"></div>
+                <div><label class="block text-xs text-slate-500">تا تاریخ</label><input x-model="rep.to" placeholder="1405/12/29" class="w-28 px-2 py-1.5 border rounded-lg"></div>
+              </div>
+            </template>
+            <div x-show="rep.tab === 'trade' || rep.tab === 'ttms'"><label class="block text-xs text-slate-500">نوع</label>
+              <select x-model="rep.group" class="px-2 py-1.5 border rounded-lg"><option value="sale">فروش</option><option value="purchase">خرید</option></select></div>
+            <div x-show="rep.tab === 'profit'"><label class="block text-xs text-slate-500">روش محاسبه بهای تمام‌شده</label>
+              <select x-model="rep.method" class="px-2 py-1.5 border rounded-lg">
+                <option value="avg">میانگین موزون متحرک</option><option value="fifo">اولین صادره از اولین وارده (FIFO)</option>
+                <option value="avg_to_date">میانگین تا تاریخ</option><option value="last">آخرین قیمت خرید</option>
+              </select></div>
+            <div x-show="rep.tab === 'cash'"><label class="block text-xs text-slate-500">حساب</label>
+              <select x-model="rep.account" class="px-2 py-1.5 border rounded-lg">
+                <option value="">انتخاب</option>
+                <template x-for="a in accounts" :key="'ra'+a.id"><option :value="a.id" x-text="a.name"></option></template>
+              </select></div>
+            <div x-show="rep.tab === 'order' || rep.tab === 'unused'"><label class="block text-xs text-slate-500">بر اساس چند روز اخیر</label><input type="number" x-model.number="rep.days" class="w-20 px-2 py-1.5 border rounded-lg"></div>
+            <div x-show="rep.tab === 'order'"><label class="block text-xs text-slate-500">خرید برای چند روز</label><input type="number" x-model.number="rep.cover" class="w-20 px-2 py-1.5 border rounded-lg"></div>
+            <template x-if="rep.tab === 'ttms'">
+              <div class="flex gap-2 items-end">
+                <div><label class="block text-xs text-slate-500">سال</label><input x-model="rep.year" placeholder="1405" class="w-20 px-2 py-1.5 border rounded-lg"></div>
+                <div><label class="block text-xs text-slate-500">فصل</label><select x-model="rep.season" class="px-2 py-1.5 border rounded-lg"><option value="1">بهار</option><option value="2">تابستان</option><option value="3">پاییز</option><option value="4">زمستان</option></select></div>
+                <a :href="ttmsLink()" class="bg-primary-600 text-white px-4 py-1.5 rounded-lg">دریافت فایل معاملات فصلی (CSV)</a>
+              </div>
+            </template>
+            <button x-show="rep.tab !== 'ttms'" @click="repLoad()" class="bg-primary-600 text-white px-4 py-1.5 rounded-lg">نمایش</button>
+            <button x-show="rep.tab !== 'ttms'" @click="window.print()" class="bg-slate-100 px-4 py-1.5 rounded-lg">چاپ</button>
+          </div>
+
+          <div x-show="rep.data && rep.data.totals" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div class="bg-white rounded-xl border p-3">تعداد فاکتور <b class="block text-lg" x-text="rep.data?.totals?.count"></b></div>
+            <div class="bg-white rounded-xl border p-3">مبلغ خالص <b class="block text-lg" x-text="formatNumber(Math.round(rep.data?.totals?.net || 0))"></b></div>
+            <div class="bg-white rounded-xl border p-3">مالیات <b class="block text-lg" x-text="formatNumber(Math.round(rep.data?.totals?.tax || 0))"></b></div>
+            <div class="bg-white rounded-xl border p-3">جمع کل <b class="block text-lg" x-text="formatNumber(Math.round(rep.data?.totals?.total || 0))"></b></div>
+          </div>
+          <div x-show="rep.tab === 'profit' && rep.data && rep.data.total" class="grid grid-cols-3 gap-3 text-sm">
+            <div class="bg-white rounded-xl border p-3">فروش <b class="block text-lg" x-text="formatNumber(Math.round(rep.data?.total?.revenue || 0))"></b></div>
+            <div class="bg-white rounded-xl border p-3">بهای تمام‌شده <b class="block text-lg" x-text="formatNumber(Math.round(rep.data?.total?.cost || 0))"></b></div>
+            <div class="bg-white rounded-xl border p-3">سود ناخالص <b class="block text-lg text-emerald-700" x-text="formatNumber(Math.round(rep.data?.total?.profit || 0))"></b></div>
+          </div>
+
+          <div x-show="rep.tab !== 'ttms'" class="bg-white rounded-xl border overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50"><tr>
+                <template x-for="c in repCols" :key="c[0]"><th class="text-right py-2 px-3 whitespace-nowrap" x-text="c[1]"></th></template>
+                <th x-show="rep.tab === 'marketers' || rep.tab === 'operations'"></th>
+              </tr></thead>
+              <tbody>
+                <template x-for="(r, k) in repRows" :key="rep.tab + k">
+                  <tr class="border-t" :class="(r.overdue ? 'bg-red-50 ' : '') + (r.level === 'kol' ? 'font-bold bg-slate-50' : '')">
+                    <template x-for="c in repCols" :key="c[0]"><td class="py-2 px-3" x-text="repCell(r, c)"></td></template>
+                    <td x-show="rep.tab === 'marketers'" class="py-2 px-3"><button x-show="r.commission > 0" @click="bookCommission(r)" class="text-xs text-primary-600">ثبت کمیسیون</button></td>
+                    <td x-show="rep.tab === 'operations'" class="py-2 px-3"><button @click="rep.open = rep.open === r.id ? null : r.id" class="text-xs text-primary-600">ریز</button>
+                      <div x-show="rep.open === r.id" class="mt-1 text-xs text-slate-600 space-y-0.5">
+                        <template x-for="(l, j) in r.lines" :key="j"><div x-text="l.account + (l.person ? ' / ' + l.person : '') + (l.cash ? ' / ' + l.cash : '') + ' : ' + (l.debit ? 'بد ' + formatNumber(l.debit) : 'بس ' + formatNumber(l.credit))"></div></template>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <div x-show="!repRows.length" class="p-4 text-sm text-slate-400" x-text="rep.tab === 'cash' && !rep.account ? 'حساب را انتخاب کن.' : 'داده‌ای نیست.'"></div>
+          </div>
+          <div x-show="rep.tab === 'trade' && rep.data" class="bg-white rounded-xl border overflow-x-auto">
+            <div class="px-4 py-3 border-b font-semibold">فاکتورهای دوره</div>
+            <table class="w-full text-sm">
+              <tbody>
+                <template x-for="i in (rep.data?.invoices || [])" :key="'ti'+i.id">
+                  <tr class="border-t"><td class="py-2 px-3" x-text="i.number"></td><td class="py-2 px-3" x-text="kindLabel(i.kind)"></td><td class="py-2 px-3" x-text="i.date"></td>
+                    <td class="py-2 px-3" x-text="i.person_name"></td><td class="py-2 px-3" x-text="formatNumber(Math.round(i.total))"></td></tr>
+                </template>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1085,6 +1539,14 @@
             <template x-for="p in persons" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
           </select>
         </div>
+        <div x-show="txnForm.kind!=='transfer'">
+          <label class="block text-sm mb-1">بابت (حساب مقابل)</label>
+          <select x-model="txnForm.counter_account_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <option value="">حساب طرف شخص (پیش‌فرض)</option>
+            <template x-for="a in moeinAccounts" :key="'ca'+a.id"><option :value="a.id" x-text="a.code + ' - ' + a.name"></option></template>
+          </select>
+          <p class="text-xs text-slate-400 mt-1">برای هزینه (اجاره، حقوق...) یا درآمد متفرقه، نوع آن را انتخاب کن.</p>
+        </div>
         <div><label class="block text-sm mb-1">مبلغ</label><input type="number" x-model.number="txnForm.amount" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
         <div><label class="block text-sm mb-1">تاریخ</label><input type="text" x-model="txnForm.date" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
         <div><label class="block text-sm mb-1">شرح</label><input type="text" x-model="txnForm.description" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
@@ -1283,6 +1745,10 @@
           <select x-model="personForm.type" class="w-full px-3 py-2 border rounded-lg text-sm">
             <option value="customer">مشتری</option>
             <option value="supplier">تأمین‌کننده</option>
+            <option value="employee">کارمند</option>
+            <option value="investor">سرمایه‌گذار / شریک</option>
+            <option value="marketer">بازاریاب</option>
+            <option value="other">سایر</option>
           </select>
         </div>
         <div>
@@ -1294,6 +1760,13 @@
           <label class="block text-sm mb-1">کد اقتصادی / شناسه ملی</label>
           <input type="text" x-model="personForm.national_id" class="w-full px-3 py-2 border rounded-lg text-sm">
         </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-sm mb-1">تلفن دوم</label><input x-model="personForm.phone2" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+          <div><label class="block text-sm mb-1">سقف اعتبار</label><input type="number" x-model.number="personForm.credit_limit" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+          <div><label class="block text-sm mb-1">حقیقی / حقوقی</label><select x-model="personForm.legal_type" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="real">حقیقی</option><option value="legal">حقوقی</option></select></div>
+          <div x-show="personForm.type==='marketer'"><label class="block text-sm mb-1">درصد پورسانت</label><input type="number" x-model.number="personForm.commission_rate" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
+        </div>
+        <div><label class="block text-sm mb-1">آدرس</label><input x-model="personForm.address" class="w-full px-3 py-2 border rounded-lg text-sm"></div>
       </div>
       <div class="flex gap-2 mt-6">
         <button @click="savePerson" class="flex-1 bg-primary-600 text-white py-2 rounded-lg text-sm">ذخیره</button>
@@ -1352,6 +1825,21 @@
             <label class="block text-sm mb-1">گروه کالا</label>
             <input x-model="productForm.group_name" class="w-full px-3 py-2 border rounded-lg text-sm">
           </div>
+          <div>
+            <label class="block text-sm mb-1">نوع</label>
+            <select x-model="productForm.kind" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="goods">کالا</option><option value="service">خدمات (بدون انبار)</option></select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">برند</label>
+            <select x-model="productForm.brand_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">-</option>
+              <template x-for="b in brands" :key="'b'+b.id"><option :value="b.id" x-text="b.name"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">شناسه کالا/خدمت (مؤدیان)</label>
+            <input x-model="productForm.tax_code" class="w-full px-3 py-2 border rounded-lg text-sm" dir="ltr">
+          </div>
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="productForm.track_serial"> ردیابی سریال</label>
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="productForm.track_lot"> ردیابی بچ و انقضا
           </div>
@@ -1382,6 +1870,28 @@
           <div>
             <label class="block text-sm mb-1">تاریخ</label>
             <input type="text" x-model="invoiceForm.date" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="1405/05/01">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">سررسید پرداخت</label>
+            <input type="text" x-model="invoiceForm.due_date" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="اختیاری">
+          </div>
+          <div x-show="invoiceType.startsWith('sale')">
+            <label class="block text-sm mb-1">بازاریاب</label>
+            <select x-model="invoiceForm.marketer_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">-</option>
+              <template x-for="m in marketers" :key="'m'+m.id"><option :value="m.id" x-text="m.name"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">بخش</label>
+            <select x-model="invoiceForm.department_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">-</option>
+              <template x-for="d in departments" :key="'d'+d.id"><option :value="d.id" x-text="d.name"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">توضیحات</label>
+            <input type="text" x-model="invoiceForm.note" class="w-full px-3 py-2 border rounded-lg text-sm">
           </div>
         </div>
         

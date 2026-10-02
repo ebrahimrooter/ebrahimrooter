@@ -67,7 +67,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   check('stock and customer balance updated', d2.stock === 18 && d2.bal === 3300, JSON.stringify(d2));
   await page.screenshot({ path: OUT + '/3-sales.png' });
   // every page renders without errors
-  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'sms', 'settings']) {
+  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'more', 'mreports', 'sms', 'settings']) {
     await page.evaluate(x => document.body._x_dataStack[0].currentPage = x, p);
     await page.waitForTimeout(250);
     const shown = await page.evaluate(x => { const el = [...document.querySelectorAll('div[x-show]')].find(d => d.getAttribute('x-show').replace(/\s/g, '') === "currentPage==='" + x + "'"); return !!(el && el.offsetParent); }, p);
@@ -94,6 +94,27 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.screenshot({ path: OUT + '/5-sms.png' });
   await page.evaluate(() => document.body._x_dataStack[0].loadBalanceSheet && document.body._x_dataStack[0].loadBalanceSheet());
   await page.waitForTimeout(500);
+  // more features: every tab and every report opens without errors
+  for (const t of await page.evaluate(() => document.body._x_dataStack[0].moreTabs.map(x => x[0]))) {
+    await page.evaluate(x => { const d = document.body._x_dataStack[0]; d.currentPage = 'more'; d.moreSetTab(x); }, t);
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(() => { const d = document.body._x_dataStack[0]; d.moreSetTab('phonebook'); });
+  await page.waitForTimeout(300);
+  await page.fill('input[x-model="more.form.name"]', 'تعمیرکار');
+  await page.fill('input[x-model="more.form.phones"]', '02122223333');
+  await page.click('button[\\@click="moreSave()"] >> visible=true');
+  await page.waitForTimeout(500);
+  check('phone book entry saved', await page.evaluate(() => document.body._x_dataStack[0].more.rows.some(r => r.name === 'تعمیرکار')));
+  await page.screenshot({ path: OUT + '/6-more.png' });
+  for (const t of await page.evaluate(() => document.body._x_dataStack[0].repTabs.map(x => x[0]))) {
+    await page.evaluate(x => { const d = document.body._x_dataStack[0]; d.currentPage = 'mreports'; if (x === 'cash') d.rep.account = d.accounts[0]?.id || ''; d.repSetTab(x); }, t);
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => document.body._x_dataStack[0].repSetTab('profit'));
+  await page.waitForTimeout(500);
+  check('profit report rows', await page.evaluate(() => document.body._x_dataStack[0].repRows.length > 0));
+  await page.screenshot({ path: OUT + '/7-mreports.png' });
   // print opens with the token
   const [popup] = await Promise.all([page.waitForEvent('popup'), page.evaluate(() => { const d = document.body._x_dataStack[0]; d.printInvoice(d.salesInvoices[0]); })]);
   await popup.waitForLoadState();

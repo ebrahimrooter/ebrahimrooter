@@ -10,6 +10,7 @@
 require_once __DIR__ . '/acc_core.php';
 require_once __DIR__ . '/acc_ops.php';
 require_once __DIR__ . '/acc_sms.php';
+require_once __DIR__ . '/acc_more.php';
 
 function acc_routes()
 {
@@ -149,7 +150,7 @@ function acc_dispatch()
     $path = '/' . trim((string)($_GET['p'] ?? ''), '/');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     try {
-        foreach (acc_routes() as [$m, $re, $perm, $fn]) {
+        foreach (array_merge(acc_routes(), acc_more_routes()) as [$m, $re, $perm, $fn]) {
             if ($m !== $method || !preg_match($re, $path, $mm)) {
                 continue;
             }
@@ -227,8 +228,8 @@ function r_dashboard()
     return [
         'sales' => (float)acc_val("SELECT COALESCE(SUM(total), 0) FROM acc_invoices WHERE kind = 'sale'"),
         'purchases' => (float)acc_val("SELECT COALESCE(SUM(total), 0) FROM acc_invoices WHERE kind = 'purchase'"),
-        'receivables' => (float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_persons WHERE balance > 0'),
-        'payables' => -(float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_persons WHERE balance < 0'),
+        'receivables' => acc_people_split()[0],
+        'payables' => acc_people_split()[1],
         'stock_value' => (float)acc_val('SELECT COALESCE(SUM(stock * CASE WHEN avg_cost > 0 THEN avg_cost ELSE buy_price END), 0) FROM acc_products'),
         'cash' => (float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_cash_accounts'),
         'low_stock' => $low,
@@ -249,7 +250,7 @@ function r_company_save($u)
 {
     $b = acc_body();
     $allowed = ['name', 'national_id', 'economic_code', 'vat_rate', 'tax_memory', 'tax_key_set', 'invoice_prefix_sale',
-        'invoice_prefix_buy', 'webhook_enabled', 'webhook_url', 'webhook_secret'];
+        'invoice_prefix_buy', 'webhook_enabled', 'webhook_url', 'webhook_secret', 'address', 'phone', 'invoice_footer', 'postal_code'];
     $set = [];
     foreach ($allowed as $k) {
         if (array_key_exists($k, $b)) {
@@ -323,11 +324,15 @@ function r_backup($u)
 /* persons and products                                                 */
 /* ------------------------------------------------------------------ */
 
+const ACC_PERSON_TYPES = ['customer' => 'مشتری', 'supplier' => 'تأمین‌کننده', 'employee' => 'کارمند', 'investor' => 'سرمایه‌گذار',
+    'marketer' => 'بازاریاب', 'other' => 'سایر'];
+
 function acc_person_out(array $p)
 {
     return ['id' => (int)$p['id'], 'code' => $p['code'], 'name' => $p['name'], 'type' => $p['type'], 'mobile' => $p['mobile'],
         'national_id' => $p['national_id'], 'balance' => (float)$p['balance'], 'credit_limit' => (float)$p['credit_limit'],
-        'legal_type' => $p['legal_type'] ?: 'real', 'address' => $p['address'] ?: '', 'groups' => $p['groups'] ?? ''];
+        'legal_type' => $p['legal_type'] ?: 'real', 'address' => $p['address'] ?: '', 'groups' => $p['groups'] ?? '',
+        'phone2' => $p['phone2'] ?? '', 'commission_rate' => (float)($p['commission_rate'] ?? 0), 'type_label' => ACC_PERSON_TYPES[$p['type']] ?? $p['type']];
 }
 
 function r_persons()
@@ -343,7 +348,12 @@ function acc_person_fields(array $b)
     if ($name === '') {
         throw new AccError('نام شخص را بنویس');
     }
-    return ['name' => $name, 'type' => (string)($b['type'] ?? 'customer') ?: 'customer', 'mobile' => (string)($b['mobile'] ?? ''),
+    $type = (string)($b['type'] ?? 'customer');
+    if (!isset(ACC_PERSON_TYPES[$type])) {
+        $type = 'customer';
+    }
+    return ['name' => $name, 'type' => $type, 'mobile' => (string)($b['mobile'] ?? ''), 'phone2' => (string)($b['phone2'] ?? ''),
+        'commission_rate' => min(max(acc_num($b['commission_rate'] ?? 0), 0), 100),
         'national_id' => (string)($b['national_id'] ?? ''), 'credit_limit' => acc_num($b['credit_limit'] ?? 0),
         'legal_type' => ($b['legal_type'] ?? '') === 'legal' ? 'legal' : 'real', 'address' => (string)($b['address'] ?? ''),
         'groups' => implode(',', array_unique(array_filter(array_map('trim', preg_split('/[,،]/u', (string)($b['groups'] ?? '')))))) ];
@@ -354,7 +364,7 @@ function r_person_create($u)
     $b = acc_body();
     $f = acc_person_fields($b);
     $id = acc_tx(function () use ($f, $b) {
-        $f['code'] = ($f['type'] === 'supplier' ? 'S' : 'C') . sprintf('%03d', acc_next('person'));
+        $f['code'] = (['supplier' => 'S', 'employee' => 'E', 'investor' => 'I', 'marketer' => 'M', 'other' => 'O'][$f['type']] ?? 'C') . sprintf('%03d', acc_next('person'));
         $id = acc_insert('acc_persons', $f);
         // optional opening balance: + they owe us, - we owe them
         $opening = acc_num($b['opening'] ?? ($b['balance'] ?? 0));
@@ -402,6 +412,7 @@ function acc_product_out(array $p)
     }
     $p['id'] = (int)$p['id'];
     $p['track_serial'] = (bool)$p['track_serial'];
+    $p['brand_id'] = $p['brand_id'] ? (int)$p['brand_id'] : null;
     $p['track_lot'] = (bool)$p['track_lot'];
     return $p;
 }
@@ -432,6 +443,9 @@ function acc_product_fields(array $b)
         $f[$k] = acc_num($b[$k] ?? 0);
     }
     $f['unit2_factor'] = acc_num($b['unit2_factor'] ?? 1) ?: 1;
+    $f['tax_code'] = preg_replace('/\D/', '', ba_normalize((string)($b['tax_code'] ?? '')));
+    $f['brand_id'] = !empty($b['brand_id']) ? (int)$b['brand_id'] : null;
+    $f['kind'] = ($b['kind'] ?? '') === 'service' ? 'service' : 'goods';
     $f['track_serial'] = !empty($b['track_serial']) ? 1 : 0;
     $f['track_lot'] = !empty($b['track_lot']) ? 1 : 0;
     return $f;
@@ -524,7 +538,7 @@ function r_invoices($u)
     return array_map(fn($i) => ['id' => (int)$i['id'], 'number' => $i['number'], 'kind' => $i['kind'], 'date' => $i['date'],
         'person_id' => (int)$i['person_id'], 'person_name' => $i['person_name'] ?? '-', 'subtotal' => (float)$i['subtotal'],
         'discount' => (float)$i['discount'], 'tax' => (float)$i['tax'], 'total' => (float)$i['total'], 'settled' => (bool)$i['settled'],
-        'discount_percent' => (float)$i['discount_percent'], 'atf' => $i['atf'], 'status' => $i['status']], $rows);
+        'discount_percent' => (float)$i['discount_percent'], 'atf' => $i['atf'], 'status' => $i['status'], 'due_date' => $i['due_date']], $rows);
 }
 
 function r_invoice_create($u)
@@ -583,7 +597,9 @@ function r_invoice_detail($u, $id)
         'person_id' => (int)$inv['person_id'], 'subtotal' => (float)$inv['subtotal'], 'discount' => (float)$inv['discount'],
         'discount_percent' => (float)$inv['discount_percent'], 'tax' => (float)$inv['tax'], 'total' => (float)$inv['total'],
         'freight' => (float)$inv['freight'], 'customs' => (float)$inv['customs'], 'other_cost' => (float)$inv['other_cost'],
-        'status' => $inv['status'], 'settled' => (bool)$inv['settled'],
+        'status' => $inv['status'], 'settled' => (bool)$inv['settled'], 'due_date' => $inv['due_date'], 'note' => $inv['note'],
+        'marketer_id' => $inv['marketer_id'] ? (int)$inv['marketer_id'] : null, 'department_id' => $inv['department_id'] ? (int)$inv['department_id'] : null,
+        'branch_id' => $inv['branch_id'] ? (int)$inv['branch_id'] : null,
         'items' => array_map(fn($it) => ['product_id' => (int)$it['product_id'], 'qty' => (float)$it['qty'], 'price' => (float)$it['price'],
             'unit' => (float)$it['unit_factor'] != 1.0 ? 'secondary' : 'primary'], $items)];
 }
@@ -626,13 +642,16 @@ function r_invoice_print($u, $id)
         . '<style>body{font-family:Vazirmatn,Tahoma,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #bbb;padding:6px;text-align:right}'
         . '.muted{color:#555}.tot td{font-weight:bold}@media print{button{display:none}}</style></head><body>'
         . '<h2>' . $e($titles[$inv['kind']] ?? 'فاکتور') . ' ' . $e($inv['number']) . '</h2>'
-        . '<p>فروشنده: ' . $e($c['name']) . ' | شناسه ملی: ' . $e($c['national_id']) . ' | کد اقتصادی: ' . $e($c['economic_code']) . '</p>'
+        . '<p>فروشنده: ' . $e($c['name']) . ' | شناسه ملی: ' . $e($c['national_id']) . ' | کد اقتصادی: ' . $e($c['economic_code'])
+        . ($c['address'] ? ' | ' . $e($c['address']) : '') . ($c['phone'] ? ' | تلفن: ' . $e($c['phone']) : '') . '</p>'
         . '<p>طرف حساب: ' . $e($p['name'] ?? '') . ' | شناسه: ' . $e($p['national_id'] ?? '') . ' | ' . $e($p['address'] ?? '') . '</p>'
         . '<p class="muted">تاریخ: ' . $e($inv['date']) . ' | شماره عطف: ' . $e($inv['atf']) . '</p>'
         . '<table><thead><tr><th>#</th><th>کد</th><th>کالا</th><th>تعداد</th><th>فی (ریال)</th><th>جمع (ریال)</th></tr></thead><tbody>' . $rows . '</tbody>'
         . '<tfoot><tr><td colspan="5">جمع</td><td>' . $n($inv['subtotal']) . '</td></tr><tr><td colspan="5">تخفیف</td><td>' . $n($inv['discount']) . '</td></tr>'
         . (($inv['freight'] + $inv['customs'] + $inv['other_cost']) > 0 ? '<tr><td colspan="5">حمل، گمرک و سایر</td><td>' . $n($inv['freight'] + $inv['customs'] + $inv['other_cost']) . '</td></tr>' : '')
         . '<tr><td colspan="5">مالیات بر ارزش افزوده</td><td>' . $n($inv['tax']) . '</td></tr><tr class="tot"><td colspan="5">مبلغ کل</td><td>' . $n($inv['total']) . '</td></tr></tfoot></table>'
+        . ($inv['due_date'] ? '<p>سررسید پرداخت: ' . $e($inv['due_date']) . '</p>' : '') . ($inv['note'] ? '<p>' . nl2br($e($inv['note'])) . '</p>' : '')
+        . ($c['invoice_footer'] ? '<p class="muted">' . nl2br($e($c['invoice_footer'])) . '</p>' : '')
         . '<p><button onclick="print()">چاپ</button></p><script>window.onload=function(){window.print()}</script></body></html>';
     return null;
 }
@@ -1135,10 +1154,9 @@ function acc_balance_of($prefix)
     return (float)acc_val('SELECT COALESCE(SUM(l.debit - l.credit), 0) FROM acc_journal_lines l JOIN acc_coa a ON a.id = l.account_id WHERE a.code LIKE ?', [$prefix . '%']);
 }
 
-function r_balance_sheet()
+/** [receivables, payables, unassigned] from the person control accounts (1102/2101). */
+function acc_people_split()
 {
-    // people: from the lines on the two control accounts, grouped by person, so
-    // what they owe is an asset and what we owe them a liability
     $recv = $pay = $unassigned = 0;
     foreach (acc_all("SELECT l.person_id, SUM(l.debit - l.credit) b FROM acc_journal_lines l JOIN acc_coa a ON a.id = l.account_id
         WHERE a.code IN ('1102', '2101') GROUP BY l.person_id") as $r) {
@@ -1150,6 +1168,14 @@ function r_balance_sheet()
             $pay -= (float)$r['b'];
         }
     }
+    return [$recv, $pay, $unassigned];
+}
+
+function r_balance_sheet()
+{
+    // people: from the lines on the two control accounts, grouped by person, so
+    // what they owe is an asset and what we owe them a liability
+    [$recv, $pay, $unassigned] = acc_people_split();
     $cash = acc_balance_of('1101');
     $inventory = acc_balance_of('1103');
     $cheques_in = acc_balance_of('1104');

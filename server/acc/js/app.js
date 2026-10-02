@@ -25,6 +25,9 @@ function accountingApp() {
       logStatus: "", logQ: "", tplForm: { title: "", body: "" }, patForm: { title: "", code: "", params: "" },
       single: { person_id: "", mobile: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} },
       group: { target: "all", group: "", min_balance: 0, ids: [], numbers: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} } },
+    brands: [], departments: [],
+    more: { tab: "phonebook", rows: [], q: "", form: {}, csv: "", importKind: "persons", result: "", labelIds: [], copies: 1 },
+    rep: { tab: "trade", from: "", to: "", group: "sale", method: "avg", days: 30, cover: 30, account: "", year: "", season: 1, data: null, open: null },
     user: { name: "مدیر سیستم", role: "admin", permissions: ["*"] },
     company: { name: "شرکت", national_id: "", economic_code: "", vat_rate: 10, webhook_enabled: false, webhook_url: "", webhook_secret: "", api_key: "" },
     todayJalali: new Date().toLocaleDateString("fa-IR"),
@@ -88,8 +91,8 @@ function accountingApp() {
     invoiceType: "sale",
     editingInvoiceId: null,
     personForm: { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "" },
-    productForm: { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false },
-    invoiceForm: { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0 },
+    productForm: { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false, kind: "goods", brand_id: "", tax_code: "" },
+    invoiceForm: { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "" },
     journalForm: { description: "", date: JDATE, lines: [{ account_id: "", debit: 0, credit: 0 }] },
     userForm: { username: "", password: "", full_name: "", role: "seller" },
     reportContent: null,
@@ -106,11 +109,15 @@ function accountingApp() {
       { id: "treasury", title: "خزانه‌داری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>' },
       { id: "accounting", title: "حسابداری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>' },
       { id: "reports", title: "گزارش‌ها", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' },
+      { id: "more", title: "امکانات بیشتر", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>' },
+      { id: "mreports", title: "گزارش‌های مدیریتی", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3v18M5 9v12M17 13v8"/></svg>' },
       { id: "sms", title: "پنل پیامک", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>' },
       { id: "settings", title: "تنظیمات", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' }
     ],
-    get customers() { return this.persons.filter(p => p.type === "customer"); },
-    get suppliers() { return this.persons.filter(p => p.type === "supplier"); },
+    get customers() { return this.persons.filter(p => p.type !== "supplier"); },
+    get suppliers() { return this.persons.filter(p => p.type !== "customer"); },
+    get marketers() { return this.persons.filter(p => p.type === "marketer"); },
+    get moeinAccounts() { return this.coa.filter(a => a.level === "moein" && a.code !== "1101"); },
     get filteredPersons() {
       if (this.personFilter === "all") return this.persons;
       return this.persons.filter(p => p.type === this.personFilter);
@@ -211,6 +218,164 @@ function accountingApp() {
       try { await this.req("/api/sms/retry/" + r.id, { method: "POST" }); this.smsLoadLog(); } catch (e) { alert(e.message); }
     },
 
+    /* ---------- امکانات بیشتر ---------- */
+    moreTabs: [["phonebook", "دفترچه تلفن"], ["guarantees", "اسناد ضمانتی"], ["loans", "وام و قرض"], ["advances", "پیش‌دریافت / پیش‌پرداخت"],
+      ["expense", "انواع هزینه و درآمد"], ["cheque-books", "دسته چک"], ["production", "تولید"], ["brands", "برندها و بخش‌ها"],
+      ["labels", "چاپ بارکد"], ["import", "ورود لیست از اکسل"], ["tools", "ابزار و بستن سال"]],
+    moreForms: {
+      phonebook: () => ({ name: "", phones: "", note: "" }),
+      guarantees: () => ({ direction: "received", person_id: "", kind: "سفته", number: "", amount: 0, date: JDATE, due_date: "", status: "active", description: "" }),
+      loans: () => ({ direction: "received", person_id: "", account_id: "", amount: 0, interest_total: 0, installments: 12, start_date: "", interval_months: 1, description: "" }),
+      advances: () => ({ kind: "prereceive", person_id: "", account_id: "", amount: 0, date: JDATE, description: "" }),
+      expense: () => ({ kind: "expense", name: "" }),
+      "cheque-books": () => ({ account_id: "", bank_name: "", serial_from: "", serial_to: "" }),
+      production: () => ({ product_id: "", name: "", qty_out: 1, extra_cost: 0, items: [{ product_id: "", qty: 1 }], run_bom: "", run_qty: 1, warehouse_id: "" }),
+      brands: () => ({ brand: "", department: "" }),
+    },
+    rowsFor(t) { return this.more.tab === t && Array.isArray(this.more.rows) ? this.more.rows : []; },
+    moreSetTab(t) { this.more.rows = []; this.more.tab = t; this.more.form = (this.moreForms[t] || (() => ({})))(); this.more.result = ""; this.moreLoad(); },
+    async moreLoad() {
+      const t = this.more.tab;
+      if (!this.more.form || !Object.keys(this.more.form).length) this.more.form = (this.moreForms[t] || (() => ({})))();
+      const url = { phonebook: "/api/phonebook?q=" + encodeURIComponent(this.more.q), guarantees: "/api/guarantees", loans: "/api/loans", advances: "/api/advances",
+        expense: "/api/expense-types", "cheque-books": "/api/cheque-books", production: "/api/boms" }[t];
+      try {
+        [this.brands, this.departments] = await Promise.all([this.req("/api/brands"), this.req("/api/departments")]);
+        if (url) { const rows = await this.req(url); if (this.more.tab === t) this.more.rows = rows; }
+        if (t === "production") this.more.runs = await this.req("/api/productions");
+      } catch (e) { this.more.rows = []; }
+    },
+    async morePost(path, body, method = "POST") {
+      try {
+        const r = await this.req("/api/" + path, { method, body: body ? JSON.stringify(body) : undefined });
+        await this.moreLoad();
+        return r || true;
+      } catch (e) { alert(e.message); return null; }
+    },
+    async moreSave() {
+      const t = this.more.tab, f = this.more.form;
+      const num = o => { const b = { ...o }; ["person_id", "account_id", "product_id"].forEach(k => { b[k] = Number(b[k]) || null; }); return b; };
+      const path = { phonebook: "phonebook", guarantees: "guarantees", loans: "loans", advances: "advances", expense: "expense-types", "cheque-books": "cheque-books" }[t];
+      if (await this.morePost(path + (f.id ? "/" + f.id : ""), num(f), f.id ? "PUT" : "POST")) {
+        this.more.form = this.moreForms[t]();
+        if (["loans", "advances", "expense"].includes(t)) this.refreshAll();
+      }
+    },
+    async moreDelete(path) { if (confirm("حذف شود؟")) await this.morePost(path, null, "DELETE"); },
+    async payInstallment(i) {
+      const acc = this.pick("از کدام حساب؟", this.accounts, x => x.name);
+      if (!acc) return;
+      if (await this.morePost("loans/installments/" + i.id + "/pay", { account_id: acc.id })) this.refreshAll();
+    },
+    async applyAdvance(a) {
+      const amount = prompt("چه مبلغی از " + a.kind_label + " " + a.person_name + " تسویه شود؟", a.amount);
+      if (amount === null) return;
+      if (await this.morePost("advances/apply", { kind: a.kind, person_id: a.person_id, amount: Number(amount) })) this.refreshAll();
+    },
+    async saveBom() {
+      const f = this.more.form;
+      const body = { product_id: Number(f.product_id), name: f.name, qty_out: f.qty_out, extra_cost: f.extra_cost,
+        items: f.items.filter(i => i.product_id).map(i => ({ product_id: Number(i.product_id), qty: i.qty })) };
+      if (await this.morePost("boms" + (f.id ? "/" + f.id : ""), body, f.id ? "PUT" : "POST")) this.more.form = this.moreForms.production();
+    },
+    editBom(b) { this.more.form = { ...this.moreForms.production(), id: b.id, product_id: b.product_id, name: b.name, qty_out: b.qty_out, extra_cost: b.extra_cost, items: b.items.map(i => ({ ...i })) }; },
+    async runProduction() {
+      const f = this.more.form;
+      const r = await this.morePost("productions", { bom_id: Number(f.run_bom), qty: Number(f.run_qty), warehouse_id: Number(f.warehouse_id) || null });
+      if (r) { alert("تولید " + r.number + " ثبت شد؛ بهای هر واحد " + this.formatNumber(Math.round(r.unit_cost))); this.refreshAll(); }
+    },
+    async deleteProduction(p) { if (confirm("تولید " + p.number + " حذف و موجودی‌ها برگردانده شود؟") && await this.morePost("productions/" + p.id, null, "DELETE")) this.refreshAll(); },
+    async saveNamed(kind) {
+      const name = kind === "brands" ? this.more.form.brand : this.more.form.department;
+      if (await this.morePost(kind, { name })) this.more.form = this.moreForms.brands();
+    },
+    printLabels() {
+      window.open(this.link("/api/labels?ids=" + this.more.labelIds.join(",") + "&copies=" + (this.more.copies || 1)), "_blank");
+    },
+    async readCsvFile(ev) {
+      const f = ev.target.files[0];
+      if (!f) return;
+      const buf = await f.arrayBuffer();
+      let text = new TextDecoder("utf-8").decode(buf);
+      if (text.includes("\ufffd")) text = new TextDecoder("windows-1256").decode(buf);
+      this.more.csv = text;
+    },
+    async runImport() {
+      const r = await this.morePost("import/" + this.more.importKind, { csv: this.more.csv });
+      if (r) { this.more.result = r.imported + " ردیف وارد شد، " + r.skipped + " ردیف تکراری/خالی رد شد"; this.refreshAll(); }
+    },
+    async runTool(t) {
+      const msg = { repair: "مانده‌ها و موجودی‌ها از روی اسناد دوباره حساب شوند؟", vacuum: "دیتابیس فشرده شود؟",
+        "close-year": "سال مالی بسته شود؟ سند اختتامیه صادر و سال بعد باز می‌شود. قبلش پشتیبان بگیر." }[t];
+      if (!confirm(msg)) return;
+      const r = await this.morePost("tools/" + t);
+      if (!r) return;
+      if (t === "repair") this.more.result = r.fixed.length ? "اصلاح شد: " + r.fixed.join("، ") : "همه چیز سالم بود" + (r.unbalanced_journals ? " — " + r.unbalanced_journals + " سند تراز نیست" : "");
+      if (t === "vacuum") this.more.result = "حجم از " + Math.round(r.before / 1024) + " به " + Math.round(r.after / 1024) + " کیلوبایت رسید";
+      if (t === "close-year") this.more.result = "سال " + r.closed + " بسته شد؛ سال جاری: " + r.year;
+      this.refreshAll();
+    },
+
+    /* ---------- گزارش‌های مدیریتی ---------- */
+    repTabs: [["trade", "فروش و خرید دوره"], ["profit", "سود کالاها"], ["departments", "سود بخش‌ها"], ["marketers", "بازاریاب‌ها"],
+      ["due", "حساب سررسیدار"], ["accounts", "خلاصه حساب‌ها"], ["cash", "صورتحساب بانک/صندوق"], ["operations", "ریز عملیات"],
+      ["order", "برآورد سفارش"], ["unused", "کالاهای بدون گردش"], ["ttms", "معاملات فصلی"]],
+    repSetTab(t) { this.rep.tab = t; this.rep.data = null; this.repLoad(); },
+    repQuery() {
+      const r = this.rep, q = new URLSearchParams();
+      if (r.from) q.set("from", r.from);
+      if (r.to) q.set("to", r.to);
+      if (r.tab === "trade") q.set("group", r.group);
+      if (r.tab === "profit") q.set("method", r.method);
+      if (r.tab === "order") { q.set("days", r.days); q.set("cover", r.cover); }
+      if (r.tab === "unused") q.set("days", r.days);
+      return q.toString();
+    },
+    async repLoad() {
+      const r = this.rep;
+      const path = { trade: "reports/trade", profit: "reports/profit", departments: "reports/departments", marketers: "reports/marketers",
+        due: "reports/due-invoices", accounts: "reports/accounts", cash: r.account ? "reports/cash/" + r.account : "", operations: "reports/operations",
+        order: "reports/order-estimate", unused: "reports/unused" }[r.tab];
+      if (!path) { r.data = null; return; }
+      try { r.data = await this.req("/api/" + path + "?" + this.repQuery()); } catch (e) { alert(e.message); r.data = null; }
+    },
+    get repRows() {
+      const d = this.rep.data;
+      if (!d) return [];
+      if (Array.isArray(d)) return d;
+      if (this.rep.tab === "trade") return d.products;
+      return d.rows || d.products || [];
+    },
+    get repCols() {
+      return {
+        trade: [["name", "کالا"], ["qty", "تعداد", "n"], ["amount", "مبلغ", "n"], ["cost", "بهای تمام‌شده", "n"], ["profit", "سود", "n"]],
+        profit: [["name", "کالا"], ["qty", "تعداد", "n"], ["revenue", "فروش", "n"], ["cost", "بهای تمام‌شده", "n"], ["profit", "سود", "n"], ["margin", "حاشیه ٪"]],
+        departments: [["name", "بخش"], ["count", "فاکتور"], ["revenue", "فروش", "n"], ["cost", "بهای تمام‌شده", "n"], ["profit", "سود", "n"]],
+        marketers: [["name", "بازاریاب"], ["rate", "درصد"], ["invoices", "فاکتور"], ["sales", "فروش", "n"], ["commission", "کمیسیون", "n"]],
+        due: [["number", "فاکتور"], ["person_name", "طرف حساب"], ["mobile", "موبایل"], ["date", "تاریخ"], ["due_date", "سررسید"], ["total", "مبلغ", "n"], ["paid", "دریافت/پرداخت", "n"], ["remaining", "مانده", "n"], ["days", "روز گذشته"]],
+        accounts: [["code", "کد"], ["name", "حساب"], ["debit", "بدهکار", "n"], ["credit", "بستانکار", "n"], ["balance", "مانده", "n"]],
+        cash: [["date", "تاریخ"], ["number", "سند"], ["description", "شرح"], ["debit", "واریز", "n"], ["credit", "برداشت", "n"], ["balance", "مانده", "n"]],
+        operations: [["number", "سند"], ["date", "تاریخ"], ["description", "شرح"], ["amount", "مبلغ", "n"], ["source", "نوع"], ["status", "وضعیت"]],
+        order: [["name", "کالا"], ["stock", "موجودی"], ["sold", "فروش دوره"], ["daily", "میانگین روزانه"], ["days_left", "روز تا اتمام"], ["suggest", "پیشنهاد خرید"]],
+        unused: [["name", "کالا"], ["stock", "موجودی"], ["last_move", "آخرین گردش"], ["value", "ارزش", "n"]],
+      }[this.rep.tab] || [];
+    },
+    repCell(row, c) {
+      const v = row[c[0]];
+      if (v === null || v === undefined) return "-";
+      return c[2] === "n" ? this.formatNumber(Math.round(v)) : v;
+    },
+    async bookCommission(m) {
+      if (!confirm("کمیسیون " + this.formatNumber(m.commission) + " ریال به حساب " + m.name + " ثبت شود؟")) return;
+      try { await this.req("/api/reports/marketers/" + m.id + "/commission?" + this.repQuery(), { method: "POST" }); this.refreshAll(); alert("ثبت شد"); }
+      catch (e) { alert(e.message); }
+    },
+    ttmsLink() { return this.link("/api/reports/ttms?year=" + (this.rep.year || JDATE.slice(0, 4)) + "&season=" + this.rep.season + "&kind=" + this.rep.group); },
+    async deleteTxn(t) {
+      if (!confirm("دریافت/پرداخت " + t.number + " حذف و سندش برگردانده شود؟")) return;
+      try { await this.req("/api/treasury/" + t.id, { method: "DELETE" }); await this.refreshAll(); } catch (e) { alert(e.message); }
+    },
+
     async changePassword() {
       try {
         await this.req("/api/me/password", { method: "PUT", body: JSON.stringify(this.pwForm) });
@@ -262,7 +427,7 @@ function accountingApp() {
     },
     get visibleMenu() {
       const need = { dashboard: "dashboard", persons: "persons", tax: "tax", warehouse: "warehouse", products: "products", sales: "sales",
-        purchases: "purchases", treasury: "treasury", accounting: "accounting", reports: "reports", sms: "sms" };
+        purchases: "purchases", treasury: "treasury", accounting: "accounting", reports: "reports", sms: "sms", mreports: "reports" };
       return this.menuItems.filter(m => !need[m.id] || this.can(need[m.id]));
     },
 
@@ -316,7 +481,10 @@ function accountingApp() {
       this.branches = branches;
       this.currencies = currencies;
       this.statements = statements;
+      [this.brands, this.departments] = await Promise.all([get("/api/brands", []), get("/api/departments", [])]);
       if (this.currentPage === "sms") this.smsLoad();
+      if (this.currentPage === "more") this.moreLoad();
+      if (this.currentPage === "mreports") this.repLoad();
     },
 
     async login() {
@@ -353,12 +521,12 @@ function accountingApp() {
     },
     openPersonModal() {
       this.editingPerson = null;
-      this.personForm = { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "" };
+      this.personForm = { name: "", type: "customer", mobile: "", phone2: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "", commission_rate: 0 };
       this.showPersonModal = true;
     },
     editPerson(p) {
       this.editingPerson = p;
-      this.personForm = { name: p.name, type: p.type, mobile: p.mobile, national_id: p.national_id, credit_limit: p.credit_limit || 0, legal_type: p.legal_type||"real", address: p.address||"", groups: p.groups||"" };
+      this.personForm = { name: p.name, type: p.type, mobile: p.mobile, national_id: p.national_id, credit_limit: p.credit_limit || 0, legal_type: p.legal_type||"real", address: p.address||"", groups: p.groups||"", phone2: p.phone2||"", commission_rate: p.commission_rate||0 };
       this.showPersonModal = true;
     },
     async savePerson() {
@@ -375,12 +543,12 @@ function accountingApp() {
     },
     openProductModal() {
       this.editingProduct = null;
-      this.productForm = { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false };
+      this.productForm = { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false, kind: "goods", brand_id: "", tax_code: "" };
       this.showProductModal = true;
     },
     editProduct(p) {
       this.editingProduct = p;
-      this.productForm = { name: p.name, code: p.code, unit: p.unit, sale_price: p.sale_price, buy_price: p.buy_price, stock: p.stock, reorder_point: p.reorder_point, max_stock: p.max_stock||0, barcode: p.barcode||"", group_name: p.group_name||"", track_serial: !!p.track_serial, track_lot: !!p.track_lot };
+      this.productForm = { name: p.name, code: p.code, unit: p.unit, sale_price: p.sale_price, buy_price: p.buy_price, stock: p.stock, reorder_point: p.reorder_point, max_stock: p.max_stock||0, barcode: p.barcode||"", group_name: p.group_name||"", track_serial: !!p.track_serial, track_lot: !!p.track_lot, kind: p.kind||"goods", brand_id: p.brand_id||"", tax_code: p.tax_code||"" };
       this.showProductModal = true;
     },
     async saveProduct() {
@@ -398,7 +566,7 @@ function accountingApp() {
     openInvoiceModal(type) {
       this.invoiceType = type;
       this.editingInvoiceId = null;
-      this.invoiceForm = { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0 };
+      this.invoiceForm = { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "" };
       this.showInvoiceModal = true;
     },
     async editInvoice(inv) {
@@ -411,7 +579,8 @@ function accountingApp() {
           items: (d.items && d.items.length) ? d.items.map(i => ({ product_id: i.product_id, qty: i.qty, price: i.price, unit: i.unit || "primary" })) : [{ product_id: "", qty: 1, price: 0, unit: "primary" }],
           discount: d.discount || 0, discount_percent: d.discount_percent || 0,
           freight: d.freight || 0, customs: d.customs || 0, other_cost: d.other_cost || 0,
-          subtotal: d.subtotal || 0, tax: d.tax || 0, total: d.total || 0
+          subtotal: d.subtotal || 0, tax: d.tax || 0, total: d.total || 0,
+          due_date: d.due_date || "", marketer_id: d.marketer_id || "", department_id: d.department_id || "", note: d.note || ""
         };
         this.showInvoiceModal = true;
       } catch (e) { alert(e.message); }
@@ -443,6 +612,7 @@ function accountingApp() {
             person_id: Number(this.invoiceForm.person_id),
             date: this.invoiceForm.date,
             discount: this.invoiceForm.discount || 0, discount_percent: this.invoiceForm.discount_percent || 0, freight: this.invoiceForm.freight||0, customs: this.invoiceForm.customs||0, other_cost: this.invoiceForm.other_cost||0,
+            due_date: this.invoiceForm.due_date, note: this.invoiceForm.note, marketer_id: Number(this.invoiceForm.marketer_id) || null, department_id: Number(this.invoiceForm.department_id) || null,
             items: this.invoiceForm.items.filter(i => i.product_id).map(i => ({ product_id: Number(i.product_id), qty: i.qty, price: i.price, unit: i.unit || "primary" }))
           };
         if (this.editingInvoiceId) await this.req("/api/invoices/" + this.editingInvoiceId, { method: "PUT", body: JSON.stringify(payload) });
@@ -718,7 +888,7 @@ function accountingApp() {
       } catch(e){ alert(e.message); }
     },
     openTxn(kind) {
-      this.txnForm = { kind, account_id: this.accounts[0]?.id || "", to_account_id: "", person_id: "", invoice_id: "", amount: 0, date: JDATE, description: "" };
+      this.txnForm = { kind, account_id: this.accounts[0]?.id || "", to_account_id: "", person_id: "", invoice_id: "", amount: 0, date: JDATE, description: "", counter_account_id: "" };
       this.showTxnModal = true;
     },
     async saveTxn() {
@@ -727,6 +897,7 @@ function accountingApp() {
         if (body.to_account_id) body.to_account_id = Number(body.to_account_id);
         if (body.person_id) body.person_id = Number(body.person_id); else delete body.person_id;
         if (body.invoice_id) body.invoice_id = Number(body.invoice_id); else delete body.invoice_id;
+        if (body.counter_account_id) body.counter_account_id = Number(body.counter_account_id); else delete body.counter_account_id;
         await this.req("/api/treasury", { method: "POST", body: JSON.stringify(body) });
         this.showTxnModal = false;
         await this.refreshAll();

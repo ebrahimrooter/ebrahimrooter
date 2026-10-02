@@ -324,6 +324,94 @@ check('automatic invoice SMS', [count($sent), strpos($sent[0]['msg'] ?? '', $inv
 check('seller cannot change SMS settings', api('PUT', '/sms/settings', ['sms_provider' => 'test'], $st)[0], 403);
 proc_terminate($mock);
 
+echo "-- more features\n";
+$pb = ok('POST', '/phonebook', ['name' => 'تعمیرکار', 'phones' => '02122223333']);
+check('phone book lists people too', count(array_filter(ok('GET', '/phonebook?q=' . rawurlencode('مشتری')), fn($r) => $r['source'] === 'person')) > 0, true);
+$br = ok('POST', '/brands', ['name' => 'برند الف'])['id'];
+$dep = ok('POST', '/departments', ['name' => 'فروشگاه'])['id'];
+$mk = ok('POST', '/persons', ['name' => 'بازاریاب ج', 'type' => 'marketer', 'commission_rate' => 5])['id'];
+$svc = ok('POST', '/products', ['name' => 'خدمت نصب', 'kind' => 'service', 'sale_price' => 1000])['id'];
+$s2 = ok('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'marketer_id' => $mk, 'department_id' => $dep, 'due_date' => '1400/01/01',
+    'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 400], ['product_id' => $svc, 'qty' => 1, 'price' => 1000]]]);
+check('service has no stock', product($svc)['stock'], 0);
+books('service sale');
+$mr = array_values(array_filter(ok('GET', '/reports/marketers'), fn($r) => $r['id'] === $mk))[0];
+check('marketer commission 5%', [$mr['sales'], $mr['commission']], [1400, 70]);
+ok('POST', "/reports/marketers/$mk/commission");
+check('commission credited to marketer', person($mk), -70);
+check('department profit', array_values(array_filter(ok('GET', '/reports/departments'), fn($r) => $r['department_id'] === $dep))[0]['revenue'], 1400);
+check('due invoice overdue', array_values(array_filter(ok('GET', '/reports/due-invoices'), fn($r) => $r['id'] === $s2['id']))[0]['overdue'], true);
+foreach (['avg', 'fifo', 'avg_to_date', 'last'] as $m) {
+    $pr = ok('GET', "/reports/profit?method=$m");
+    check("profit report $m has revenue", $pr['total']['revenue'] > 0, true);
+}
+check('trade report', ok('GET', '/reports/trade?group=sale')['totals']['count'] > 0, true);
+// loan received in 2 installments with interest
+$cash0 = cash($bank);
+$loan = ok('POST', '/loans', ['direction' => 'received', 'account_id' => $bank, 'amount' => 1000, 'interest_total' => 100, 'installments' => 2, 'start_date' => '1405/08/01']);
+check('loan in bank', cash($bank), $cash0 + 1000);
+$l = ok('GET', '/loans')[0];
+check('installments', array_column($l['schedule'], 'amount'), [550, 550]);
+ok('POST', '/loans/installments/' . $l['schedule'][0]['id'] . '/pay');
+check('installment paid from bank', cash($bank), $cash0 + 450);
+check('loan remaining', ok('GET', '/loans')[0]['remaining'], 550);
+books('loan');
+// pre-receipt then settle an invoice with it
+$bal = person($cust);
+$adv = ok('POST', '/advances', ['kind' => 'prereceive', 'person_id' => $cust, 'account_id' => $bank, 'amount' => 300]);
+check('advance listed', ok('GET', '/advances')[0]['amount'], 300);
+check('pre-receipt counts in the person total', person($cust), $bal - 300);
+ok('POST', '/advances/apply', ['kind' => 'prereceive', 'person_id' => $cust]);
+check('advance applied', [person($cust), count(ok('GET', '/advances'))], [$bal - 300, 0]);
+books('advance');
+// expense type and paying it
+$et = ok('POST', '/expense-types', ['name' => 'اجاره'])['id'];
+$tr = ok('POST', '/treasury', ['kind' => 'pay', 'account_id' => $bank, 'amount' => 40, 'counter_account_id' => $et, 'description' => 'اجاره مهر']);
+check('expense type in list', in_array($et, array_column(ok('GET', '/expense-types'), 'id'), true), true);
+$c1 = cash($bank);
+ok('DELETE', '/treasury/' . $tr['id']);
+check('treasury delete restores bank', cash($bank), $c1 + 40);
+books('expense');
+// production: 2 x prod -> 1 x made product, overhead 10
+$made = ok('POST', '/products', ['name' => 'محصول ساخته', 'sale_price' => 900])['id'];
+$bom = ok('POST', '/boms', ['product_id' => $made, 'qty_out' => 1, 'extra_cost' => 10, 'items' => [['product_id' => $prod, 'qty' => 2]]])['id'];
+$st0 = product($prod)['stock'];
+$pr = ok('POST', '/productions', ['bom_id' => $bom, 'qty' => 2]);
+check('production stock', [product($prod)['stock'], product($made)['stock']], [$st0 - 4, 2]);
+books('production');
+ok('DELETE', '/productions/' . $pr['id']);
+check('production delete', [product($prod)['stock'], product($made)['stock']], [$st0, 0]);
+books('production delete');
+// guarantee, cheque book, labels, import, reports
+ok('POST', '/guarantees', ['person_id' => $cust, 'kind' => 'سفته', 'number' => 'G1', 'amount' => 5000]);
+check('guarantee', ok('GET', '/guarantees')[0]['status_label'], 'جاری');
+ok('POST', '/cheque-books', ['account_id' => $bank, 'serial_from' => '440', 'serial_to' => '449']);
+check('cheque book used leaves', [ok('GET', '/cheque-books')[0]['used'], ok('GET', '/cheque-books')[0]['next']], [1, 440]);
+[$c, $lab] = api('GET', "/labels?ids=$prod");
+check('labels page has barcode', [$c, strpos($lab, '<svg') !== false], [200, true]);
+$im = ok('POST', '/import/persons', ['csv' => "نام,موبایل,نوع,مانده\nوارداتی یک,09120001111,مشتری,500\nمشتری الف,,,\n"]);
+check('import persons', [$im['imported'], $im['skipped']], [1, 1]);
+$im = ok('POST', '/import/products', ['csv' => "name;code;sale_price;stock\nکالای وارداتی;IMP1;300;5\n"]);
+check('import products', $im['imported'], 1);
+books('import');
+check('accounts summary', count(ok('GET', '/reports/accounts')) > 3, true);
+check('cash statement ends at balance', ok('GET', "/reports/cash/$bank")['balance'], cash($bank));
+check('operations', count(ok('GET', '/reports/operations')) > 5, true);
+check('order estimate', isset(ok('GET', '/reports/order-estimate')['rows']), true);
+ok('GET', '/reports/unused');
+[$c, $csv] = api('GET', '/reports/ttms?year=1405&season=3');
+check('ttms csv', $c, 200);
+// broken cache gets repaired
+exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "lib.php"; ba_db()->exec("UPDATE acc_persons SET balance = 123456");'));
+$rp = ok('POST', '/tools/repair');
+check('repair fixed balances', count($rp['fixed']) > 0 && $rp['unbalanced_journals'] === 0, true);
+check('balance after repair', person($cust), $bal - 300);
+ok('POST', '/tools/vacuum');
+books('repair');
+$cy = ok('POST', '/tools/close-year');
+check('new fiscal year', $cy['year'], (string)((int)$cy['closed'] + 1));
+books('year closed');
+
 books('final');
 
 proc_terminate($srv);

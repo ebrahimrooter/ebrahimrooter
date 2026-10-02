@@ -92,7 +92,10 @@ function acc_invoice_save($id, array $b)
             'subtotal' => $t['subtotal'], 'discount' => $t['discount'], 'discount_percent' => $t['discount_percent'], 'tax' => $t['tax'],
             'total' => $t['total'], 'status' => acc_is_draft_kind($kind) ? 'draft' : 'final',
             'freight' => acc_num($b['freight'] ?? 0), 'customs' => acc_num($b['customs'] ?? 0), 'other_cost' => acc_num($b['other_cost'] ?? 0),
-            'branch_id' => !empty($b['branch_id']) ? (int)$b['branch_id'] : null];
+            'branch_id' => !empty($b['branch_id']) ? (int)$b['branch_id'] : null,
+            'due_date' => trim((string)($b['due_date'] ?? '')), 'note' => trim((string)($b['note'] ?? '')),
+            'marketer_id' => !empty($b['marketer_id']) ? (int)$b['marketer_id'] : null,
+            'department_id' => !empty($b['department_id']) ? (int)$b['department_id'] : null];
         if ($id) {
             $old = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [$id]);
             acc_invoice_unpost($old, 'اصلاح فاکتور');
@@ -149,6 +152,9 @@ function acc_invoice_post(array $inv)
     foreach ($items as $it) {
         $p = acc_product($it['product_id']);
         $base = (float)$it['qty'] * (float)$it['unit_factor'];
+        if (($p['kind'] ?? 'goods') === 'service') {
+            continue;   // services have no stock and no cost of goods
+        }
         if ($kind === 'purchase') {
             $unit_cost = $base > 0 ? (float)$it['qty'] * (float)$it['price'] * $ratio / $base : 0;
             $old_qty = max((float)$p['stock'], 0);
@@ -179,7 +185,8 @@ function acc_invoice_post(array $inv)
             $desc = 'فروش به ' . $who;
             break;
         case 'purchase':
-            $lines = [acc_line('1103', $net + $extra, 0, 'ورود کالا'), acc_line('1105', $tax, 0, 'مالیات خرید'),
+            $svc = acc_invoice_service_share($items, $net + $extra, (float)$inv['subtotal']);
+            $lines = [acc_line('1103', $net + $extra - $svc, 0, 'ورود کالا'), acc_line('5102', $svc, 0, 'خدمات خریداری‌شده'), acc_line('1105', $tax, 0, 'مالیات خرید'),
                 acc_person_line($person['id'], -$total, 'فاکتور ' . $inv['number'])];
             $desc = 'خرید از ' . $who;
             break;
@@ -189,7 +196,8 @@ function acc_invoice_post(array $inv)
             $desc = 'برگشت از فروش ' . $who;
             break;
         default:
-            $lines = [acc_person_line($person['id'], $total, 'برگشت ' . $inv['number']), acc_line('1103', 0, $net + $extra, 'خروج کالا'),
+            $svc = acc_invoice_service_share($items, $net + $extra, (float)$inv['subtotal']);
+            $lines = [acc_person_line($person['id'], $total, 'برگشت ' . $inv['number']), acc_line('1103', 0, $net + $extra - $svc, 'خروج کالا'), acc_line('5102', 0, $svc, 'برگشت خدمات'),
                 acc_line('1105', 0, $tax, 'مالیات برگشتی')];
             $desc = 'برگشت از خرید ' . $who;
     }
@@ -197,6 +205,21 @@ function acc_invoice_post(array $inv)
     if (in_array($kind, ['sale', 'purchase'], true)) {
         acc_tax_invoice_create($inv, $person, $items);
     }
+}
+
+/** Part of a purchase's net value that is services (expense, not inventory). */
+function acc_invoice_service_share(array $items, $net_total, $subtotal)
+{
+    if ($subtotal <= 0) {
+        return 0;
+    }
+    $svc = 0;
+    foreach ($items as $it) {
+        if ((acc_product($it['product_id'])['kind'] ?? 'goods') === 'service') {
+            $svc += (float)$it['qty'] * (float)$it['price'];
+        }
+    }
+    return $svc * $net_total / $subtotal;
 }
 
 /** Undoes a posted invoice: stock moves back, entries reversed. */
@@ -242,7 +265,7 @@ function acc_tax_invoice_create(array $inv, array $person, array $items)
     foreach ($items as $it) {
         $p = acc_product($it['product_id']);
         $am = (float)$it['qty'] * (float)$it['price'];
-        $body[] = ['sstid' => $p['code'], 'sstt' => $p['name'], 'am' => (float)$it['qty'], 'fee' => (float)$it['price'],
+        $body[] = ['sstid' => ($p['tax_code'] ?? '') !== '' ? $p['tax_code'] : $p['code'], 'sstt' => $p['name'], 'am' => (float)$it['qty'], 'fee' => (float)$it['price'],
             'prdis' => $am, 'vra' => $vat, 'vam' => round($am * $vat / 100)];
     }
     $payload = ['header' => ['taxid' => $taxid, 'indatim' => $inv['date'], 'inty' => 1, 'inp' => 1, 'ins' => 1, 'tins' => $c['national_id'],
@@ -401,12 +424,36 @@ function acc_treasury_record(array $b)
         $id = acc_insert('acc_treasury', ['number' => $number, 'date' => $date, 'kind' => $kind, 'account_id' => $acc['id'],
             'to_account_id' => $to['id'] ?? null, 'person_id' => $pid, 'invoice_id' => $inv_id, 'amount' => $amount,
             'description' => $desc, 'created_at' => acc_now()]);
-        $counter = isset($b['counter_code']) && preg_match('/^\d+$/', (string)$b['counter_code']) ? (string)$b['counter_code'] : null;
+        // the other side: a chosen account (expense/income type, capital, loan...) or the person
+        $counter_id = !empty($b['counter_account_id']) ? (int)$b['counter_account_id'] : null;
+        if (!$counter_id && isset($b['counter_code']) && preg_match('/^\d+$/', (string)$b['counter_code'])) {
+            $counter_id = acc_account_id((string)$b['counter_code']);
+        }
+        if ($counter_id) {
+            $ca = acc_row('SELECT * FROM acc_coa WHERE id = ?', [$counter_id]);
+            if (!$ca || $ca['level'] === 'kol') {
+                throw new AccError('حساب طرف مقابل باید یک حساب معین باشد');
+            }
+            if (in_array($ca['code'], ['1101'], true)) {
+                throw new AccError('برای جابه‌جایی بین صندوق و بانک از «انتقال» استفاده کن');
+            }
+            acc_q('UPDATE acc_treasury SET counter_account_id = ? WHERE id = ?', [$counter_id, $id]);
+        }
+        // the person is kept on the line only for accounts that are someone's balance
+        // (capital of an investor, loans, advances) - not for expense/income types
+        $person_accounts = ['3101', '1106', '1107', '2104', '2105', '1102', '2101'];
+        $tag = $counter_id && in_array(acc_val('SELECT code FROM acc_coa WHERE id = ?', [$counter_id]), $person_accounts, true) ? $pid : null;
+        $other = function ($amt) use ($tag, $counter_id, $desc) {
+            if ($counter_id) {
+                return ['code' => null, 'account_id' => $counter_id, 'debit' => max($amt, 0), 'credit' => max(-$amt, 0), 'desc' => $desc, 'person' => $tag, 'cash' => null];
+            }
+            return null;
+        };
         if ($kind === 'receive') {
-            $lines = [acc_cash_line($acc['id'], $amount, $desc), $pid ? acc_person_line($pid, -$amount, $desc) : acc_line($counter ?: '4103', 0, $amount, $desc)];
+            $lines = [acc_cash_line($acc['id'], $amount, $desc), $other(-$amount) ?: ($pid ? acc_person_line($pid, -$amount, $desc) : acc_line('4103', 0, $amount, $desc))];
             $title = 'دریافت';
         } elseif ($kind === 'pay') {
-            $lines = [$pid ? acc_person_line($pid, $amount, $desc) : acc_line($counter ?: '5102', $amount, 0, $desc), acc_cash_line($acc['id'], -$amount, $desc)];
+            $lines = [$other($amount) ?: ($pid ? acc_person_line($pid, $amount, $desc) : acc_line('5102', $amount, 0, $desc)), acc_cash_line($acc['id'], -$amount, $desc)];
             $title = 'پرداخت';
         } else {
             $lines = [acc_cash_line($to['id'], $amount, 'به ' . $to['name']), acc_cash_line($acc['id'], -$amount, 'از ' . $acc['name'])];

@@ -126,6 +126,20 @@ function acc_schema(PDO $pdo)
 
 const ACC_COLUMNS = [
     ['acc_persons', 'groups', "TEXT DEFAULT ''"],          // comma separated groups / roles (مشتری عمده، همکار، ...)
+    ['acc_persons', 'commission_rate', 'REAL DEFAULT 0'],  // marketers: percent of their sales
+    ['acc_persons', 'phone2', "TEXT DEFAULT ''"],
+    ['acc_invoices', 'due_date', "TEXT DEFAULT ''"],
+    ['acc_invoices', 'marketer_id', 'INTEGER'],
+    ['acc_invoices', 'department_id', 'INTEGER'],
+    ['acc_invoices', 'note', "TEXT DEFAULT ''"],
+    ['acc_products', 'brand_id', 'INTEGER'],
+    ['acc_products', 'tax_code', "TEXT DEFAULT ''"],       // شناسه کالا/خدمت سامانه مؤدیان
+    ['acc_products', 'kind', "TEXT DEFAULT 'goods'"],      // goods | service
+    ['acc_company', 'address', "TEXT DEFAULT ''"],
+    ['acc_company', 'phone', "TEXT DEFAULT ''"],
+    ['acc_company', 'invoice_footer', "TEXT DEFAULT ''"],
+    ['acc_company', 'postal_code', "TEXT DEFAULT ''"],
+    ['acc_treasury', 'counter_account_id', 'INTEGER'],
 ];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */
@@ -153,6 +167,14 @@ const ACC_COA = [
     '5101' => ['بهای تمام‌شده کالای فروش‌رفته', 'moein', 'debit', '51'],
     '5102' => ['هزینه‌های عمومی', 'moein', 'debit', '51'],
     '5103' => ['کسورات و مصرف انبار', 'moein', 'debit', '51'],
+    '1106' => ['وام‌های پرداختی به دیگران', 'moein', 'debit', '11'],
+    '1107' => ['پیش‌پرداخت‌ها', 'moein', 'debit', '11'],
+    '2104' => ['وام‌های دریافتی', 'moein', 'credit', '21'],
+    '2105' => ['پیش‌دریافت‌ها', 'moein', 'credit', '21'],
+    '4105' => ['درآمد سود وام', 'moein', 'credit', '41'],
+    '5104' => ['هزینه سود و کارمزد وام', 'moein', 'debit', '51'],
+    '5105' => ['سربار جذب‌شده تولید', 'moein', 'credit', '51'],
+    '5106' => ['کمیسیون بازاریابی', 'moein', 'debit', '51'],
 ];
 
 function acc_seed(PDO $pdo)
