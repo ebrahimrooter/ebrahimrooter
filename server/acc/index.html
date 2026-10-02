@@ -53,8 +53,8 @@
       </div>
       
       <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        <template x-for="item in menuItems" :key="item.id">
-          <a href="#" @click.prevent="currentPage = item.id" 
+        <template x-for="item in visibleMenu" :key="item.id">
+          <a href="#" @click.prevent="currentPage = item.id; if (item.id === 'sms') smsLoad()" 
              :class="{'active': currentPage === item.id}"
              class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition">
             <span x-html="item.icon" class="w-5 h-5"></span>
@@ -435,7 +435,7 @@
 
         <div x-show="currentPage === 'reports'">
           <div class="mb-3"><button @click="generateReport('daybook')" class="bg-white border px-3 py-2 rounded-lg text-sm">دفتر روزنامه</button><button @click="loadBalanceSheet()" class="bg-white border px-3 py-2 rounded-lg text-sm">ترازنامه</button><button @click="loadCashflow()" class="bg-white border px-3 py-2 rounded-lg text-sm">جریان نقدی</button><button @click="loadCogs()" class="bg-white border px-3 py-2 rounded-lg text-sm">بهای تمام‌شده</button><button @click="loadDues()" class="bg-white border px-3 py-2 rounded-lg text-sm">سررسیدها</button><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=sales')">Excel فروش</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=purchases')">Excel خرید</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=persons')">Excel اشخاص</a></div>
-        <div x-show="false"></div>
+        </div>
         <div x-show="currentPage === 'reports'" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button @click="generateReport('trial')" class="bg-white p-5 rounded-xl border shadow-sm hover:border-primary-300 text-right transition">
@@ -569,7 +569,6 @@
               </table>
             </div>
           </div>
-        </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div class="bg-white rounded-xl border overflow-hidden">
@@ -624,6 +623,7 @@
               </table>
             </div>
           </div>
+        </div>
 
                 <div x-show="currentPage === 'treasury'" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -698,25 +698,212 @@
           </div>
         </div>
 
+        <!-- SMS PANEL -->
+        <div x-show="currentPage === 'sms'" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap gap-2">
+              <template x-for="t in [['single','ارسال تکی'],['group','ارسال گروهی'],['templates','نمونه پیامک‌ها'],['patterns','پترن‌ها'],['log','تاریخچه'],['settings','تنظیمات پیامک']]" :key="t[0]">
+                <button @click="sms.tab = t[0]; if (t[0]==='log') smsLoadLog()" :class="sms.tab === t[0] ? 'bg-primary-600 text-white' : 'bg-white border text-slate-700'" class="px-3 py-2 rounded-lg text-sm" x-text="t[1]"></button>
+              </template>
+            </div>
+            <div class="text-sm text-slate-600 flex items-center gap-2">
+              <span>اعتبار:</span>
+              <b x-text="sms.credit === null ? '—' : formatNumber(sms.credit) + ' ' + sms.creditUnit"></b>
+              <button @click="smsLoadCredit()" class="text-primary-600 text-xs">به‌روزرسانی</button>
+            </div>
+          </div>
+          <p x-show="sms.settings.sms_provider === 'test'" class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">حالت آزمایشی: پیامک‌ها واقعاً فرستاده نمی‌شوند و فقط در تاریخچه ثبت می‌شوند. سرویس‌دهنده را در «تنظیمات پیامک» انتخاب کن.</p>
 
-          <div class="bg-white rounded-xl border p-4 space-y-3">
-            <div class="font-semibold">شعب و ارز</div>
-            <div class="text-sm" x-text="'شعب: ' + branches.map(b=>b.name).join('، ')"></div>
-            <div class="flex gap-2">
-              <input x-model="branchForm.name" class="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="نام شعبه">
-              <input x-model="branchForm.city" class="w-32 px-3 py-2 border rounded-lg text-sm" placeholder="شهر">
-              <button @click="saveBranch" class="bg-slate-800 text-white px-3 rounded-lg text-sm">ثبت شعبه</button>
+          <!-- single -->
+          <div x-show="sms.tab === 'single'" class="bg-white rounded-xl border p-4 space-y-3 max-w-2xl">
+            <div class="grid md:grid-cols-2 gap-3">
+              <label class="text-sm">طرف حساب (اختیاری)
+                <select x-model="sms.single.person_id" @change="const p = persons.find(x => x.id == sms.single.person_id); if (p) sms.single.mobile = p.mobile" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
+                  <option value="">—</option>
+                  <template x-for="p in persons" :key="'sp'+p.id"><option :value="p.id" x-text="p.name + (p.mobile ? ' (' + p.mobile + ')' : '')"></option></template>
+                </select>
+              </label>
+              <label class="text-sm">موبایل
+                <input x-model="sms.single.mobile" dir="ltr" placeholder="09121234567" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
+              </label>
             </div>
-            <div class="flex gap-2">
-              <input x-model="currencyForm.code" class="w-20 px-3 py-2 border rounded-lg text-sm" placeholder="USD">
-              <input x-model="currencyForm.name" class="flex-1 px-3 py-2 border rounded-lg text-sm" placeholder="نام ارز">
-              <input type="number" x-model.number="currencyForm.rate" class="w-32 px-3 py-2 border rounded-lg text-sm" placeholder="نرخ">
-              <button @click="saveCurrency" class="bg-slate-800 text-white px-3 rounded-lg text-sm">ثبت نرخ</button>
+            <div>
+              <div class="flex gap-4 text-sm">
+                <label><input type="radio" value="text" x-model="sms.single.mode"> متن دلخواه</label>
+                <label><input type="radio" value="template" x-model="sms.single.mode"> نمونه پیامک</label>
+                <label><input type="radio" value="pattern" x-model="sms.single.mode"> پترن</label>
+              </div>
+              <textarea x-show="sms.single.mode === 'text'" x-model="sms.single.text" rows="4" class="w-full mt-2 px-3 py-2 border rounded-lg text-sm" placeholder="متن پیامک — می‌توانی {name} و {balance} بنویسی"></textarea>
+              <select x-show="sms.single.mode === 'template'" x-model="sms.single.template_id" class="w-full mt-2 px-3 py-2 border rounded-lg text-sm">
+                <option value="">نمونه را انتخاب کن</option>
+                <template x-for="t in sms.templates" :key="'st'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+              </select>
+              <div x-show="sms.single.mode === 'pattern'" class="space-y-2 mt-2">
+                <select x-model="sms.single.pattern_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="">پترن را انتخاب کن</option>
+                  <template x-for="t in sms.patterns" :key="'sq'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+                </select>
+                <template x-for="name in smsPatternParams(sms.single.pattern_id)" :key="'sv'+name">
+                  <input x-model="sms.single.values[name]" :placeholder="name + ' (مثلاً {name})'" class="w-full px-3 py-2 border rounded-lg text-sm">
+                </template>
+              </div>
+              <p class="text-xs text-slate-500 mt-1" x-show="sms.single.mode === 'text'" x-text="smsCount(sms.single.text)"></p>
             </div>
-            <div class="text-xs text-slate-500" x-text="currencies.map(c=>c.code+'='+formatNumber(c.rate)).join(' | ')"></div>
+            <button @click="smsSendSingle()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ارسال</button>
           </div>
 
-        <!-- SETTINGS -->
+          <!-- group -->
+          <div x-show="sms.tab === 'group'" class="bg-white rounded-xl border p-4 space-y-3 max-w-2xl">
+            <label class="text-sm block">گیرندگان
+              <select x-model="sms.group.target" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
+                <option value="all">همه‌ی اشخاص</option>
+                <option value="customers">مشتری‌ها</option>
+                <option value="suppliers">تأمین‌کننده‌ها</option>
+                <option value="debtors">بدهکاران (طلب ما)</option>
+                <option value="creditors">بستانکاران (بدهی ما)</option>
+                <option value="group">یک گروه / نقش</option>
+                <option value="ids">انتخاب دستی</option>
+                <option value="numbers">فقط شماره‌های زیر</option>
+              </select>
+            </label>
+            <input x-show="sms.group.target === 'debtors' || sms.group.target === 'creditors'" x-model.number="sms.group.min_balance" type="number" placeholder="حداقل مانده (ریال)" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <select x-show="sms.group.target === 'group'" x-model="sms.group.group" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">گروه را انتخاب کن</option>
+              <template x-for="g in personGroups" :key="'pg'+g"><option :value="g" x-text="g"></option></template>
+            </select>
+            <div x-show="sms.group.target === 'ids'" class="max-h-48 overflow-y-auto border rounded-lg p-2 grid md:grid-cols-2 gap-1 text-sm">
+              <template x-for="p in persons.filter(x => x.mobile)" :key="'gi'+p.id">
+                <label class="flex items-center gap-2"><input type="checkbox" :value="p.id" x-model.number="sms.group.ids"><span x-text="p.name"></span></label>
+              </template>
+            </div>
+            <textarea x-model="sms.group.numbers" rows="2" dir="ltr" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="شماره‌های اضافه (هر خط یکی یا با ویرگول)"></textarea>
+            <div class="flex gap-4 text-sm">
+              <label><input type="radio" value="text" x-model="sms.group.mode"> متن دلخواه</label>
+              <label><input type="radio" value="template" x-model="sms.group.mode"> نمونه پیامک</label>
+              <label><input type="radio" value="pattern" x-model="sms.group.mode"> پترن</label>
+            </div>
+            <textarea x-show="sms.group.mode === 'text'" x-model="sms.group.text" rows="4" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="{name} عزیز، ... — برای هر نفر جداگانه پر می‌شود"></textarea>
+            <select x-show="sms.group.mode === 'template'" x-model="sms.group.template_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">نمونه را انتخاب کن</option>
+              <template x-for="t in sms.templates" :key="'gt'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+            </select>
+            <div x-show="sms.group.mode === 'pattern'" class="space-y-2">
+              <select x-model="sms.group.pattern_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">پترن را انتخاب کن</option>
+                <template x-for="t in sms.patterns" :key="'gq'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+              </select>
+              <template x-for="name in smsPatternParams(sms.group.pattern_id)" :key="'gv'+name">
+                <input x-model="sms.group.values[name]" :placeholder="name + ' (مثلاً {name} یا {balance})'" class="w-full px-3 py-2 border rounded-lg text-sm">
+              </template>
+            </div>
+            <button @click="smsSendGroup()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ارسال گروهی</button>
+          </div>
+
+          <!-- templates -->
+          <div x-show="sms.tab === 'templates'" class="grid md:grid-cols-2 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold text-sm" x-text="sms.tplForm.id ? 'ویرایش نمونه' : 'نمونه پیامک جدید'"></div>
+              <input x-model="sms.tplForm.title" placeholder="عنوان" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <textarea x-model="sms.tplForm.body" rows="5" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="متن"></textarea>
+              <p class="text-xs text-slate-500">جای‌گذاری: {name} نام، {balance} مانده، {code} کد، {company} نام شرکت، {date} تاریخ امروز، {number} و {total} شماره و مبلغ فاکتور، {cheque} {amount} {due_date} برای چک</p>
+              <div class="flex gap-2"><button @click="smsSaveItem('templates')" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره</button>
+                <button x-show="sms.tplForm.id" @click="sms.tplForm = {title: '', body: ''}" class="bg-slate-100 px-4 py-2 rounded-lg text-sm">جدید</button></div>
+            </div>
+            <div class="bg-white rounded-xl border divide-y">
+              <template x-for="t in sms.templates" :key="'tl'+t.id">
+                <div class="p-3 text-sm">
+                  <div class="flex justify-between"><b x-text="t.title"></b><span class="space-x-2 space-x-reverse"><button class="text-primary-600 text-xs" @click="sms.tplForm = {...t}">ویرایش</button><button class="text-red-600 text-xs" @click="smsDeleteItem('templates', t.id)">حذف</button></span></div>
+                  <p class="text-slate-600 whitespace-pre-line mt-1" x-text="t.body"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- patterns -->
+          <div x-show="sms.tab === 'patterns'" class="grid md:grid-cols-2 gap-4">
+            <div class="bg-white rounded-xl border p-4 space-y-2">
+              <div class="font-semibold text-sm" x-text="sms.patForm.id ? 'ویرایش پترن' : 'پترن جدید'"></div>
+              <p class="text-xs text-slate-500">پترن، متنی است که در پنل پیامک تأیید شده (کاوه‌نگار: نام قالب verify، sms.ir: شناسه قالب). پیامک پترنی از خطوط خدماتی و حتی برای مشترکین مسدود تبلیغاتی هم می‌رسد.</p>
+              <input x-model="sms.patForm.title" placeholder="عنوان (مثلاً فاکتور فروش)" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="sms.patForm.code" dir="ltr" placeholder="کد/نام پترن در پنل" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <input x-model="sms.patForm.params" dir="ltr" placeholder="نام متغیرها به ترتیب: name, total" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <div class="flex gap-2"><button @click="smsSaveItem('patterns')" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره</button>
+                <button x-show="sms.patForm.id" @click="sms.patForm = {title: '', code: '', params: ''}" class="bg-slate-100 px-4 py-2 rounded-lg text-sm">جدید</button></div>
+            </div>
+            <div class="bg-white rounded-xl border divide-y">
+              <template x-for="t in sms.patterns" :key="'pl'+t.id">
+                <div class="p-3 text-sm flex justify-between">
+                  <div><b x-text="t.title"></b> <span class="text-slate-500" dir="ltr" x-text="t.code + ' (' + t.params.join(', ') + ')'"></span></div>
+                  <span class="space-x-2 space-x-reverse"><button class="text-primary-600 text-xs" @click="sms.patForm = {...t, params: t.params.join(', ')}">ویرایش</button><button class="text-red-600 text-xs" @click="smsDeleteItem('patterns', t.id)">حذف</button></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- log -->
+          <div x-show="sms.tab === 'log'" class="bg-white rounded-xl border overflow-hidden">
+            <div class="p-3 flex flex-wrap gap-2 items-center text-sm border-b">
+              <select x-model="sms.logStatus" @change="smsLoadLog()" class="px-3 py-2 border rounded-lg">
+                <option value="">همه</option><option value="sent">ارسال‌شده</option><option value="queued">در صف</option><option value="failed">ناموفق</option>
+              </select>
+              <input x-model="sms.logQ" @keyup.enter="smsLoadLog()" placeholder="جستجو: شماره، نام، متن" class="px-3 py-2 border rounded-lg">
+              <span class="text-slate-500" x-text="'ارسال‌شده ' + (sms.counts.sent || 0) + ' · در صف ' + (sms.counts.queued || 0) + ' · ناموفق ' + (sms.counts.failed || 0)"></span>
+              <button x-show="sms.counts.queued" @click="smsProcess()" class="text-primary-600">ارسال صف</button>
+            </div>
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50"><tr><th class="text-right p-2">زمان</th><th class="text-right p-2">گیرنده</th><th class="text-right p-2">متن</th><th class="text-right p-2">وضعیت</th></tr></thead>
+              <tbody>
+                <template x-for="r in sms.log" :key="'lg'+r.id">
+                  <tr class="border-t align-top">
+                    <td class="p-2 whitespace-nowrap text-xs" dir="ltr" x-text="(r.created_at || '').replace('T', ' ').slice(0, 16)"></td>
+                    <td class="p-2"><span x-text="r.person_name || ''"></span> <span class="text-slate-500" dir="ltr" x-text="r.mobile"></span></td>
+                    <td class="p-2 whitespace-pre-line" x-text="r.text"></td>
+                    <td class="p-2 whitespace-nowrap">
+                      <span :class="{sent: 'bg-green-100 text-green-700', failed: 'bg-red-100 text-red-700'}[r.status] || 'bg-amber-100 text-amber-700'" class="px-2 py-0.5 rounded-full text-xs" x-text="{sent: 'ارسال شد', failed: 'ناموفق', queued: 'در صف', sending: 'در حال ارسال'}[r.status] || r.status"></span>
+                      <div x-show="r.error" class="text-xs text-red-600 mt-1" x-text="r.error"></div>
+                      <button x-show="r.status === 'failed'" @click="smsRetry(r)" class="text-xs text-primary-600">ارسال دوباره</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- settings -->
+          <div x-show="sms.tab === 'settings'" class="bg-white rounded-xl border p-4 space-y-3 max-w-2xl">
+            <p x-show="user.role !== 'admin'" class="text-sm text-slate-500">فقط مدیر تنظیمات پیامک را عوض می‌کند.</p>
+            <label class="text-sm block">سرویس‌دهنده
+              <select x-model="sms.settings.sms_provider" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
+                <option value="test">آزمایشی (فقط ثبت، بدون ارسال)</option>
+                <option value="kavenegar">کاوه‌نگار</option>
+                <option value="smsir">اس‌ام‌اس‌دات‌آی‌آر (sms.ir)</option>
+                <option value="custom">سایر پنل‌ها (آدرس وب‌سرویس)</option>
+              </select>
+            </label>
+            <div x-show="sms.settings.sms_provider === 'kavenegar' || sms.settings.sms_provider === 'smsir'">
+              <input x-model="sms.settings.sms_api_key" dir="ltr" placeholder="API Key" class="w-full px-3 py-2 border rounded-lg text-sm">
+            </div>
+            <input x-show="sms.settings.sms_provider !== 'test'" x-model="sms.settings.sms_sender" dir="ltr" placeholder="شماره خط فرستنده" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <div x-show="sms.settings.sms_provider === 'custom'" class="space-y-2">
+              <input x-model="sms.settings.sms_custom_url" dir="ltr" placeholder="https://panel.example/send?user=..&pass=..&to={to}&text={text}&from={from}" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <select x-model="sms.settings.sms_custom_method" class="px-3 py-2 border rounded-lg text-sm"><option>GET</option><option>POST</option></select>
+              <p class="text-xs text-slate-500">آدرس ارسال ساده‌ی پنل خودت را بگذار؛ {to} شماره، {text} متن و {from} خط فرستنده جایگزین می‌شوند.</p>
+            </div>
+            <hr>
+            <label class="text-sm flex items-center gap-2"><input type="checkbox" x-model="sms.settings.sms_auto_invoice"> بعد از هر فاکتور فروش، به مشتری پیامک بفرست با نمونه‌ی:</label>
+            <select x-model.number="sms.settings.sms_invoice_template" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <template x-for="t in sms.templates" :key="'it'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+            </select>
+            <label class="text-sm block">یادآوری سررسید چک: چند روز قبل؟ (۰ = خاموش)
+              <input type="number" min="0" x-model.number="sms.settings.sms_cheque_days" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
+            </label>
+            <select x-model.number="sms.settings.sms_cheque_template" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <template x-for="t in sms.templates" :key="'ct'+t.id"><option :value="t.id" x-text="t.title"></option></template>
+            </select>
+            <button x-show="user.role === 'admin'" @click="smsSaveSettings()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره تنظیمات</button>
+          </div>
+        </div>
+
         <div x-show="currentPage === 'settings'" class="max-w-3xl space-y-6">
 
           <div class="bg-white rounded-xl border p-4 space-y-3">
@@ -1101,6 +1288,7 @@
         <div>
           <label class="block text-sm mb-1">موبایل</label>
           <input type="text" x-model="personForm.mobile" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <input x-model="personForm.groups" placeholder="گروه / نقش (مثلاً عمده، همکار) — با ویرگول جدا کن" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
         </div>
         <div>
           <label class="block text-sm mb-1">کد اقتصادی / شناسه ملی</label>

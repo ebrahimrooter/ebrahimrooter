@@ -67,11 +67,31 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   check('stock and customer balance updated', d2.stock === 18 && d2.bal === 3300, JSON.stringify(d2));
   await page.screenshot({ path: OUT + '/3-sales.png' });
   // every page renders without errors
-  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'settings']) {
+  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'sms', 'settings']) {
     await page.evaluate(x => document.body._x_dataStack[0].currentPage = x, p);
     await page.waitForTimeout(250);
-    if (['accounting', 'treasury', 'reports'].includes(p)) await page.screenshot({ path: `${OUT}/4-${p}.png` });
+    const shown = await page.evaluate(x => { const el = [...document.querySelectorAll('div[x-show]')].find(d => d.getAttribute('x-show').replace(/\s/g, '') === "currentPage==='" + x + "'"); return !!(el && el.offsetParent); }, p);
+    check('page "' + p + '" is visible when chosen', shown);
+    const strays = await page.evaluate(x => {
+      const pageDivs = [...document.querySelectorAll('div[x-show]')].filter(e => /^currentPage===/.test(e.getAttribute('x-show').replace(/\s/g, '')));
+      const own = pageDivs.filter(e => e.getAttribute('x-show').replace(/\s/g, '').startsWith("currentPage==='" + x + "'"));
+      return [...pageDivs[0].parentElement.children].filter(c => c.offsetParent && !own.includes(c)).map(c => c.textContent.trim().slice(0, 30));
+    }, p);
+    check('page "' + p + '" shows nothing from other pages', strays.length === 0, JSON.stringify(strays));
+    if (['accounting', 'treasury', 'reports', 'tax', 'warehouse', 'settings'].includes(p)) await page.screenshot({ path: `${OUT}/4-${p}.png` });
   }
+  // SMS panel (test provider): single message goes to the history
+  await page.evaluate(() => { const d = document.body._x_dataStack[0]; d.currentPage = 'sms'; d.smsLoad(); });
+  await page.waitForTimeout(500);
+  await page.fill('input[x-model="sms.single.mobile"]', '09121234567');
+  await page.fill('textarea[x-model="sms.single.text"]', 'سلام از پنل');
+  await page.click('button[\\@click="smsSendSingle()"]');
+  await page.waitForTimeout(800);
+  await page.evaluate(() => { const d = document.body._x_dataStack[0]; d.sms.tab = 'log'; return d.smsLoadLog(); });
+  await page.waitForTimeout(400);
+  const lg = await page.evaluate(() => document.body._x_dataStack[0].sms.log.map(r => [r.mobile, r.status]));
+  check('SMS panel: sent message in the history', JSON.stringify(lg) === JSON.stringify([['09121234567', 'sent']]), JSON.stringify(lg));
+  await page.screenshot({ path: OUT + '/5-sms.png' });
   await page.evaluate(() => document.body._x_dataStack[0].loadBalanceSheet && document.body._x_dataStack[0].loadBalanceSheet());
   await page.waitForTimeout(500);
   // print opens with the token

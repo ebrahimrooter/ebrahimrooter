@@ -279,6 +279,51 @@ check('internal files not served', (function () use ($port) {
     }
     return $r;
 })(), [404, 404, 404]);
+echo "SMS panel\n";
+file_put_contents("$tmp/sms.php", '<?php file_put_contents(__DIR__ . "/sms.log", json_encode($_GET + $_POST, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+if (($_GET["to"] ?? $_POST["to"] ?? "") === "09120000000") { http_response_code(500); echo "bad number"; exit; } echo "OK-" . rand(100, 999);');
+$smsPort = $port + 1;
+$mock = proc_open(['php', '-S', "127.0.0.1:$smsPort", "$tmp/sms.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $mp);
+usleep(400000);
+$smsSent = function () use ($tmp) {
+    $l = is_file("$tmp/sms.log") ? array_map(fn($x) => json_decode($x, true), file("$tmp/sms.log", FILE_IGNORE_NEW_LINES)) : [];
+    @unlink("$tmp/sms.log");
+    return $l;
+};
+check('custom URL must have {to}', api('PUT', '/sms/settings', ['sms_provider' => 'custom', 'sms_custom_url' => 'http://x/'])[0], 400);
+ok('PUT', '/sms/settings', ['sms_provider' => 'custom', 'sms_custom_url' => "http://127.0.0.1:$smsPort/send?to={to}&msg={text}&from={from}", 'sms_sender' => '3000']);
+check('api key never shown back', ok('GET', '/sms/settings')['sms_api_key'], '');
+ok('PUT', '/persons/' . $cust, ['name' => 'مشتری الف', 'type' => 'customer', 'national_id' => '1234567890', 'mobile' => '۰۹۱۲۱۲۳۴۵۶۷', 'groups' => 'عمده، وفادار']);
+ok('PUT', '/persons/' . $supp, ['name' => 'تأمین‌کننده ب', 'type' => 'supplier', 'mobile' => '+989351112233']);
+check('groups saved', array_column(ok('GET', '/persons'), 'groups', 'id')[$cust], 'عمده,وفادار');
+$tpl = ok('POST', '/sms/templates', ['title' => 'تست', 'body' => '{name} مانده {balance} ریال - {company}'])['id'];
+check('invalid mobile refused', api('POST', '/sms/send', ['mobile' => '12345', 'text' => 'x'])[0], 400);
+ok('POST', '/sms/send', ['person_id' => $cust, 'template_id' => $tpl]);
+$sent = $smsSent();
+check('single SMS: normalised number, filled template', [$sent[0]['to'] ?? null, $sent[0]['msg'] ?? null, $sent[0]['from'] ?? null],
+    ['09121234567', 'مشتری الف مانده ' . number_format(abs(person($cust))) . ' ریال - شرکت من', '3000']);
+$g = ok('POST', '/sms/group', ['target' => 'all', 'text' => 'سلام {name}', 'numbers' => "09121234567\n09351112233, 09129998877, 0912000000"]);
+check('group: duplicates and bad numbers dropped', [$g['queued'], $g['invalid']], [3, 0]);
+check('group: personalised texts', array_column($smsSent(), 'msg', 'to'), ['09121234567' => 'سلام مشتری الف', '09351112233' => 'سلام تأمین‌کننده ب', '09129998877' => 'سلام']);
+ok('POST', '/sms/group', ['target' => 'group', 'group' => 'وفادار', 'text' => 'ویژه']);
+check('group by person group', array_column($smsSent(), 'to'), ['09121234567']);
+[$c, $j] = api('POST', '/sms/send', ['mobile' => '09120000000', 'text' => 'x']);
+check('provider error shown', [$c, strpos($j['detail'] ?? '', 'HTTP 500') !== false], [502, true]);
+$log = ok('GET', '/sms/log');
+check('history with counts', [$log['counts']['sent'] ?? 0, $log['counts']['failed'] ?? 0], [5, 1]);
+$pat = ok('POST', '/sms/patterns', ['title' => 'فاکتور', 'code' => '12345', 'params' => 'name, total'])['id'];
+check('pattern params parsed', ok('GET', '/sms/patterns')[0]['params'], ['name', 'total']);
+ok('PUT', '/sms/settings', ['sms_auto_invoice' => true, 'sms_invoice_template' => ok('GET', '/sms/templates')[1]['id']]);
+$smsSent();
+$inv3 = ok('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 200]]]);
+// the queued invoice SMS goes out with the background job
+exec('php ' . escapeshellarg("$S/cron.php") . ' health > /dev/null 2>&1');
+exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "jobs.php"; acc_sms_process(10);'));
+$sent = $smsSent();
+check('automatic invoice SMS', [count($sent), strpos($sent[0]['msg'] ?? '', $inv3['number']) !== false], [1, true]);
+check('seller cannot change SMS settings', api('PUT', '/sms/settings', ['sms_provider' => 'test'], $st)[0], 403);
+proc_terminate($mock);
+
 books('final');
 
 proc_terminate($srv);

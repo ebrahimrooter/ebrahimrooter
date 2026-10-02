@@ -21,6 +21,10 @@ function accountingApp() {
     currentPage: "dashboard",
     loginForm: { username: "admin", password: "" },
     pwForm: { old_password: "", new_password: "" },
+    sms: { tab: "single", settings: { sms_provider: "test" }, templates: [], patterns: [], log: [], counts: {}, credit: null, creditUnit: "",
+      logStatus: "", logQ: "", tplForm: { title: "", body: "" }, patForm: { title: "", code: "", params: "" },
+      single: { person_id: "", mobile: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} },
+      group: { target: "all", group: "", min_balance: 0, ids: [], numbers: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} } },
     user: { name: "مدیر سیستم", role: "admin", permissions: ["*"] },
     company: { name: "شرکت", national_id: "", economic_code: "", vat_rate: 10, webhook_enabled: false, webhook_url: "", webhook_secret: "", api_key: "" },
     todayJalali: new Date().toLocaleDateString("fa-IR"),
@@ -83,7 +87,7 @@ function accountingApp() {
     editingProduct: null,
     invoiceType: "sale",
     editingInvoiceId: null,
-    personForm: { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "" },
+    personForm: { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "" },
     productForm: { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false },
     invoiceForm: { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0 },
     journalForm: { description: "", date: JDATE, lines: [{ account_id: "", debit: 0, credit: 0 }] },
@@ -102,6 +106,7 @@ function accountingApp() {
       { id: "treasury", title: "خزانه‌داری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>' },
       { id: "accounting", title: "حسابداری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>' },
       { id: "reports", title: "گزارش‌ها", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' },
+      { id: "sms", title: "پنل پیامک", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>' },
       { id: "settings", title: "تنظیمات", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' }
     ],
     get customers() { return this.persons.filter(p => p.type === "customer"); },
@@ -120,6 +125,90 @@ function accountingApp() {
     /** Address for links opened outside fetch (print, CSV, files): carries the login token. */
     link(path) {
       return API(path) + "&token=" + encodeURIComponent(this.token);
+    },
+
+    get personGroups() {
+      const g = new Set();
+      this.persons.forEach(p => (p.groups || "").split(",").filter(Boolean).forEach(x => g.add(x)));
+      return [...g];
+    },
+    async smsLoad() {
+      try {
+        const [t, p] = await Promise.all([this.req("/api/sms/templates"), this.req("/api/sms/patterns")]);
+        this.sms.templates = t; this.sms.patterns = p;
+        if (this.user.role === "admin") this.sms.settings = await this.req("/api/sms/settings");
+        this.smsLoadLog();
+      } catch (e) { alert(e.message); }
+    },
+    async smsLoadLog() {
+      try {
+        const q = "?status=" + encodeURIComponent(this.sms.logStatus) + "&q=" + encodeURIComponent(this.sms.logQ);
+        const r = await this.req("/api/sms/log" + q);
+        this.sms.log = r.rows; this.sms.counts = r.counts;
+      } catch (e) {}
+    },
+    async smsLoadCredit() {
+      try { const r = await this.req("/api/sms/credit"); this.sms.credit = r.credit; this.sms.creditUnit = r.unit; }
+      catch (e) { alert(e.message); }
+    },
+    smsPatternParams(id) {
+      const p = this.sms.patterns.find(x => x.id == id);
+      return p ? p.params : [];
+    },
+    /** Characters and SMS parts (Persian: 70 per part, 67 when split). */
+    smsCount(t) {
+      const n = (t || "").length;
+      const fa = /[^\x00-\x7F]/.test(t || "");
+      const one = fa ? 70 : 160, multi = fa ? 67 : 153;
+      return n + " حرف · " + (n <= one ? 1 : Math.ceil(n / multi)) + " پیامک";
+    },
+    smsPayload(f) {
+      const b = {};
+      if (f.mode === "template") b.template_id = Number(f.template_id) || 0;
+      else if (f.mode === "pattern") { b.pattern_id = Number(f.pattern_id) || 0; b.values = f.values; }
+      else b.text = f.text;
+      return b;
+    },
+    async smsSendSingle() {
+      const f = this.sms.single;
+      try {
+        await this.req("/api/sms/send", { method: "POST", body: JSON.stringify({ ...this.smsPayload(f), mobile: f.mobile, person_id: Number(f.person_id) || null }) });
+        alert("پیامک فرستاده شد");
+        this.sms.single = { person_id: "", mobile: "", mode: f.mode, text: "", template_id: f.template_id, pattern_id: f.pattern_id, values: {} };
+        this.smsLoadLog();
+      } catch (e) { alert(e.message); }
+    },
+    async smsSendGroup() {
+      const f = this.sms.group;
+      if (!confirm("پیامک برای گیرندگان انتخاب‌شده فرستاده شود؟")) return;
+      try {
+        const r = await this.req("/api/sms/group", { method: "POST", body: JSON.stringify({ ...this.smsPayload(f), target: f.target, group: f.group,
+          min_balance: f.min_balance, ids: f.ids, numbers: f.numbers }) });
+        alert(r.queued + " پیامک در صف ارسال قرار گرفت" + (r.invalid ? "؛ " + r.invalid + " شماره نامعتبر بود" : ""));
+        this.sms.tab = "log"; this.smsLoadLog();
+      } catch (e) { alert(e.message); }
+    },
+    async smsSaveItem(kind) {
+      const f = kind === "templates" ? this.sms.tplForm : this.sms.patForm;
+      try {
+        await this.req("/api/sms/" + kind + (f.id ? "/" + f.id : ""), { method: f.id ? "PUT" : "POST", body: JSON.stringify(f) });
+        if (kind === "templates") this.sms.tplForm = { title: "", body: "" }; else this.sms.patForm = { title: "", code: "", params: "" };
+        this.smsLoad();
+      } catch (e) { alert(e.message); }
+    },
+    async smsDeleteItem(kind, id) {
+      if (!confirm("حذف شود؟")) return;
+      try { await this.req("/api/sms/" + kind + "/" + id, { method: "DELETE" }); this.smsLoad(); } catch (e) { alert(e.message); }
+    },
+    async smsSaveSettings() {
+      try { await this.req("/api/sms/settings", { method: "PUT", body: JSON.stringify(this.sms.settings) }); alert("ذخیره شد"); this.smsLoad(); }
+      catch (e) { alert(e.message); }
+    },
+    async smsProcess() {
+      try { await this.req("/api/sms/process", { method: "POST" }); this.smsLoadLog(); } catch (e) { alert(e.message); }
+    },
+    async smsRetry(r) {
+      try { await this.req("/api/sms/retry/" + r.id, { method: "POST" }); this.smsLoadLog(); } catch (e) { alert(e.message); }
     },
 
     async changePassword() {
@@ -166,32 +255,45 @@ function accountingApp() {
       }
     },
 
+    /** Permission check for the menu (the server checks again on every request). */
+    can(perm) {
+      const p = (this.user && this.user.permissions) || [];
+      return p.includes("*") || p.includes(perm);
+    },
+    get visibleMenu() {
+      const need = { dashboard: "dashboard", persons: "persons", tax: "tax", warehouse: "warehouse", products: "products", sales: "sales",
+        purchases: "purchases", treasury: "treasury", accounting: "accounting", reports: "reports", sms: "sms" };
+      return this.menuItems.filter(m => !need[m.id] || this.can(need[m.id]));
+    },
+
     async refreshAll() {
+      // each list on its own: a user without access to one section still gets the rest
+      const get = (path, fallback) => this.req(path).catch(() => fallback);
       const [dash, company, persons, products, sales, purchases, journals, accounts, txns, cheques, coa, fiscal, warehouses, stockRows, whDocs, taxInvoices, taxReport, serials, stockCounts, branches, currencies, statements] = await Promise.all([
-        this.req("/api/dashboard"),
-        this.req("/api/company"),
-        this.req("/api/persons"),
-        this.req("/api/products"),
-        this.req("/api/invoices?group=sale"),
-        this.req("/api/invoices?group=purchase"),
-        this.req("/api/journals"),
-        this.req("/api/accounts"),
-        this.req("/api/treasury"),
-        this.req("/api/cheques"),
-        this.req("/api/coa"),
-        this.req("/api/fiscal"),
-        this.req("/api/warehouses"),
-        this.req("/api/stock"),
-        this.req("/api/warehouse-docs"),
-        this.req("/api/tax-invoices"),
-        this.req("/api/tax-report"),
-        this.req("/api/serials"),
-        this.req("/api/stock-counts"),
-        this.req("/api/branches"),
-        this.req("/api/currencies"),
-        this.req("/api/bank-statements"),
+        get("/api/dashboard", { low_stock: [] }),
+        get("/api/company", this.company),
+        get("/api/persons", []),
+        get("/api/products", []),
+        get("/api/invoices?group=sale", []),
+        get("/api/invoices?group=purchase", []),
+        get("/api/journals", []),
+        get("/api/accounts", []),
+        get("/api/treasury", []),
+        get("/api/cheques", []),
+        get("/api/coa", []),
+        get("/api/fiscal", this.fiscal),
+        get("/api/warehouses", []),
+        get("/api/stock", []),
+        get("/api/warehouse-docs", []),
+        get("/api/tax-invoices", []),
+        get("/api/tax-report", this.taxReport),
+        get("/api/serials", []),
+        get("/api/stock-counts", []),
+        get("/api/branches", []),
+        get("/api/currencies", []),
+        get("/api/bank-statements", []),
       ]);
-      this.stats = dash;
+      this.stats = Object.assign({ sales: 0, purchases: 0, receivables: 0, payables: 0, stock_value: 0, cash: 0 }, dash);
       this.lowStock = dash.low_stock || [];
       this.company = company;
       this.persons = persons;
@@ -214,6 +316,7 @@ function accountingApp() {
       this.branches = branches;
       this.currencies = currencies;
       this.statements = statements;
+      if (this.currentPage === "sms") this.smsLoad();
     },
 
     async login() {
@@ -250,12 +353,12 @@ function accountingApp() {
     },
     openPersonModal() {
       this.editingPerson = null;
-      this.personForm = { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "" };
+      this.personForm = { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "" };
       this.showPersonModal = true;
     },
     editPerson(p) {
       this.editingPerson = p;
-      this.personForm = { name: p.name, type: p.type, mobile: p.mobile, national_id: p.national_id, credit_limit: p.credit_limit || 0, legal_type: p.legal_type||"real", address: p.address||"" };
+      this.personForm = { name: p.name, type: p.type, mobile: p.mobile, national_id: p.national_id, credit_limit: p.credit_limit || 0, legal_type: p.legal_type||"real", address: p.address||"", groups: p.groups||"" };
       this.showPersonModal = true;
     },
     async savePerson() {

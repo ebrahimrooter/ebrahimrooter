@@ -9,6 +9,7 @@
 
 require_once __DIR__ . '/acc_core.php';
 require_once __DIR__ . '/acc_ops.php';
+require_once __DIR__ . '/acc_sms.php';
 
 function acc_routes()
 {
@@ -97,6 +98,22 @@ function acc_routes()
         ['GET', '#^/attachments$#', 'attachments', 'r_attach_list'],
         ['GET', '#^/attachments/(\d+)/download$#', 'attachments', 'r_attach_download'],
         ['DELETE', '#^/attachments/(\d+)$#', 'attachments', 'r_attach_delete'],
+        ['GET', '#^/sms/settings$#', 'admin', 'r_sms_settings'],
+        ['PUT', '#^/sms/settings$#', 'admin', 'r_sms_settings_save'],
+        ['GET', '#^/sms/credit$#', 'sms', 'r_sms_credit'],
+        ['GET', '#^/sms/templates$#', 'sms', fn() => (acc_sms_schema() ?: acc_all('SELECT * FROM acc_sms_templates ORDER BY id'))],
+        ['POST', '#^/sms/templates$#', 'sms', fn($u) => r_sms_item_save('acc_sms_templates', null)],
+        ['PUT', '#^/sms/templates/(\d+)$#', 'sms', fn($u, $id) => r_sms_item_save('acc_sms_templates', $id)],
+        ['DELETE', '#^/sms/templates/(\d+)$#', 'sms', fn($u, $id) => r_sms_item_delete('acc_sms_templates', $id)],
+        ['GET', '#^/sms/patterns$#', 'sms', 'r_sms_patterns'],
+        ['POST', '#^/sms/patterns$#', 'sms', fn($u) => r_sms_item_save('acc_sms_patterns', null)],
+        ['PUT', '#^/sms/patterns/(\d+)$#', 'sms', fn($u, $id) => r_sms_item_save('acc_sms_patterns', $id)],
+        ['DELETE', '#^/sms/patterns/(\d+)$#', 'sms', fn($u, $id) => r_sms_item_delete('acc_sms_patterns', $id)],
+        ['POST', '#^/sms/send$#', 'sms', 'r_sms_send'],
+        ['POST', '#^/sms/group$#', 'sms', 'r_sms_group'],
+        ['GET', '#^/sms/log$#', 'sms', 'r_sms_log'],
+        ['POST', '#^/sms/process$#', 'sms', fn() => ['tried' => acc_sms_process(50)]],
+        ['POST', '#^/sms/retry/(\d+)$#', 'sms', 'r_sms_retry'],
     ];
 }
 
@@ -310,7 +327,7 @@ function acc_person_out(array $p)
 {
     return ['id' => (int)$p['id'], 'code' => $p['code'], 'name' => $p['name'], 'type' => $p['type'], 'mobile' => $p['mobile'],
         'national_id' => $p['national_id'], 'balance' => (float)$p['balance'], 'credit_limit' => (float)$p['credit_limit'],
-        'legal_type' => $p['legal_type'] ?: 'real', 'address' => $p['address'] ?: ''];
+        'legal_type' => $p['legal_type'] ?: 'real', 'address' => $p['address'] ?: '', 'groups' => $p['groups'] ?? ''];
 }
 
 function r_persons()
@@ -328,7 +345,8 @@ function acc_person_fields(array $b)
     }
     return ['name' => $name, 'type' => (string)($b['type'] ?? 'customer') ?: 'customer', 'mobile' => (string)($b['mobile'] ?? ''),
         'national_id' => (string)($b['national_id'] ?? ''), 'credit_limit' => acc_num($b['credit_limit'] ?? 0),
-        'legal_type' => ($b['legal_type'] ?? '') === 'legal' ? 'legal' : 'real', 'address' => (string)($b['address'] ?? '')];
+        'legal_type' => ($b['legal_type'] ?? '') === 'legal' ? 'legal' : 'real', 'address' => (string)($b['address'] ?? ''),
+        'groups' => implode(',', array_unique(array_filter(array_map('trim', preg_split('/[,،]/u', (string)($b['groups'] ?? '')))))) ];
 }
 
 function r_person_create($u)
@@ -515,6 +533,7 @@ function r_invoice_create($u)
     acc_invoice_perm($u, $b['kind'] ?? '');
     $inv = acc_invoice_save(null, $b);
     acc_log($u['username'], 'create_invoice', $inv['number']);
+    acc_sms_after_invoice($inv);
     acc_webhook('create', 'Invoice', [(int)$inv['id']], ['number' => $inv['number'], 'total' => (float)$inv['total'], 'kind' => $inv['kind']]);
     return ['id' => (int)$inv['id'], 'number' => $inv['number'], 'total' => (float)$inv['total'], 'tax' => (float)$inv['tax'], 'atf' => $inv['atf']];
 }
@@ -577,6 +596,7 @@ function r_invoice_finalize($u, $id)
     }
     acc_invoice_perm($u, $inv['kind']);
     $inv = acc_invoice_finalize($inv);
+    acc_sms_after_invoice($inv);
     acc_log($u['username'], 'finalize_invoice', $inv['number']);
     acc_webhook('update', 'Invoice', [$id], ['number' => $inv['number'], 'kind' => $inv['kind']]);
     return ['id' => (int)$inv['id'], 'number' => $inv['number'], 'kind' => $inv['kind'], 'total' => (float)$inv['total']];
@@ -1335,4 +1355,242 @@ function r_attach_delete($u, $id)
     @unlink(acc_upload_dir() . '/' . basename($a['path']));
     acc_q('DELETE FROM acc_attachments WHERE id = ?', [$id]);
     return ['ok' => true];
+}
+
+/* ------------------------------------------------------------------ */
+/* SMS panel                                                            */
+/* ------------------------------------------------------------------ */
+
+function r_sms_settings()
+{
+    acc_sms_schema();
+    $s = acc_sms_settings();
+    $s['sms_api_key_set'] = $s['sms_api_key'] !== '';
+    $s['sms_api_key'] = $s['sms_api_key'] !== '' ? str_repeat('•', 8) . substr($s['sms_api_key'], -4) : '';
+    return $s;
+}
+
+function r_sms_settings_save($u)
+{
+    $b = acc_body();
+    $s = acc_sms_settings();
+    foreach (ACC_SMS_KEYS as $k) {
+        if (!array_key_exists($k, $b)) {
+            continue;
+        }
+        if ($k === 'sms_api_key' && strpos((string)$b[$k], '•') !== false) {
+            continue;   // the masked value came back unchanged
+        }
+        $s[$k] = is_bool($b[$k]) ? $b[$k] : (is_numeric($b[$k]) && $k !== 'sms_sender' && $k !== 'sms_api_key' ? $b[$k] + 0 : trim((string)$b[$k]));
+    }
+    if (!in_array($s['sms_provider'], ['test', 'kavenegar', 'smsir', 'custom'], true)) {
+        throw new AccError('سرویس‌دهنده‌ی پیامک نامعتبر است');
+    }
+    if ($s['sms_provider'] === 'custom' && !preg_match('~^https?://.*\{to\}.*~', $s['sms_custom_url']) ) {
+        throw new AccError('آدرس وب‌سرویس باید با http شروع شود و {to} و {text} داشته باشد');
+    }
+    ba_kv_set('acc_sms_settings', $s);
+    acc_log($u['username'], 'sms_settings', $s['sms_provider']);
+    return ['ok' => true];
+}
+
+function r_sms_credit()
+{
+    try {
+        return acc_sms_credit() + ['provider' => acc_sms_settings()['sms_provider']];
+    } catch (RuntimeException $e) {
+        throw new AccError($e->getMessage(), 502);
+    }
+}
+
+function r_sms_patterns()
+{
+    acc_sms_schema();
+    return array_map(fn($p) => ['id' => (int)$p['id'], 'title' => $p['title'], 'code' => $p['code'], 'params' => json_decode($p['params'], true) ?: []],
+        acc_all('SELECT * FROM acc_sms_patterns ORDER BY id'));
+}
+
+function r_sms_item_save($table, $id)
+{
+    acc_sms_schema();
+    $b = acc_body();
+    $title = trim((string)($b['title'] ?? ''));
+    if ($title === '') {
+        throw new AccError('عنوان لازم است');
+    }
+    if ($table === 'acc_sms_templates') {
+        $f = ['title' => $title, 'body' => trim((string)($b['body'] ?? ''))];
+        if ($f['body'] === '') {
+            throw new AccError('متن نمونه پیامک خالی است');
+        }
+    } else {
+        $params = is_array($b['params'] ?? null) ? $b['params'] : preg_split('/[\s,،]+/u', (string)($b['params'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
+        $f = ['title' => $title, 'code' => trim((string)($b['code'] ?? '')), 'params' => json_encode(array_values(array_map('strval', $params)), JSON_UNESCAPED_UNICODE)];
+        if ($f['code'] === '') {
+            throw new AccError('کد/نام پترن در پنل پیامک لازم است');
+        }
+    }
+    if ($id) {
+        if (!acc_val("SELECT 1 FROM $table WHERE id = ?", [$id])) {
+            throw new AccError('یافت نشد', 404);
+        }
+        acc_update($table, $id, $f);
+        return ['ok' => true, 'id' => $id];
+    }
+    return ['ok' => true, 'id' => acc_insert($table, $f)];
+}
+
+function r_sms_item_delete($table, $id)
+{
+    acc_sms_schema();
+    acc_q("DELETE FROM $table WHERE id = ?", [$id]);
+    return ['ok' => true];
+}
+
+/** Text of a message: a saved template (filled for the person) or free text. */
+function acc_sms_body_for(array $b, array $person = null)
+{
+    if (!empty($b['template_id'])) {
+        $t = acc_row('SELECT * FROM acc_sms_templates WHERE id = ?', [(int)$b['template_id']]);
+        if (!$t) {
+            throw new AccError('نمونه پیامک یافت نشد');
+        }
+        return acc_sms_render($t['body'], $person);
+    }
+    return acc_sms_render((string)($b['text'] ?? ''), $person);
+}
+
+/** Pattern values for a person: {name} etc. in the given values are filled in. */
+function acc_sms_pattern_values(array $b, array $person = null)
+{
+    $out = [];
+    foreach ((array)($b['values'] ?? []) as $k => $v) {
+        $out[$k] = acc_sms_render((string)$v, $person);
+    }
+    return $out;
+}
+
+function r_sms_send($u)
+{
+    acc_sms_schema();
+    $b = acc_body();
+    $person = !empty($b['person_id']) ? acc_row('SELECT * FROM acc_persons WHERE id = ?', [(int)$b['person_id']]) : null;
+    $mobile = trim((string)($b['mobile'] ?? '')) ?: ($person['mobile'] ?? '');
+    if (!acc_sms_mobile($mobile)) {
+        throw new AccError('شماره موبایل معتبر نیست');
+    }
+    $msg = ['mobile' => $mobile, 'person_id' => $person['id'] ?? null];
+    if (!empty($b['pattern_id'])) {
+        $msg += ['pattern_id' => (int)$b['pattern_id'], 'values' => acc_sms_pattern_values($b, $person)];
+    } else {
+        $msg['text'] = acc_sms_body_for($b, $person);
+        if (trim($msg['text']) === '') {
+            throw new AccError('متن پیامک خالی است');
+        }
+    }
+    $q = acc_sms_queue([$msg], $u['username']);
+    acc_sms_process(5);
+    $row = acc_row('SELECT status, error FROM acc_sms_log WHERE batch = ?', [$q['batch']]);
+    if (($row['status'] ?? '') === 'failed') {
+        throw new AccError('ارسال نشد: ' . $row['error'], 502);
+    }
+    acc_log($u['username'], 'sms_send', acc_sms_mobile($mobile));
+    return ['ok' => true, 'status' => $row['status'] ?? 'queued'];
+}
+
+/** Recipients of a group send. */
+function acc_sms_targets(array $b)
+{
+    $target = (string)($b['target'] ?? 'all');
+    $min = acc_num($b['min_balance'] ?? 0);
+    switch ($target) {
+        case 'customers':
+        case 'suppliers':
+            return acc_all('SELECT * FROM acc_persons WHERE type = ?', [substr($target, 0, -1)]);
+        case 'debtors':
+            return acc_all('SELECT * FROM acc_persons WHERE balance > ?', [max($min, 0)]);
+        case 'creditors':
+            return acc_all('SELECT * FROM acc_persons WHERE balance < ?', [-max($min, 0)]);
+        case 'ids':
+            $ids = array_map('intval', (array)($b['ids'] ?? []));
+            return $ids ? acc_all('SELECT * FROM acc_persons WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')', $ids) : [];
+        case 'group':
+            return acc_all("SELECT * FROM acc_persons WHERE ',' || COALESCE(groups, '') || ',' LIKE ?", ['%,' . trim((string)($b['group'] ?? '')) . ',%']);
+        case 'numbers':
+            return [];
+        default:
+            return acc_all('SELECT * FROM acc_persons');
+    }
+}
+
+function r_sms_group($u)
+{
+    acc_sms_schema();
+    $b = acc_body();
+    $msgs = [];
+    $seen = [];
+    foreach (acc_sms_targets($b) as $p) {
+        $m = acc_sms_mobile($p['mobile']);
+        if (!$m || isset($seen[$m])) {
+            continue;
+        }
+        $seen[$m] = true;
+        $msgs[] = !empty($b['pattern_id']) ? ['mobile' => $m, 'person_id' => $p['id'], 'pattern_id' => (int)$b['pattern_id'], 'values' => acc_sms_pattern_values($b, $p)]
+            : ['mobile' => $m, 'person_id' => $p['id'], 'text' => acc_sms_body_for($b, $p)];
+    }
+    // extra numbers typed or pasted (one per line / comma separated)
+    foreach (preg_split('/[\s,،;]+/u', (string)($b['numbers'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $n) {
+        $m = acc_sms_mobile($n);
+        if ($m && !isset($seen[$m])) {
+            $seen[$m] = true;
+            $msgs[] = !empty($b['pattern_id']) ? ['mobile' => $m, 'pattern_id' => (int)$b['pattern_id'], 'values' => acc_sms_pattern_values($b)]
+                : ['mobile' => $m, 'text' => acc_sms_body_for($b)];
+        }
+    }
+    if (!$msgs) {
+        throw new AccError('هیچ گیرنده‌ای با موبایل معتبر پیدا نشد');
+    }
+    if (count($msgs) > 5000) {
+        throw new AccError('حداکثر ۵۰۰۰ گیرنده در هر ارسال');
+    }
+    if (empty($b['pattern_id']) && !array_filter($msgs, fn($m) => trim($m['text']) !== '')) {
+        throw new AccError('متن پیامک خالی است');
+    }
+    $q = acc_sms_queue($msgs, $u['username'], 'group');
+    acc_sms_process(20);   // the rest goes out with the background job
+    acc_log($u['username'], 'sms_group', $q['queued'] . ' recipients');
+    return $q + ['ok' => true];
+}
+
+function r_sms_log()
+{
+    acc_sms_schema();
+    $w = [];
+    $a = [];
+    if (!empty($_GET['status'])) {
+        $w[] = 'l.status = ?';
+        $a[] = $_GET['status'];
+    }
+    if (!empty($_GET['q'])) {
+        $w[] = '(l.mobile LIKE ? OR l.text LIKE ? OR p.name LIKE ?)';
+        $q = '%' . $_GET['q'] . '%';
+        array_push($a, $q, $q, $q);
+    }
+    $rows = acc_all('SELECT l.*, p.name person_name, pt.title pattern_title FROM acc_sms_log l LEFT JOIN acc_persons p ON p.id = l.person_id
+        LEFT JOIN acc_sms_patterns pt ON pt.id = l.pattern_id' . ($w ? ' WHERE ' . implode(' AND ', $w) : '') . ' ORDER BY l.id DESC LIMIT 300', $a);
+    $counts = [];
+    foreach (acc_all('SELECT status, COUNT(*) n FROM acc_sms_log GROUP BY status') as $c) {
+        $counts[$c['status']] = (int)$c['n'];
+    }
+    return ['rows' => array_map(fn($r) => ['id' => (int)$r['id'], 'created_at' => $r['created_at'], 'user' => $r['user'], 'mobile' => $r['mobile'],
+        'person_name' => $r['person_name'], 'text' => $r['text'] !== '' ? $r['text'] : ('پترن: ' . $r['pattern_title']), 'status' => $r['status'],
+        'error' => $r['error'], 'cost' => (float)$r['cost'], 'kind' => $r['kind'], 'sent_at' => $r['sent_at']], $rows), 'counts' => $counts];
+}
+
+function r_sms_retry($u, $id)
+{
+    acc_sms_schema();
+    acc_q("UPDATE acc_sms_log SET status = 'queued', error = '' WHERE id = ? AND status = 'failed'", [$id]);
+    acc_sms_process(5);
+    return ['ok' => true, 'status' => acc_val('SELECT status FROM acc_sms_log WHERE id = ?', [$id])];
 }

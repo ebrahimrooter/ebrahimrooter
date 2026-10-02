@@ -111,12 +111,22 @@ function acc_schema(PDO $pdo)
     foreach ($tables as $t) {
         $pdo->exec('CREATE TABLE IF NOT EXISTS ' . $t);
     }
+    // columns added after the first version
+    foreach (ACC_COLUMNS as [$table, $col, $def]) {
+        if (!in_array($col, array_column($pdo->query("PRAGMA table_info($table)")->fetchAll(), 'name'), true)) {
+            $pdo->exec("ALTER TABLE $table ADD COLUMN $col $def");
+        }
+    }
     $pdo->exec('CREATE INDEX IF NOT EXISTS acc_lines_journal ON acc_journal_lines(journal_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS acc_lines_account ON acc_journal_lines(account_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS acc_journals_source ON acc_journals(source_type, source_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS acc_moves_product ON acc_stock_moves(product_id)');
     acc_seed($pdo);
 }
+
+const ACC_COLUMNS = [
+    ['acc_persons', 'groups', "TEXT DEFAULT ''"],          // comma separated groups / roles (مشتری عمده، همکار، ...)
+];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */
 const ACC_COA = [

@@ -8,6 +8,7 @@
 require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/bot.php';
 require_once __DIR__ . '/webpush.php';
+require_once __DIR__ . '/acc_sms.php';
 
 function job_weekly() {
     $report = ba_balance_check(date('Y-m-d', strtotime('-7 days')), date('Y-m-d'));
@@ -98,6 +99,16 @@ function jobs_due($withHealth = true) {
     if ($withHealth && $now - (int)ba_kv_get('daemon:health', 0) >= 900) {
         ba_kv_set('daemon:health', $now);
         job_health();
+    }
+    // accounting SMS panel: queued messages, then the daily cheque reminders
+    try {
+        if ((int)date('G') >= 9 && ba_kv_get('daemon:acc_cheque_sms') !== $today) {
+            ba_kv_set('daemon:acc_cheque_sms', $today);
+            acc_sms_cheque_reminders();
+        }
+        acc_sms_process(30);
+    } catch (Throwable $e) {
+        error_log('acc sms: ' . $e->getMessage());
     }
     if ((int)date('G') >= 21 && ba_kv_get('daemon:remind') !== $today) {
         ba_kv_set('daemon:remind', $today);
