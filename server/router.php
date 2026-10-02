@@ -9,7 +9,12 @@
 
 $path = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
 
-if ($path === '/' || $path === '/app') {
+if ($path === '/' || $path === '/index.html') {
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/index.html');
+    return true;
+}
+if ($path === '/app') {
     header('Location: /app/');
     exit;
 }

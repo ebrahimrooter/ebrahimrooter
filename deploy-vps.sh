@@ -185,7 +185,8 @@ APP=$(php -r '$c = require $argv[1]; echo $c["app_token"];' "$CFG")
 DEV=$(php -r '$c = require $argv[1]; echo $c["device_token"];' "$CFG")
 PIN=$(php -r '$c = require $argv[1]; echo $c["otp_pin"];' "$CFG")
 say "Done"
-echo "  App:            $BASE/app/"
+echo "  Phone app:      $BASE/app/"
+echo "  Panel:          $BASE/acc/   (user: admin, first password = app password)"
 if [ "$NEW_CFG" = 1 ]; then
   echo "  App password:   $APP        <- write these down, shown only now"
   echo "  OTP PIN:        $PIN"

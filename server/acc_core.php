@@ -24,15 +24,61 @@ class AccError extends RuntimeException
     }
 }
 
+/**
+ * Database of the company being worked on. Company 1 lives in the main file
+ * (with the bank assistant, the users and the logins); every other company
+ * (موسسه) has its own file data/acc_company_<id>.sqlite.
+ */
 function acc_db()
 {
-    static $ready = false;
-    $pdo = ba_db();
-    if (!$ready) {
-        $ready = true;
+    static $pdos = [];
+    $id = acc_company_id();
+    if (!isset($pdos[$id])) {
+        if ($id === 1) {
+            $pdo = ba_db();
+        } else {
+            $pdo = new PDO('sqlite:' . acc_company_file($id));
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $pdo->exec('PRAGMA foreign_keys = ON');
+        }
+        $pdos[$id] = $pdo;
         acc_schema($pdo);
     }
-    return $pdo;
+    return $pdos[$id];
+}
+
+function acc_company_id()
+{
+    return (int)($GLOBALS['acc_company_id'] ?? 1) ?: 1;
+}
+
+function acc_use_company($id)
+{
+    $GLOBALS['acc_company_id'] = (int)$id;
+}
+
+function acc_company_file($id)
+{
+    return BA_ROOT . '/data/acc_company_' . (int)$id . '.sqlite';
+}
+
+/** [id => name] of all companies. */
+function acc_companies()
+{
+    $list = [1 => ''];
+    foreach ((array)ba_kv_get('acc_companies', []) as $c) {
+        if (is_file(acc_company_file($c['id']))) {
+            $list[(int)$c['id']] = $c['name'];
+        }
+    }
+    $cur = acc_company_id();
+    foreach (array_keys($list) as $id) {
+        acc_use_company($id);
+        $list[$id] = (string)acc_val('SELECT name FROM acc_company WHERE id = 1');
+    }
+    acc_use_company($cur);
+    return $list;
 }
 
 function acc_schema(PDO $pdo)
@@ -140,7 +186,11 @@ const ACC_COLUMNS = [
     ['acc_company', 'invoice_footer', "TEXT DEFAULT ''"],
     ['acc_company', 'postal_code', "TEXT DEFAULT ''"],
     ['acc_treasury', 'counter_account_id', 'INTEGER'],
-    ['acc_treasury', 'ba_tx_id', 'INTEGER'],                // transaction of the bank assistant it came from
+    ['acc_treasury', 'ba_tx_id', 'INTEGER'],
+    ['acc_company', 'tax_private_key', "TEXT DEFAULT ''"],
+    ['acc_company', 'tax_certificate', "TEXT DEFAULT ''"],
+    ['acc_company', 'tax_env', "TEXT DEFAULT 'main'"],
+    ['acc_tax_invoices', 'reference', "TEXT DEFAULT ''"],                // transaction of the bank assistant it came from
 ];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */
@@ -375,7 +425,8 @@ function acc_can(array $user, $perm)
 
 function acc_account_id($code)
 {
-    static $cache = [];
+    static $all = [];
+    $cache = &$all[acc_company_id()];
     if (!isset($cache[$code])) {
         $id = acc_val('SELECT id FROM acc_coa WHERE code = ?', [(string)$code]);
         if (!$id) {

@@ -54,7 +54,7 @@
       
       <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         <template x-for="item in visibleMenu" :key="item.id">
-          <a href="#" @click.prevent="currentPage = item.id; if (item.id === 'sms') smsLoad(); if (item.id === 'more') moreLoad(); if (item.id === 'mreports') repLoad()" 
+          <a href="#" @click.prevent="currentPage = item.id; if (item.id === 'sms') smsLoad(); if (item.id === 'more') moreLoad(); if (item.id === 'bank') bankLoad(); if (item.id === 'mreports') repLoad()" 
              :class="{'active': currentPage === item.id}"
              class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition">
             <span x-html="item.icon" class="w-5 h-5"></span>
@@ -81,16 +81,17 @@
       <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold text-slate-800" x-text="getPageTitle()"></h2>
-          <p class="text-xs text-slate-500">سال مالی ۱۴۰۵ | امروز: <span x-text="todayJalali"></span></p>
+          <p class="text-xs text-slate-500">سال مالی <span x-text="fiscal.name"></span> | امروز: <span x-text="todayJalali"></span></p>
         </div>
         <div class="flex items-center gap-4">
+          <select x-show="companies.length > 1" x-model.number="companyId" @change="switchCompany()" class="px-3 py-1.5 border rounded-lg text-sm" title="موسسه">
+            <template x-for="c in companies" :key="'co'+c.id"><option :value="c.id" x-text="c.name" :selected="c.id == companyId"></option></template>
+          </select>
           <div class="text-left">
             <div class="text-sm font-medium" x-text="user.name"></div>
-            <div class="text-xs text-slate-500">مدیر سیستم</div>
+            <div class="text-xs text-slate-500" x-text="{admin: 'مدیر سیستم', accountant: 'حسابدار', seller: 'فروشنده', warehouse: 'انباردار'}[user.role] || user.role"></div>
           </div>
-          <div class="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-bold text-sm">
-            ا
-          </div>
+          <div class="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-bold text-sm" x-text="(user.name || 'ا').slice(0, 1)"></div>
         </div>
       </header>
 
@@ -484,7 +485,7 @@
             <div class="bg-white border rounded-xl p-4"><div class="text-xs text-slate-500">مالیات قابل پرداخت</div><div class="font-bold mt-1 text-primary-700" x-text="formatNumber(taxReport.vat_payable)+' ریال'"></div></div>
             <div class="bg-white border rounded-xl p-4"><div class="text-xs text-slate-500">بدون شناسه خریدار</div><div class="font-bold mt-1 text-red-600" x-text="taxReport.missing_buyer_id"></div></div>
           </div>
-          <div class="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">ارسال زنده به سازمان امور مالیاتی نیاز به حافظه مالیاتی و کلید دارد. اینجا صورتحساب آماده و ارسال شبیه‌سازی می‌شود.</div>
+          <div x-show="!taxKeys.has_key || !taxKeys.has_certificate || !company.tax_memory" class="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">برای ارسال به سامانه مؤدیان، در «تنظیمات ← سامانه مؤدیان» شناسه حافظه، کلید خصوصی و گواهی امضا را وارد کن. شناسه ۱۳ رقمی هر کالا هم در کارت کالا لازم است.</div>
           <div class="bg-white rounded-xl border overflow-hidden">
             <div class="px-4 py-3 font-semibold border-b">صورتحساب‌های سامانه مؤدیان</div>
             <table class="w-full text-sm">
@@ -506,7 +507,8 @@
                     <td class="py-2 px-3 text-xs" x-text="tinv.status_label"></td>
                     <td class="py-2 px-3 space-x-1 space-x-reverse">
                       <button @click="sendTax(tinv)" class="text-xs text-primary-600">ارسال</button>
-                      <button @click="inquireTax(tinv)" class="text-xs text-slate-600">استعلام</button>
+                      <button x-show="tinv.reference" @click="inquireTax(tinv)" class="text-xs text-slate-600">استعلام</button>
+                      <button x-show="['sent','accepted'].includes(tinv.status)" @click="cancelTax(tinv)" class="text-xs text-red-600">ابطال</button>
                       <button @click="downloadTaxJson(tinv)" class="text-xs text-slate-600">JSON</button>
                     </td>
                   </tr>
@@ -703,6 +705,63 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <!-- BANK ASSISTANT TRANSACTIONS -->
+        <div x-show="currentPage === 'bank'" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div class="bg-white rounded-xl border p-4">واریز<b class="block text-lg text-emerald-700" x-text="toman(bank.total_in)"></b></div>
+            <div class="bg-white rounded-xl border p-4">برداشت<b class="block text-lg text-red-600" x-text="toman(bank.total_out)"></b></div>
+            <div class="bg-white rounded-xl border p-4">بی‌جواب<b class="block text-lg text-amber-600" x-text="bank.pending"></b></div>
+          </div>
+          <div class="bg-white rounded-xl border p-3 flex flex-wrap gap-2 items-center text-sm">
+            <select x-model="bank.status" @change="bankLoad()" class="px-3 py-1.5 border rounded-lg"><option value="">همه</option><option value="pending">بی‌جواب</option><option value="confirmed">ثبت‌شده</option><option value="ignored">نادیده</option></select>
+            <select x-model="bank.direction" @change="bankLoad()" class="px-3 py-1.5 border rounded-lg"><option value="">واریز و برداشت</option><option value="in">واریز</option><option value="out">برداشت</option></select>
+            <select x-model.number="bank.days" @change="bankLoad()" class="px-3 py-1.5 border rounded-lg"><option value="1">امروز</option><option value="7">۷ روز</option><option value="30">۳۰ روز</option><option value="90">۹۰ روز</option><option value="365">یک سال</option><option value="3650">همه</option></select>
+            <span class="text-xs text-slate-500">تراکنش‌هایی که از پیامک بانک، ربات بله، صدا یا اپ موبایل آمده‌اند. با «ثبت»، در دفاتر حسابداری هم ثبت می‌شوند.</span>
+          </div>
+          <div class="bg-white rounded-xl border overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50"><tr><th class="text-right py-2 px-3">تاریخ</th><th class="text-right py-2 px-3">حساب</th><th class="text-right py-2 px-3">مبلغ</th><th class="text-right py-2 px-3">بابت</th><th class="text-right py-2 px-3">طرف حساب</th><th class="text-right py-2 px-3">دسته</th><th class="text-right py-2 px-3">وضعیت</th><th></th></tr></thead>
+              <tbody>
+                <template x-for="t in bank.rows" :key="'bt'+t.id">
+                  <tr class="border-t align-top" :class="t.status === 'ignored' ? 'text-slate-400' : ''">
+                    <td class="py-2 px-3 whitespace-nowrap" x-text="(t.bank_date || t.occurred_at.slice(0, 10)) + (t.bank_time ? ' ' + t.bank_time : '')"></td>
+                    <td class="py-2 px-3" x-text="t.wallet_name"></td>
+                    <td class="py-2 px-3 font-semibold whitespace-nowrap" :class="t.direction === 'in' ? 'text-emerald-700' : 'text-red-600'" x-text="(t.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(t.amount)"></td>
+                    <td class="py-2 px-3">
+                      <span x-text="t.description || '-'"></span>
+                      <div x-show="bank.edit === t.id" class="mt-2 space-y-2 min-w-[260px]">
+                        <input x-model="bank.form.description" placeholder="بابت چه بود؟" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <input x-model="bank.form.party" list="bankParties" placeholder="طرف حساب" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <select x-model="bank.form.category_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                          <option value="">دسته</option>
+                          <template x-for="c in bankCats(t)" :key="'bc'+c.id"><option :value="c.id" x-text="c.name" :selected="c.id == bank.form.category_id"></option></template>
+                        </select>
+                        <select x-show="bankCatKind(bank.form.category_id) === 'transfer'" x-model="bank.form.counter_wallet_id" class="w-full px-3 py-2 border rounded-lg text-sm">
+                          <option value="">حساب مقابل انتقال</option>
+                          <template x-for="w in bank.meta.wallets.filter(w => w.id != t.wallet_id)" :key="'bw2'+w.id"><option :value="w.id" x-text="w.name"></option></template>
+                        </select>
+                        <input x-model="bank.form.note" placeholder="یادداشت" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <div class="flex gap-2">
+                          <button @click="bankAct(t, 'confirm')" class="bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs">ثبت در دفتر</button>
+                          <button x-show="t.status !== 'ignored'" @click="bankAct(t, 'ignore')" class="bg-slate-100 px-3 py-1.5 rounded-lg text-xs">نادیده بگیر</button>
+                          <button x-show="t.status !== 'pending'" @click="bankAct(t, 'reopen')" class="bg-slate-100 px-3 py-1.5 rounded-lg text-xs">برگردان به بی‌جواب</button>
+                        </div>
+                        <div x-show="t.sms_text" class="text-xs text-slate-500 whitespace-pre-wrap bg-slate-50 rounded p-2" x-text="t.sms_text"></div>
+                      </div>
+                    </td>
+                    <td class="py-2 px-3" x-text="t.party || ''"></td>
+                    <td class="py-2 px-3" x-text="t.category_name || ''"></td>
+                    <td class="py-2 px-3"><span class="text-xs px-2 py-0.5 rounded-full" :class="{pending: 'bg-amber-100 text-amber-800', confirmed: 'bg-emerald-100 text-emerald-800', ignored: 'bg-slate-100'}[t.status]" x-text="{pending: 'بی‌جواب', confirmed: 'ثبت‌شده', ignored: 'نادیده'}[t.status]"></span></td>
+                    <td class="py-2 px-3"><button @click="bankEdit(t)" class="text-xs text-primary-600" x-text="bank.edit === t.id ? 'بستن' : (t.status === 'pending' ? 'جواب بده' : 'ویرایش')"></button></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <datalist id="bankParties"><template x-for="p in bank.meta.parties" :key="'bp'+p"><option :value="p"></option></template></datalist>
+            <div x-show="!bank.rows.length" class="p-4 text-sm text-slate-400">تراکنشی نیست.</div>
           </div>
         </div>
 
@@ -1170,7 +1229,7 @@
               <button @click="smsLoadCredit()" class="text-primary-600 text-xs">به‌روزرسانی</button>
             </div>
           </div>
-          <p x-show="sms.settings.sms_provider === 'test'" class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">حالت آزمایشی: پیامک‌ها واقعاً فرستاده نمی‌شوند و فقط در تاریخچه ثبت می‌شوند. سرویس‌دهنده را در «تنظیمات پیامک» انتخاب کن.</p>
+          <p x-show="!sms.settings.sms_api_key && sms.settings.sms_provider !== 'custom' && sms.settings.sms_provider !== 'test'" class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">پنل پیامک هنوز وصل نیست: در «تنظیمات پیامک» سرویس‌دهنده و کلید API آن را وارد کن.</p>
 
           <!-- single -->
           <div x-show="sms.tab === 'single'" class="bg-white rounded-xl border p-4 space-y-3 max-w-2xl">
@@ -1332,7 +1391,6 @@
             <p x-show="user.role !== 'admin'" class="text-sm text-slate-500">فقط مدیر تنظیمات پیامک را عوض می‌کند.</p>
             <label class="text-sm block">سرویس‌دهنده
               <select x-model="sms.settings.sms_provider" class="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
-                <option value="test">آزمایشی (فقط ثبت، بدون ارسال)</option>
                 <option value="kavenegar">کاوه‌نگار</option>
                 <option value="smsir">اس‌ام‌اس‌دات‌آی‌آر (sms.ir)</option>
                 <option value="custom">سایر پنل‌ها (آدرس وب‌سرویس)</option>
@@ -1365,8 +1423,19 @@
         <div x-show="currentPage === 'settings'" class="max-w-3xl space-y-6">
 
           <div x-show="user.role === 'admin'" class="bg-white rounded-xl border p-4 space-y-3">
+            <div class="font-semibold">موسسه‌ها</div>
+            <p class="text-xs text-slate-500">هر موسسه دفاتر، اشخاص، کالا، انبار و صندوق جدای خودش را دارد. موسسه‌ی جاری را از بالای صفحه عوض کن. کاربران برای همه‌ی موسسه‌ها یکی هستند.</p>
+            <div class="flex flex-wrap gap-2 text-sm"><template x-for="c in companies" :key="'cl'+c.id"><span class="px-3 py-1 rounded-full border" :class="c.id == companyId ? 'bg-primary-50 border-primary-300' : ''" x-text="c.name"></span></template></div>
+            <div class="flex flex-wrap gap-2 items-center">
+              <input x-model="companyForm.name" placeholder="نام موسسه‌ی جدید" class="flex-1 px-3 py-2 border rounded-lg text-sm">
+              <label class="flex items-center gap-1 text-sm"><input type="checkbox" x-model="companyForm.copy"> اشخاص، کالاها و کدینگ از موسسه‌ی جاری کپی شود</label>
+              <button @click="createCompany()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ساخت موسسه</button>
+            </div>
+          </div>
+
+          <div x-show="user.role === 'admin'" class="bg-white rounded-xl border p-4 space-y-3">
             <div class="font-semibold">اتصال به دستیار بانک</div>
-            <p class="text-xs text-slate-500">با روشن بودن، هر تراکنشی که در دستیار بانک (پیامک بانک، ربات بله، صدا یا دستی) تأیید شود، دریافت/پرداخت یا انتقال در همین دفاتر ثبت می‌شود: دسته «حساب شخص» روی حساب همان شخص، دسته‌های هزینه به نوع هزینه‌ی هم‌نام، درآمدها به سایر درآمدها. ویرایش یا نادیده گرفتن تراکنش، سند را هم اصلاح می‌کند.</p>
+            <p class="text-xs text-slate-500">(در موسسه‌ی اصلی ثبت می‌شود.) با روشن بودن، هر تراکنشی که در دستیار بانک (پیامک بانک، ربات بله، صدا یا دستی) تأیید شود، دریافت/پرداخت یا انتقال در همین دفاتر ثبت می‌شود: دسته «حساب شخص» روی حساب همان شخص، دسته‌های هزینه به نوع هزینه‌ی هم‌نام، درآمدها به سایر درآمدها. ویرایش یا نادیده گرفتن تراکنش، سند را هم اصلاح می‌کند.</p>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="bankLink.enabled"> ثبت خودکار تراکنش‌های دستیار بانک</label>
             <div class="space-y-2">
               <template x-for="w in bankLink.wallets" :key="'bw'+w.id">
@@ -1398,15 +1467,39 @@
           </div>
 
           <div class="bg-white rounded-xl border p-4 space-y-3">
-            <div class="font-semibold">سامانه مؤدیان و شماره‌گذاری</div>
-            <input x-model="company.tax_memory" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="شناسه حافظه مالیاتی">
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="company.tax_key_set"> کلید/گواهی در محیط امن تنظیم شده</label>
+            <div class="font-semibold">سامانه مؤدیان (ارسال واقعی صورتحساب)</div>
+            <ol class="text-xs text-slate-500 list-decimal pr-5 space-y-1">
+              <li>«ساخت کلید» را بزن (یا کلید خصوصی خودت را بارگذاری کن) و کلید عمومی زیر را در کارپوشه‌ی سامانه مؤدیان، بخش «عضویت ← حافظه مالیاتی» ثبت کن.</li>
+              <li>گواهی امضای الکترونیکی همین کلید (فایل .crt) را از مرکز صدور گواهی بگیر و اینجا بارگذاری کن.</li>
+              <li>شناسه یکتای حافظه (۶ حرف) و کد اقتصادی شرکت را بنویس، ذخیره کن و «آزمایش اتصال» بزن.</li>
+            </ol>
+            <div class="grid md:grid-cols-3 gap-2">
+              <input x-model="company.tax_memory" class="px-3 py-2 border rounded-lg text-sm" placeholder="شناسه یکتای حافظه (مثل A1B2C3)" dir="ltr">
+              <input x-model="company.economic_code" class="px-3 py-2 border rounded-lg text-sm" placeholder="کد اقتصادی / شناسه ملی شرکت" dir="ltr">
+              <select x-model="taxForm.env" class="px-3 py-2 border rounded-lg text-sm"><option value="main">سامانه اصلی</option><option value="sandbox">محیط آزمایشی سازمان</option></select>
+            </div>
+            <div class="text-sm space-y-1">
+              <div>کلید خصوصی: <b x-text="taxKeys.has_key ? 'ثبت شده ✅' : 'ندارد'"></b>
+                <button @click="taxKeygen()" class="text-xs text-primary-600 mr-2">ساخت کلید</button>
+                <label class="text-xs text-primary-600 cursor-pointer mr-2">بارگذاری کلید (.key/.pem)<input type="file" class="hidden" @change="readPemFile($event, 'private_key')"></label></div>
+              <div>گواهی: <b x-text="taxKeys.has_certificate ? ('ثبت شده ✅ تا ' + (taxKeys.certificate_expires || '')) : 'ندارد'"></b>
+                <label class="text-xs text-primary-600 cursor-pointer mr-2">بارگذاری گواهی (.crt/.cer)<input type="file" class="hidden" @change="readPemFile($event, 'certificate')"></label>
+                <span x-show="taxKeys.has_certificate && !taxKeys.key_matches_certificate" class="text-xs text-red-600">گواهی مال این کلید نیست</span></div>
+              <div x-show="taxForm.private_key || taxForm.certificate" class="text-xs text-amber-700">فایل انتخاب شد؛ «ذخیره» را بزن.</div>
+            </div>
+            <textarea x-show="taxKeys.public_key" readonly rows="4" class="w-full px-3 py-2 border rounded-lg text-xs font-mono" dir="ltr" x-text="taxKeys.public_key"></textarea>
+            <div class="flex gap-2">
+              <button @click="saveTaxKeys()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره</button>
+              <button @click="taxTest()" class="bg-slate-100 px-4 py-2 rounded-lg text-sm">آزمایش اتصال</button>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl border p-4 space-y-3">
+            <div class="font-semibold">شماره‌گذاری فاکتور</div>
             <div class="grid grid-cols-2 gap-2">
               <input x-model="company.invoice_prefix_sale" class="px-3 py-2 border rounded-lg text-sm" placeholder="پیشوند فاکتور فروش">
               <input x-model="company.invoice_prefix_buy" class="px-3 py-2 border rounded-lg text-sm" placeholder="پیشوند فاکتور خرید">
             </div>
             <button @click="saveCompany" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره این تنظیمات</button>
-            <p class="text-xs text-slate-500">ارسال زنده هنوز به سرویس امضا و کلید سازمان وصل نیست؛ این فیلدها برای آماده‌سازی اتصال هستند.</p>
           </div>
 
 
@@ -1464,18 +1557,17 @@
           <!-- Backup -->
           <div class="bg-white rounded-xl border p-6">
             <h3 class="font-semibold mb-2">پشتیبان‌گیری و بازیابی</h3>
-            <p class="text-sm text-slate-500 mb-4">داده‌ها را به صورت فایل JSON دانلود کنید یا از فایل پشتیبان بازیابی کنید. می‌توانید فایل را در گوگل‌درایو، دراپ‌باکس یا هر فضای ابری ذخیره کنید.</p>
+            <p class="text-sm text-slate-500 mb-4">نسخه‌ی کامل اطلاعات همین موسسه (یک فایل) دانلود می‌شود. با «بازیابی»، اطلاعات فعلی با فایل پشتیبان جایگزین می‌شود و نسخه‌ی فعلی هم روی سرور نگه داشته می‌شود.</p>
             <div class="flex flex-wrap gap-3">
               <button @click="downloadBackup" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                دانلود پشتیبان (JSON)
+                دانلود پشتیبان
               </button>
               <label class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 بازیابی از فایل
-                <input type="file" accept=".json,application/json" class="hidden" @change="restoreBackup($event)">
+                <input type="file" accept=".sqlite,.db,application/octet-stream" class="hidden" @change="restoreBackup($event)">
               </label>
-              <button @click="clearAllData" class="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm">پاک کردن همه داده‌ها</button>
             </div>
             <p class="text-xs text-slate-400 mt-3" x-show="lastBackupAt">آخرین پشتیبان محلی: <span x-text="lastBackupAt"></span></p>
           </div>

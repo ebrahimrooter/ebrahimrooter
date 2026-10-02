@@ -67,7 +67,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   check('stock and customer balance updated', d2.stock === 18 && d2.bal === 3300, JSON.stringify(d2));
   await page.screenshot({ path: OUT + '/3-sales.png' });
   // every page renders without errors
-  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'more', 'mreports', 'sms', 'settings']) {
+  for (const p of ['dashboard', 'persons', 'tax', 'warehouse', 'products', 'sales', 'purchases', 'treasury', 'accounting', 'reports', 'bank', 'more', 'mreports', 'sms', 'settings']) {
     await page.evaluate(x => document.body._x_dataStack[0].currentPage = x, p);
     await page.waitForTimeout(250);
     const shown = await page.evaluate(x => { const el = [...document.querySelectorAll('div[x-show]')].find(d => d.getAttribute('x-show').replace(/\s/g, '') === "currentPage==='" + x + "'"); return !!(el && el.offsetParent); }, p);
@@ -81,6 +81,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
     if (['accounting', 'treasury', 'reports', 'tax', 'warehouse', 'settings'].includes(p)) await page.screenshot({ path: `${OUT}/4-${p}.png` });
   }
   // SMS panel (test provider): single message goes to the history
+  await page.evaluate(() => { const d = document.body._x_dataStack[0]; return d.req('/api/sms/settings', { method: 'PUT', body: JSON.stringify({ sms_provider: 'test' }) }); });
   await page.evaluate(() => { const d = document.body._x_dataStack[0]; d.currentPage = 'sms'; d.smsLoad(); });
   await page.waitForTimeout(500);
   await page.fill('input[x-model="sms.single.mobile"]', '09121234567');

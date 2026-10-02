@@ -11,7 +11,8 @@ exec('mkdir -p ' . escapeshellarg($tmp) . ' && cp -r ' . escapeshellarg($src) . 
 $S = $tmp . '/s';
 @unlink("$S/config.php");
 array_map('unlink', glob("$S/data/*.sqlite*") ?: []);
-file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', 'device_token' => 'd', 'timezone' => 'Asia/Tehran'];");
+$taxPort = 33000 + getmypid() % 2000;
+file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', 'device_token' => 'd', 'timezone' => 'Asia/Tehran', 'moadian_url' => 'http://127.0.0.1:$taxPort/requestsmanager/api/v2'];");
 $port = 31000 + getmypid() % 2000;
 $srv = proc_open(['php', '-S', "127.0.0.1:$port", '-t', $S, "$S/router.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', "$tmp/server.log", 'w']], $pipes);
 usleep(500000);
@@ -445,6 +446,68 @@ check('sync while off refused', api('POST', '/bank-link/sync')[0], 400);
 ok('PUT', '/bank-link', ['enabled' => true]);
 check('sync all: nothing new', ok('POST', '/bank-link/sync')['imported'], 0);
 books('bank link final');
+
+echo "-- tax authority (سامانه مؤدیان)\n";
+$taxMock = proc_open(['python3', __DIR__ . '/moadian_mock.py', (string)$taxPort], [1 => ['file', '/dev/null', 'w'], 2 => ['file', "$tmp/tax.log", 'w']], $tp);
+usleep(900000);
+$tinv = ok('GET', '/tax-invoices?kind=sale')[0];
+[$c, $j] = api('POST', '/tax-invoices/' . $tinv['id'] . '/send');
+check('send refused without keys', [$c, strpos($j['detail'] ?? '', 'حافظه') !== false], [400, true]);
+$pk = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+openssl_pkey_export($pk, $pkPem);
+$crt = openssl_csr_sign(openssl_csr_new(['commonName' => 'Test Co', 'serialNumber' => '14000000000'], $pk), null, $pk, 365);
+openssl_x509_export($crt, $crtPem);
+ok('PUT', '/company', ['economic_code' => '14000000000', 'tax_memory' => 'A1B2C3']);
+$keys = ok('PUT', '/tax/keys', ['private_key' => $pkPem, 'certificate' => $crtPem]);
+check('key and certificate match', $keys['key_matches_certificate'], true);
+check('private key never returned', strpos(json_encode(ok('GET', '/company')), 'PRIVATE') === false, true);
+check('connection test', ok('POST', '/tax/test')['server_key_id'], 'k1');
+[$c, $j] = api('POST', '/tax-invoices/' . $tinv['id'] . '/send');
+check('product without 13-digit tax code refused', [$c, strpos($j['detail'] ?? '', '۱۳ رقمی') !== false], [400, true]);
+foreach (ok('GET', '/products') as $p) {
+    ok('PUT', '/products/' . $p['id'], ['name' => $p['name'], 'tax_code' => '2710000138624', 'sale_price' => $p['sale_price'], 'buy_price' => $p['buy_price']]);
+}
+$sent = ok('POST', '/tax-invoices/' . $tinv['id'] . '/send');
+check('sent: signed, encrypted, accepted by the server', [$sent['status'], strlen($sent['taxid']), $sent['reference'] !== ''], ['sent', 22, true]);
+check('inquiry: accepted', ok('POST', '/tax-invoices/' . $tinv['id'] . '/inquire')['status'], 'accepted');
+$cx = ok('POST', '/tax-invoices/' . $tinv['id'] . '/cancel');
+check('cancel sent', $cx['status'], 'cancel_sent');
+check('cancel confirmed', ok('POST', '/tax-invoices/' . $tinv['id'] . '/inquire')['status'], 'cancelled');
+proc_terminate($taxMock);
+
+echo "-- companies, backup and restore\n";
+$co = ok('POST', '/companies', ['name' => 'شرکت دوم', 'copy_from' => 1]);
+check('two companies', count(ok('GET', '/companies')), 2);
+$cget = function ($path, $cid) use ($port, &$TOKEN) {
+    $ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=" . rawurlencode($path));
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $TOKEN", "X-Company: $cid"]]);
+    $o = curl_exec($ch);
+    curl_close($ch);
+    return $o;
+};
+$p2 = json_decode($cget('/persons', $co['id']), true);
+check('lists copied, without balances', [count($p2) > 3, array_sum(array_column($p2, 'balance'))], [true, 0]);
+check('own books: empty journal', count(json_decode($cget('/journals', $co['id']), true)), 0);
+check('company name', json_decode($cget('/company', $co['id']), true)['name'], 'شرکت دوم');
+check('main company untouched', ok('GET', '/company')['name'] !== 'شرکت دوم', true);
+$bk = $cget('/backup', 1);
+check('backup is a database file', substr($bk, 0, 15), 'SQLite format 3');
+$before = count(ok('GET', '/persons'));
+ok('POST', '/persons', ['name' => 'بعد از پشتیبان']);
+file_put_contents("$tmp/bk.sqlite", $bk);
+$ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=" . rawurlencode('/restore'));
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $TOKEN"],
+    CURLOPT_POSTFIELDS => ['file' => new CURLFile("$tmp/bk.sqlite")]]);
+$rs = json_decode(curl_exec($ch), true);
+curl_close($ch);
+check('restored', [$rs['ok'] ?? false, count(ok('GET', '/persons'))], [true, $before]);
+file_put_contents("$tmp/bad.sqlite", 'not a db');
+$ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=" . rawurlencode('/restore'));
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $TOKEN"],
+    CURLOPT_POSTFIELDS => ['file' => new CURLFile("$tmp/bad.sqlite")]]);
+curl_exec($ch);
+check('bad backup refused', curl_getinfo($ch, CURLINFO_HTTP_CODE), 400);
+curl_close($ch);
 
 books('final');
 

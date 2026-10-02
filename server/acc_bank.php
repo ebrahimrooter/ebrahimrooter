@@ -17,7 +17,7 @@ require_once __DIR__ . '/acc_api.php';
 
 function acc_bank_settings()
 {
-    return (array)ba_kv_get('acc_bank_link', []) + ['enabled' => false, 'wallets' => []];
+    return (array)ba_kv_get('acc_bank_link', []) + ['enabled' => true, 'wallets' => []];
 }
 
 /** Accounting cash account of a bank-assistant wallet. */
@@ -172,4 +172,76 @@ function r_bank_link_sync($u)
     $r = acc_bank_sync_all();
     acc_log($u['username'], 'bank_link_sync', (string)$r['imported']);
     return $r;
+}
+
+/* ------------------------------------------------------------------ */
+/* the bank assistant's transactions inside the panel                   */
+/* ------------------------------------------------------------------ */
+
+function r_bank_transactions()
+{
+    $w = ['1 = 1'];
+    $args = [];
+    if (in_array($_GET['status'] ?? '', ['pending', 'confirmed', 'ignored'], true)) {
+        $w[] = 't.status = ?';
+        $args[] = $_GET['status'];
+    }
+    if (in_array($_GET['direction'] ?? '', ['in', 'out'], true)) {
+        $w[] = 't.direction = ?';
+        $args[] = $_GET['direction'];
+    }
+    $days = max(1, min(3650, (int)($_GET['days'] ?? 30)));
+    $w[] = 't.occurred_at >= ?';
+    $args[] = date('Y-m-d 00:00:00', strtotime("-$days days"));
+    $q = ba_db()->prepare('SELECT t.*, c.name category_name, c.kind category_kind, w.name wallet_name, s.body sms_text FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN wallets w ON w.id = t.wallet_id LEFT JOIN sms_raw s ON s.id = t.sms_id
+        WHERE ' . implode(' AND ', $w) . ' ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1000');
+    $q->execute($args);
+    $rows = $q->fetchAll();
+    $in = $out = 0;
+    foreach ($rows as $r) {
+        if ($r['status'] !== 'ignored') {
+            $r['direction'] === 'in' ? $in += $r['amount'] : $out += $r['amount'];
+        }
+    }
+    $pending = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
+    return ['rows' => $rows, 'total_in' => $in, 'total_out' => $out, 'pending' => $pending];
+}
+
+function r_bank_meta()
+{
+    $db = ba_db();
+    return ['categories' => $db->query('SELECT * FROM categories ORDER BY sort_order, id')->fetchAll(),
+        'wallets' => $db->query('SELECT * FROM wallets ORDER BY id')->fetchAll(),
+        'parties' => array_column($db->query('SELECT name FROM parties ORDER BY uses DESC LIMIT 500')->fetchAll(), 'name')];
+}
+
+function r_bank_confirm($u, $id)
+{
+    $b = acc_body();
+    if (!ba_get_transaction($id)) {
+        throw new AccError('تراکنش یافت نشد', 404);
+    }
+    if (trim((string)($b['description'] ?? '')) === '') {
+        throw new AccError('بابت چه بود؟ شرح را بنویس');
+    }
+    try {
+        $tx = ba_confirm_tx($id, $b['description'], $b['party'] ?? '', $b['category_id'] ?? 0, $b['note'] ?? '', $b['counter_wallet_id'] ?? null);
+    } catch (InvalidArgumentException $e) {
+        throw new AccError($e->getMessage());
+    }
+    ba_kv_set('bot:draft:' . $id, null);
+    acc_log($u['username'], 'bank_confirm', (string)$id);
+    return ['ok' => true, 'item' => $tx];
+}
+
+function r_bank_status($u, $id, $status)
+{
+    if (!ba_get_transaction($id)) {
+        throw new AccError('تراکنش یافت نشد', 404);
+    }
+    ba_db()->prepare('UPDATE transactions SET status = ? WHERE id = ?')->execute([$status, $id]);
+    ba_acc_link_tx($id);
+    acc_log($u['username'], 'bank_' . $status, (string)$id);
+    return ['ok' => true];
 }

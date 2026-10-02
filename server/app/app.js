@@ -500,7 +500,7 @@
 
   function next(tx) {
     if (location.hash !== '#/' && location.hash !== '') location.hash = '#/';
-    else viewAsk();
+    else viewMoney();
   }
 
   /** The voice loop: ask, listen, understand, confirm, save, next. */
@@ -517,7 +517,7 @@
           var nx = d.items.filter(function (t) { return !run.skipped[t.id]; })[0];
           if (!nx) {
             run.active = false;
-            return Voice.speak('همه‌ی تراکنش‌ها جواب گرفتند.').then(function () { location.hash = '#/'; viewAsk(); });
+            return Voice.speak('همه‌ی تراکنش‌ها جواب گرفتند.').then(function () { location.hash = '#/'; viewMoney(); });
           }
           if (location.hash !== '#/') history.replaceState(null, '', '#/');
           app.innerHTML = '<h1>بابت چی بود؟</h1>' + txCard(nx) + '<button class="btn mic" id="micBtn" type="button"></button><div id="chat"></div>' + formHtml(nx);
@@ -1180,7 +1180,7 @@
   /** Opened from a notification (#/orb/<id>): show the orb for that transaction. */
   function openOrbFor(id) {
     history.replaceState(null, '', '#/');
-    return Promise.resolve(viewAsk()).then(function () {
+    return Promise.resolve(viewMoney()).then(function () {
       return api('transaction', { query: '&id=' + id });
     }).then(function (d) {
       var tx = d.item;
@@ -1392,7 +1392,7 @@
             return api('confirm', { body: { id: tx.id, description: g.description, party: g.party || '', category_id: g.category_id || '', note: '' } }).then(function (r) {
               if (g.party && !state.parties.some(function (p) { return p.name === g.party; })) state.parties.push({ name: g.party, last_category_id: g.category_id });
               toast('ثبت شد' + (r.synced ? ' و به حسابداری رفت' : ''));
-              api('pending').then(function (p) { setBadge(p.items.length); if (location.hash === '#/' || location.hash === '') viewAsk(); }).catch(function () {});
+              api('pending').then(function (p) { setBadge(p.items.length); if (location.hash === '#/' || location.hash === '') viewMoney(); }).catch(function () {});
               return speak('ثبت شد.').then(function () { return finish('✅ ثبت شد'); });
             });
           };
@@ -1441,6 +1441,138 @@
     orb.poller = setInterval(orbCheck, ORB_POLL_MS);
   }
 
+
+  /* ------------------- خانه: واریز و برداشت + orb بزرگ ------------------- */
+
+  var money = { filter: store('ba_filter') || 'all', days: +(store('ba_days') || 30) };
+
+  function viewMoney() {
+    var from = isoDay(-money.days), to = isoDay(0), q = '&from=' + from + '&to=' + to;
+    if (!document.getElementById('homeOrb')) {
+      app.innerHTML = '<div class="hero"><button type="button" class="orb-btn" id="homeOrb" aria-label="دستیار صوتی">' +
+        '<div class="orb"><i></i><i></i><i></i><i></i></div></button>' +
+        '<div class="hero-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div></div><div id="money"><p class="muted">در حال بارگذاری…</p></div>';
+    }
+    document.getElementById('homeOrb').onclick = orbTalk;
+    return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending')]).then(function (r) {
+      var items = r[0].items, wallets = r[1].wallets, pending = r[2].items;
+      setBadge(pending.length);
+      document.getElementById('heroHint').textContent = pending.length
+        ? faDigits(pending.length) + ' تراکنش بی‌جواب — روی دستیار بزن تا بپرسد'
+        : 'برای حرف زدن روی دستیار بزن';
+      var sum = function (dir) { return items.filter(function (t) { return t.direction === dir && t.status !== 'ignored'; }).reduce(function (s, t) { return s + +t.amount; }, 0); };
+      var total = wallets.reduce(function (s, w) { return s + +w.balance; }, 0);
+      var shown = items.filter(function (t) {
+        if (money.filter === 'pending') return t.status === 'pending';
+        return t.status !== 'ignored' && (money.filter === 'all' || t.direction === money.filter);
+      });
+      var chip = function (k, label) { return '<button type="button" class="chip' + (money.filter === k ? ' on' : '') + '" data-f="' + k + '">' + label + '</button>'; };
+      document.getElementById('money').innerHTML =
+        '<div class="card balance"><div class="muted">موجودی همه‌ی حساب‌ها</div><div class="amount">' + toman(total) + (total < 0 ? ' <small class="out">(منفی)</small>' : '') + '</div>' +
+        '<div class="wallets">' + wallets.map(function (w) {
+          return '<span>' + (w.kind === 'cash' ? '💵 ' : '🏦 ') + esc(w.name) + ' <b' + (w.balance < 0 ? ' class="out"' : '') + '>' + toman(w.balance) + '</b></span>';
+        }).join('') + '</div></div>' +
+        '<div class="stat"><div class="card">واریز<b class="in">' + toman(sum('in')) + '</b></div><div class="card">برداشت<b class="out">' + toman(sum('out')) + '</b></div></div>' +
+        '<div class="row chips">' + chip('all', 'همه') + chip('in', 'واریز') + chip('out', 'برداشت') + chip('pending', 'بی‌جواب' + (pending.length ? ' (' + faDigits(pending.length) + ')' : '')) +
+        '<select id="days" class="days">' + [1, 7, 30, 90, 365].map(function (n) {
+          return '<option value="' + n + '"' + (n === money.days ? ' selected' : '') + '>' + (n === 1 ? 'امروز' : faDigits(n) + ' روز') + '</option>';
+        }).join('') + '</select></div>' +
+        '<div class="card list txlist">' + (shown.length ? shown.map(function (t) {
+          return '<a class="item" href="#/ask/' + t.id + '" data-id="' + t.id + '" data-pending="' + (t.status === 'pending' ? 1 : 0) + '">' +
+            '<span class="dir ' + t.direction + '">' + (t.direction === 'in' ? '↓' : '↑') + '</span>' +
+            '<div class="grow"><div>' + (t.status === 'pending' ? '<span class="pill pending">بی‌جواب</span> ' : '') + esc(t.description || (t.direction === 'in' ? 'واریز' : 'برداشت')) +
+            (t.party ? ' <span class="muted">· ' + esc(t.party) + '</span>' : '') + '</div>' +
+            '<div class="muted">' + when(t) + (t.wallet_name ? ' · ' + esc(t.wallet_name) : '') + '</div></div>' +
+            '<b class="' + t.direction + ' amt">' + toman(t.amount) + '</b></a>';
+        }).join('') : '<p class="muted">در این بازه تراکنشی نیست.</p>') + '</div>';
+      Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (b) {
+        b.onclick = function () { money.filter = b.getAttribute('data-f'); store('ba_filter', money.filter); viewMoney(); };
+      });
+      document.getElementById('days').onchange = function () { money.days = +this.value; store('ba_days', this.value); viewMoney(); };
+      // a pending one: the orb asks about it by voice (the form stays one tap away)
+      Array.prototype.forEach.call(document.querySelectorAll('.txlist .item[data-pending="1"]'), function (a) {
+        a.onclick = function (e) {
+          if (!Voice.canListen()) return;
+          e.preventDefault();
+          Voice.unlock();
+          var tx = items.filter(function (t) { return String(t.id) === a.getAttribute('data-id'); })[0];
+          if (tx) orbStart(tx);
+        };
+      });
+    });
+  }
+
+  /** Tap on the big orb: unanswered ones first, otherwise a question about the money. */
+  function orbTalk() {
+    Voice.unlock();
+    if (orb.busy) { orbCloseStage(); return; }
+    api('pending').then(function (d) {
+      if (d.items.length && Voice.canListen()) return orbStart(d.items[0]);
+      if (d.items.length) { location.hash = '#/ask/' + d.items[0].id; return; }
+      return orbAsk();
+    }).catch(function (e) { toast(e.message); });
+  }
+
+  function periodOf(a) {
+    if (/دیروز/.test(a)) return [-1, -1, 'دیروز'];
+    if (/هفته/.test(a)) return [-6, 0, 'این هفته'];
+    if (/ماه/.test(a)) return [-29, 0, 'این ماه'];
+    if (/سال/.test(a)) return [-364, 0, 'امسال'];
+    return [0, 0, 'امروز'];
+  }
+
+  /** «موجودیم چقدره؟»، «امروز چقدر واریز شد؟»، «آخرین برداشت»، «این ماه چقدر خرج کردم؟» */
+  function orbAsk() {
+    orbBuild();
+    var my = ++orb.session;
+    orb.busy = true;
+    var alive = function () { return orb.session === my; };
+    document.getElementById('orbStage').classList.add('open');
+    var speak = function (text, sub) { orbSay(text, sub || ''); orbMode('speaking'); return Voice.speak(text).then(function () { orbMode(''); }); };
+    var done = function () { setTimeout(function () { if (alive()) orbCloseStage(); }, 2500); };
+    if (!Voice.canListen()) { speak('تراکنش بی‌جوابی نیست.').then(done); return; }
+    speak('بگو چی می‌خوای بدونی؟', 'مثلاً: موجودی، واریزهای امروز، آخرین برداشت').then(function () {
+      if (!alive()) return;
+      orbSay('بگو چی می‌خوای بدونی؟', 'دارم گوش می‌دم…');
+      orbMode('listening');
+      return Voice.listen(7000).then(function (ans) {
+        orbMode('');
+        if (!alive()) return;
+        var a = norm(ans);
+        if (!a) return speak('چیزی نشنیدم.').then(done);
+        orbSay(ans, '');
+        if (/(موجودی|مانده|چقدر پول|حساب(ها)?م)/.test(a)) {
+          return api('report', { query: '&from=' + isoDay(0) + '&to=' + isoDay(0) }).then(function (r) {
+            var total = r.wallets.reduce(function (s, w) { return s + +w.balance; }, 0);
+            return speak('موجودی کل ' + spokenToman(total) + (total < 0 ? ' منفی' : '') + '. ' + r.wallets.map(function (w) { return w.name + ' ' + spokenToman(w.balance); }).join('، '));
+          }).then(done);
+        }
+        if (/(بی ?جواب|سوال|نپرسیده)/.test(a)) {
+          return api('pending').then(function (d) { return speak(d.items.length ? d.items.length + ' تراکنش بی‌جواب داری.' : 'همه‌ی تراکنش‌ها جواب گرفته‌اند.'); }).then(done);
+        }
+        var p = periodOf(a);
+        return api('list', { query: '&from=' + isoDay(/(آخرین|اخرین)/.test(a) ? -365 : p[0]) + '&to=' + isoDay(p[1]) }).then(function (d) {
+          var live = d.items.filter(function (t) { return t.status !== 'ignored'; });
+          var dir = /(واریز|درآمد|دریافت|اومد|آمد)/.test(a) ? 'in' : /(برداشت|خرج|هزینه|پرداخت|رفت)/.test(a) ? 'out' : '';
+          if (/(آخرین|اخرین)/.test(a)) {
+            var last = live.filter(function (t) { return !dir || t.direction === dir; }).sort(function (x, y) { return x.occurred_at < y.occurred_at ? 1 : -1; })[0];
+            return speak(last ? (last.direction === 'in' ? 'آخرین واریز ' : 'آخرین برداشت ') + spokenToman(last.amount) + (last.description ? ' بابت ' + last.description : '') + '، ' + when(last).replace(/[۰-۹]/g, function (c) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(c); }) : 'تراکنشی پیدا نکردم.');
+          }
+          var part = function (k) {
+            var xs = live.filter(function (t) { return t.direction === k; });
+            var s = xs.reduce(function (m, t) { return m + +t.amount; }, 0);
+            return xs.length + (k === 'in' ? ' واریز' : ' برداشت') + (xs.length ? ' جمعاً ' + spokenToman(s) : '');
+          };
+          return speak(p[2] + ' ' + (dir ? part(dir) : part('in') + ' و ' + part('out')) + '.');
+        }).then(done);
+      });
+    }).catch(function (e) {
+      if (!alive()) return;
+      orbSay('صدا روی این گوشی کار نکرد', e && e.message || '');
+      done();
+    });
+  }
+
   /* ------------------------------- router ------------------------------ */
 
   function route() {
@@ -1451,7 +1583,7 @@
     var tab = h.split('/')[0] || 'home';
     clearInterval(otp.timer);
     var parts = h.split('/');
-    var tabOf = { ask: 'home', otp: 'home', manual: 'history', person: 'people', 'person-edit': 'people' };
+    var tabOf = { ask: 'home', otp: 'home', manual: 'home', history: 'home', people: 'settings', person: 'settings', 'person-edit': 'settings', reconcile: 'settings' };
     Array.prototype.forEach.call(document.querySelectorAll('.tabbar a'), function (a) {
       a.classList.toggle('on', a.getAttribute('data-tab') === (tabOf[tab] || tab));
     });
@@ -1466,7 +1598,7 @@
     else if (tab === 'orb') p = openOrbFor(+parts[1]);
     else if (tab === 'reconcile') p = viewReconcile();
     else if (tab === 'settings') p = viewSettings();
-    else p = viewAsk();
+    else p = viewMoney();
     Promise.resolve(p).catch(function (e) { app.innerHTML = '<div class="card">خطا: ' + esc(e.message) + '</div>'; });
     window.scrollTo(0, 0);
   }
@@ -1483,7 +1615,7 @@
   Voice.init();
   window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && token() && !run.active && !orb.busy && (location.hash === '' || location.hash === '#/')) route();
+    if (!document.hidden && token() && !run.active && !orb.busy && (location.hash === '' || location.hash === '#/')) viewMoney();
   });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});

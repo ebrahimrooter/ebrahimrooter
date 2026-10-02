@@ -102,11 +102,18 @@ function jobs_due($withHealth = true) {
     }
     // accounting SMS panel: queued messages, then the daily cheque reminders
     try {
-        if ((int)date('G') >= 9 && ba_kv_get('daemon:acc_cheque_sms') !== $today) {
+        $remind = (int)date('G') >= 9 && ba_kv_get('daemon:acc_cheque_sms') !== $today;
+        if ($remind) {
             ba_kv_set('daemon:acc_cheque_sms', $today);
-            acc_sms_cheque_reminders();
         }
-        acc_sms_process(30);
+        foreach (array_keys(acc_companies()) as $cid) {   // every company (موسسه) has its own queue
+            acc_use_company($cid);
+            if ($remind) {
+                acc_sms_cheque_reminders();
+            }
+            acc_sms_process(30);
+        }
+        acc_use_company(1);
     } catch (Throwable $e) {
         error_log('acc sms: ' . $e->getMessage());
     }

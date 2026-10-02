@@ -1,4 +1,4 @@
-# /bank/ opens the app; inside app/ its own index.html (the rule is inherited by subfolders)
+# /bank/ picks the phone app or the accounting panel; inside app/ and acc/ their own index.html
 DirectoryIndex index.html app/index.html
 
 # Only the API and the app are reachable from the web.

@@ -16,11 +16,11 @@ require_once __DIR__ . '/acc_core.php';
 
 function acc_sms_schema()
 {
-    static $done = false;
-    if ($done) {
+    static $done = [];
+    if (isset($done[acc_company_id()])) {
         return;
     }
-    $done = true;
+    $done[acc_company_id()] = true;
     $pdo = acc_db();
     $pdo->exec("CREATE TABLE IF NOT EXISTS acc_sms_templates (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)");
     $pdo->exec("CREATE TABLE IF NOT EXISTS acc_sms_patterns (id INTEGER PRIMARY KEY, title TEXT NOT NULL, code TEXT NOT NULL,
@@ -48,7 +48,7 @@ const ACC_SMS_KEYS = ['sms_provider', 'sms_api_key', 'sms_sender', 'sms_custom_u
 function acc_sms_settings()
 {
     $s = (array)ba_kv_get('acc_sms_settings', []);
-    return $s + ['sms_provider' => 'test', 'sms_api_key' => '', 'sms_sender' => '', 'sms_custom_url' => '', 'sms_custom_method' => 'GET',
+    return $s + ['sms_provider' => 'kavenegar', 'sms_api_key' => '', 'sms_sender' => '', 'sms_custom_url' => '', 'sms_custom_method' => 'GET',
         'sms_auto_invoice' => false, 'sms_invoice_template' => 0, 'sms_cheque_days' => 0, 'sms_cheque_template' => 0];
 }
 

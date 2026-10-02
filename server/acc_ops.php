@@ -258,8 +258,7 @@ function acc_invoice_detail_body(array $inv)
 function acc_tax_invoice_create(array $inv, array $person, array $items)
 {
     $c = acc_company();
-    $nid = str_pad(substr(preg_replace('/\D/', '', (string)$c['national_id']) ?: '0', 0, 11), 11, '0');
-    $taxid = $nid . sprintf('%010d', $inv['id']);
+    $taxid = '';   // given when it is sent (acc_moadian_taxid)
     $vat = (float)$c['vat_rate'];
     $body = [];
     foreach ($items as $it) {
@@ -271,7 +270,7 @@ function acc_tax_invoice_create(array $inv, array $person, array $items)
     $payload = ['header' => ['taxid' => $taxid, 'indatim' => $inv['date'], 'inty' => 1, 'inp' => 1, 'ins' => 1, 'tins' => $c['national_id'],
         'tinb' => $person['national_id'], 'tprdis' => (float)$inv['subtotal'], 'tdis' => (float)$inv['discount'],
         'tadis' => (float)$inv['subtotal'] - (float)$inv['discount'], 'tvam' => (float)$inv['tax'], 'tbill' => (float)$inv['total'], 'setm' => 1],
-        'body' => $body, 'payments' => [], 'note' => 'آماده ارسال به سامانه مؤدیان - ارسال زنده نیاز به کلید و حافظه مالیاتی دارد'];
+        'body' => $body, 'payments' => []];
     acc_insert('acc_tax_invoices', ['invoice_id' => $inv['id'], 'taxid' => $taxid, 'kind' => $inv['kind'], 'seller_id' => (string)$c['national_id'],
         'buyer_id' => (string)$person['national_id'], 'buyer_name' => $person['name'], 'date' => $inv['date'],
         'pre_tax' => (float)$inv['subtotal'] - (float)$inv['discount'], 'vat' => (float)$inv['tax'], 'total' => (float)$inv['total'],

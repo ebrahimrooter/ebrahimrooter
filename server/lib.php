@@ -1278,7 +1278,8 @@ function ba_confirm_tx($id, $description, $party, $category_id, $note = null, $c
  * there never blocks the bank assistant; it is shown in the accounting settings.
  */
 function ba_acc_link_tx($id) {
-    if (empty(ba_kv_get('acc_bank_link', [])['enabled'])) {
+    $link = ba_kv_get('acc_bank_link');   // on unless turned off in the accounting settings
+    if ((is_array($link) && empty($link['enabled'])) || !is_file(__DIR__ . '/acc_bank.php')) {
         return;
     }
     try {

@@ -193,3 +193,22 @@ td .muted, tr.muted td { font-size: 13px; }
 .stage-line { text-align: center; font-size: 15px; font-weight: 600; line-height: 1.6; max-width: 92%; min-height: 24px; }
 .stage-sub { text-align: center; font-size: 13px; color: #8a7a77; min-height: 20px; max-width: 92%; }
 @media (prefers-reduced-motion: reduce) { .orb, .orb i, .orb::before, .orb::after { animation: none; } .notif { transition: opacity .2s; } }
+
+/* خانه: orb بزرگ + واریز و برداشت */
+.hero { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0 14px; }
+.orb-btn { border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; -webkit-tap-highlight-color: transparent; }
+.orb-btn .orb { --size: min(46vw, 190px); border-radius: 50%; }
+.orb-btn:active .orb { transform: scale(.96); }
+.hero-hint { font-size: 14px; color: var(--muted); text-align: center; }
+.balance .amount { margin: 2px 0 6px; }
+.wallets { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.wallets b { color: var(--text); font-weight: 600; }
+.chips { flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.chip { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 99px; padding: 6px 14px; cursor: pointer; }
+.chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.chips .days { width: auto; margin-inline-start: auto; padding: 6px 10px; font-size: 14px; border-radius: 99px; }
+.dir { width: 34px; height: 34px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+.dir.in { background: color-mix(in srgb, var(--in) 14%, transparent); }
+.dir.out { background: color-mix(in srgb, var(--out) 14%, transparent); }
+.txlist .amt { white-space: nowrap; font-size: 15px; }
+#money .stat { margin-bottom: 4px; }

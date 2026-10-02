@@ -26,6 +26,10 @@ function accountingApp() {
       single: { person_id: "", mobile: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} },
       group: { target: "all", group: "", min_balance: 0, ids: [], numbers: "", mode: "text", text: "", template_id: "", pattern_id: "", values: {} } },
     brands: [], departments: [],
+    companies: [], companyId: Number(localStorage.getItem("acc_company")) || 1, companyForm: { name: "", copy: false },
+    bank: { rows: [], status: "", direction: "", days: 30, total_in: 0, total_out: 0, pending: 0, meta: { categories: [], wallets: [], parties: [] }, edit: null, form: {} },
+    taxKeys: { has_key: false, has_certificate: false, public_key: "", env: "main" },
+    taxForm: { private_key: "", certificate: "", env: "main" },
     bankLink: { enabled: false, wallets: [], imported: 0, last_error: null },
     more: { tab: "phonebook", rows: [], q: "", form: {}, csv: "", importKind: "persons", result: "", labelIds: [], copies: 1 },
     rep: { tab: "trade", from: "", to: "", group: "sale", method: "avg", days: 30, cover: 30, account: "", year: "", season: 1, data: null, open: null },
@@ -110,6 +114,7 @@ function accountingApp() {
       { id: "treasury", title: "خزانه‌داری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>' },
       { id: "accounting", title: "حسابداری", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>' },
       { id: "reports", title: "گزارش‌ها", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' },
+      { id: "bank", title: "تراکنش‌های بانک", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7l-4 4 4 4M3 11h13M17 17l4-4-4-4M21 13H8"/></svg>' },
       { id: "more", title: "امکانات بیشتر", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>' },
       { id: "mreports", title: "گزارش‌های مدیریتی", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3v18M5 9v12M17 13v8"/></svg>' },
       { id: "sms", title: "پنل پیامک", icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>' },
@@ -132,7 +137,7 @@ function accountingApp() {
 
     /** Address for links opened outside fetch (print, CSV, files): carries the login token. */
     link(path) {
-      return API(path) + "&token=" + encodeURIComponent(this.token);
+      return API(path) + "&token=" + encodeURIComponent(this.token) + "&company=" + (this.companyId || 1);
     },
 
     get personGroups() {
@@ -377,6 +382,30 @@ function accountingApp() {
       try { await this.req("/api/treasury/" + t.id, { method: "DELETE" }); await this.refreshAll(); } catch (e) { alert(e.message); }
     },
 
+    async bankLoad() {
+      const b = this.bank;
+      try {
+        const q = "?status=" + b.status + "&direction=" + b.direction + "&days=" + b.days;
+        const [r, m] = await Promise.all([this.req("/api/bank/transactions" + q), this.req("/api/bank/meta")]);
+        Object.assign(b, { rows: r.rows, total_in: r.total_in, total_out: r.total_out, pending: r.pending, meta: m });
+      } catch (e) { alert(e.message); }
+    },
+    bankEdit(t) {
+      this.bank.edit = this.bank.edit === t.id ? null : t.id;
+      this.bank.form = { description: t.description || "", party: t.party || "", category_id: t.category_id || "", note: t.note || "", counter_wallet_id: t.counter_wallet_id || "" };
+    },
+    bankCats(t) { return this.bank.meta.categories.filter(c => c.direction === "both" || c.direction === t.direction); },
+    bankCatKind(id) { return (this.bank.meta.categories.find(c => c.id == id) || {}).kind || ""; },
+    async bankAct(t, act) {
+      try {
+        const body = act === "confirm" ? { ...this.bank.form, category_id: Number(this.bank.form.category_id) || 0, counter_wallet_id: Number(this.bank.form.counter_wallet_id) || null } : {};
+        await this.req("/api/bank/transactions/" + t.id + "/" + act, { method: "POST", body: JSON.stringify(body) });
+        this.bank.edit = null;
+        await this.bankLoad();
+      } catch (e) { alert(e.message); }
+    },
+    toman(r) { return this.formatNumber(Math.round(Math.abs(r) / 10)) + " تومان"; },
+
     async saveBankLink() {
       try {
         this.bankLink = await this.req("/api/bank-link", { method: "PUT", body: JSON.stringify({ enabled: this.bankLink.enabled,
@@ -409,6 +438,7 @@ function accountingApp() {
     async req(path, opts = {}) {
       const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
       if (this.token) headers.Authorization = "Bearer " + this.token;
+      headers["X-Company"] = String(this.companyId || 1);
       const res = await fetch(API(path), { ...opts, headers });
       if (res.status === 401) {
         this.logout();
@@ -444,13 +474,15 @@ function accountingApp() {
     },
     get visibleMenu() {
       const need = { dashboard: "dashboard", persons: "persons", tax: "tax", warehouse: "warehouse", products: "products", sales: "sales",
-        purchases: "purchases", treasury: "treasury", accounting: "accounting", reports: "reports", sms: "sms", mreports: "reports" };
+        purchases: "purchases", treasury: "treasury", accounting: "accounting", reports: "reports", sms: "sms", mreports: "reports", bank: "treasury" };
       return this.menuItems.filter(m => !need[m.id] || this.can(need[m.id]));
     },
 
     async refreshAll() {
       // each list on its own: a user without access to one section still gets the rest
       const get = (path, fallback) => this.req(path).catch(() => fallback);
+      this.companies = await get("/api/companies", []);
+      if (this.companies.length && !this.companies.some(c => c.id == this.companyId)) { this.companyId = 1; localStorage.setItem("acc_company", "1"); }
       const [dash, company, persons, products, sales, purchases, journals, accounts, txns, cheques, coa, fiscal, warehouses, stockRows, whDocs, taxInvoices, taxReport, serials, stockCounts, branches, currencies, statements] = await Promise.all([
         get("/api/dashboard", { low_stock: [] }),
         get("/api/company", this.company),
@@ -499,9 +531,10 @@ function accountingApp() {
       this.currencies = currencies;
       this.statements = statements;
       [this.brands, this.departments] = await Promise.all([get("/api/brands", []), get("/api/departments", [])]);
-      if (this.user.role === "admin") this.bankLink = await get("/api/bank-link", this.bankLink);
+      if (this.user.role === "admin") { this.bankLink = await get("/api/bank-link", this.bankLink); this.taxKeys = await get("/api/tax/keys", this.taxKeys); this.taxForm.env = this.taxKeys.env; }
       if (this.currentPage === "sms") this.smsLoad();
       if (this.currentPage === "more") this.moreLoad();
+      if (this.currentPage === "bank") this.bankLoad();
       if (this.currentPage === "mreports") this.repLoad();
     },
 
@@ -799,27 +832,84 @@ function accountingApp() {
       catch (e) { alert(e.message); }
     },
     async downloadBackup() {
-      const res = await fetch(API("/api/backup"), { headers: { Authorization: "Bearer " + this.token } });
+      const res = await fetch(API("/api/backup"), { headers: { Authorization: "Bearer " + this.token, "X-Company": String(this.companyId) } });
+      if (!res.ok) { alert("پشتیبان گرفته نشد"); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "backup.json";
+      a.download = ((res.headers.get("content-disposition") || "").match(/filename="([^"]+)"/) || [0, "backup.sqlite"])[1];
       a.click();
       this.lastBackupAt = new Date().toLocaleString("fa-IR");
     },
-    restoreBackup() { alert("برای بازیابی کامل، فایل data/bank.sqlite روی سرور را با نسخه‌ی پشتیبان جایگزین کن (این فایل هم دستیار بانک و هم حسابداری را دارد)."); },
-    clearAllData() { alert("برای امنیت، پاک کردن همه‌ی داده‌ها از داخل برنامه ممکن نیست. اگر واقعاً لازم است، روی سرور فایل data/bank.sqlite را پاک کن."); },
+    async restoreBackup(ev) {
+      const f = ev.target.files[0];
+      ev.target.value = "";
+      if (!f || !confirm("اطلاعات فعلی «" + this.companyName + "» با فایل «" + f.name + "» جایگزین شود؟")) return;
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const res = await fetch(API("/api/restore"), { method: "POST", body: fd, headers: { Authorization: "Bearer " + this.token, "X-Company": String(this.companyId) } });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.detail || "خطا");
+        alert("بازیابی شد. نسخه‌ی قبلی روی سرور با نام " + j.kept + " نگه داشته شد.");
+        location.reload();
+      } catch (e) { alert(e.message); }
+    },
+    get companyName() { return (this.companies.find(c => c.id == this.companyId) || {}).name || ""; },
+    async switchCompany() {
+      localStorage.setItem("acc_company", String(this.companyId));
+      await this.refreshAll();
+    },
+    async createCompany() {
+      try {
+        const r = await this.req("/api/companies", { method: "POST", body: JSON.stringify({ name: this.companyForm.name, copy_from: this.companyForm.copy ? this.companyId : 0 }) });
+        this.companyForm = { name: "", copy: false };
+        this.companies = await this.req("/api/companies");
+        if (confirm("موسسه ساخته شد. الان به آن بروی؟")) { this.companyId = r.id; await this.switchCompany(); }
+      } catch (e) { alert(e.message); }
+    },
     async loadUsers() {
       try { this.users = await this.req("/api/users"); this.logs = await this.req("/api/logs"); } catch (e) {}
     },
 
     async sendTax(row) {
-      try { await this.req("/api/tax-invoices/" + row.id + "/send", { method: "POST" }); await this.refreshAll(); alert("ارسال شبیه‌سازی شد"); }
+      if (!confirm("صورتحساب برای سازمان امور مالیاتی فرستاده شود؟")) return;
+      try { const r = await this.req("/api/tax-invoices/" + row.id + "/send", { method: "POST" }); await this.refreshAll(); alert("ارسال شد؛ شماره پیگیری: " + r.reference + "\nچند دقیقه بعد «استعلام» بزن."); }
       catch(e){ alert(e.message); }
     },
     async inquireTax(row) {
-      try { await this.req("/api/tax-invoices/" + row.id + "/inquire", { method: "POST" }); await this.refreshAll(); }
+      try { const r = await this.req("/api/tax-invoices/" + row.id + "/inquire", { method: "POST" }); await this.refreshAll(); alert("وضعیت: " + r.status_label); }
       catch(e){ alert(e.message); }
+    },
+    async cancelTax(row) {
+      if (!confirm("صورتحساب " + row.taxid + " در سامانه مؤدیان ابطال شود؟")) return;
+      try { await this.req("/api/tax-invoices/" + row.id + "/cancel", { method: "POST" }); await this.refreshAll(); alert("درخواست ابطال فرستاده شد"); }
+      catch(e){ alert(e.message); }
+    },
+    async loadTaxKeys() { try { this.taxKeys = await this.req("/api/tax/keys"); } catch (e) {} },
+    async readPemFile(ev, field) {
+      const f = ev.target.files[0];
+      if (!f) return;
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let text = new TextDecoder().decode(buf);
+      if (!text.includes("-----BEGIN")) text = btoa(String.fromCharCode(...buf));   // DER certificate
+      this.taxForm[field] = text;
+    },
+    async saveTaxKeys() {
+      try {
+        await this.req("/api/company", { method: "PUT", body: JSON.stringify({ tax_memory: this.company.tax_memory, economic_code: this.company.economic_code, national_id: this.company.national_id }) });
+        this.taxKeys = await this.req("/api/tax/keys", { method: "PUT", body: JSON.stringify(this.taxForm) });
+        this.taxForm = { private_key: "", certificate: "", env: this.taxKeys.env };
+        alert("ذخیره شد");
+      } catch (e) { alert(e.message); }
+    },
+    async taxKeygen() {
+      if (this.taxKeys.has_key && !confirm("کلید فعلی جایگزین شود؟ گواهی قبلی دیگر به کار نمی‌آید.")) return;
+      try { await this.req("/api/tax/keygen", { method: "POST" }); await this.loadTaxKeys(); } catch (e) { alert(e.message); }
+    },
+    async taxTest() {
+      try { const r = await this.req("/api/tax/test", { method: "POST" }); alert("اتصال برقرار است ✅\n" + JSON.stringify(r.fiscal || {}, null, 1)); }
+      catch (e) { alert(e.message); }
     },
     downloadTaxJson(row) {
       const blob = new Blob([row.payload || "{}"], {type:"application/json"});

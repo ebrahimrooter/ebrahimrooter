@@ -12,6 +12,7 @@ require_once __DIR__ . '/acc_ops.php';
 require_once __DIR__ . '/acc_sms.php';
 require_once __DIR__ . '/acc_more.php';
 require_once __DIR__ . '/acc_bank.php';
+require_once __DIR__ . '/acc_moadian.php';
 
 function acc_routes()
 {
@@ -168,6 +169,14 @@ function acc_dispatch()
                     throw new AccError('دسترسی به «' . $perm . '» ندارید', 403);
                 }
             }
+            // the company chosen in the panel; users, logins and the bank link stay in the main one
+            if ($user && !preg_match('#^/(me|users|companies|bank-link|bank/)#', $path)) {
+                $cid = (int)($_SERVER['HTTP_X_COMPANY'] ?? ($_GET['company'] ?? 1)) ?: 1;
+                if ($cid !== 1 && !isset(acc_companies()[$cid])) {
+                    throw new AccError('موسسه یافت نشد', 404);
+                }
+                acc_use_company($cid);
+            }
             $res = $fn($user, ...array_map('intval', $mm));
             if ($res !== null) {
                 acc_out($res);
@@ -243,7 +252,7 @@ function r_company()
     foreach (['webhook_enabled', 'tax_key_set'] as $k) {
         $c[$k] = (bool)$c[$k];
     }
-    unset($c['id']);
+    unset($c['id'], $c['tax_private_key'], $c['tax_certificate']);
     return $c;
 }
 
@@ -306,19 +315,101 @@ function r_logs()
     return acc_all('SELECT id, user, action, detail, created_at FROM acc_logs ORDER BY id DESC LIMIT 100');
 }
 
+/** Full backup: a consistent copy of the company's database file. */
 function r_backup($u)
 {
-    $data = ['version' => '3.0', 'exportedAt' => gmdate('c')];
-    foreach (['company', 'persons', 'products', 'invoices', 'invoice_items', 'journals', 'journal_lines', 'coa',
-        'cash_accounts', 'treasury', 'cheques', 'warehouses', 'stock', 'wh_docs', 'wh_doc_items', 'tax_invoices'] as $t) {
-        $data[$t] = acc_all("SELECT * FROM acc_$t");
-    }
-    unset($data['company'][0]['webhook_secret']);
+    $tmp = tempnam(sys_get_temp_dir(), 'accbk');
+    @unlink($tmp);
+    acc_db()->exec('VACUUM INTO ' . acc_db()->quote($tmp));
     acc_log($u['username'], 'backup');
-    header('Content-Type: application/json; charset=utf-8');
-    header('Content-Disposition: attachment; filename="backup-' . date('Ymd') . '.json"');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    $name = 'backup-' . (acc_company_id() === 1 ? 'main' : 'company' . acc_company_id()) . '-' . date('Ymd-His') . '.sqlite';
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $name . '"');
+    header('Content-Length: ' . filesize($tmp));
+    readfile($tmp);
+    unlink($tmp);
     return null;
+}
+
+/** Puts back a backup file; the current file is kept next to it first. */
+function r_restore($u)
+{
+    if (!isset($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        throw new AccError('فایل پشتیبان (.sqlite) را انتخاب کن');
+    }
+    $up = $_FILES['file']['tmp_name'];
+    if (file_get_contents($up, false, null, 0, 16) !== "SQLite format 3\0") {
+        throw new AccError('این فایل پشتیبان این برنامه نیست');
+    }
+    try {
+        $t = new PDO('sqlite:' . $up);
+        $t->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $ok = $t->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $t->query('SELECT COUNT(*) FROM acc_journals')->fetchColumn() !== false;
+        $t = null;
+    } catch (Throwable $e) {
+        $ok = false;
+    }
+    if (!$ok) {
+        throw new AccError('فایل پشتیبان خراب است یا اطلاعات حسابداری ندارد');
+    }
+    $cid = acc_company_id();
+    $file = $cid === 1 ? BA_DB_PATH : acc_company_file($cid);
+    $keep = dirname($file) . '/before-restore-' . date('Ymd-His') . '-' . basename($file);
+    acc_db()->exec('VACUUM INTO ' . acc_db()->quote($keep));
+    if (!move_uploaded_file($up, $file . '.new') || !rename($file . '.new', $file)) {
+        throw new AccError('نوشتن فایل روی سرور ممکن نشد', 500);
+    }
+    @unlink($file . '-wal');
+    @unlink($file . '-shm');
+    error_log('acc restore by ' . $u['username'] . ', previous file kept as ' . basename($keep));
+    return ['ok' => true, 'kept' => basename($keep)];
+}
+
+function r_companies()
+{
+    $out = [];
+    foreach (acc_companies() as $id => $name) {
+        $out[] = ['id' => $id, 'name' => $name];
+    }
+    return $out;
+}
+
+/** New company (موسسه) with its own books; lists can be copied from the current one. */
+function r_company_create($u)
+{
+    $b = acc_body();
+    $name = trim((string)($b['name'] ?? ''));
+    if ($name === '') {
+        throw new AccError('نام موسسه را بنویس');
+    }
+    $from = (int)($b['copy_from'] ?? 0);
+    $list = (array)ba_kv_get('acc_companies', []);
+    $id = max(array_merge([1], array_column($list, 'id'))) + 1;
+    $copy = [];
+    if ($from && isset(acc_companies()[$from])) {
+        acc_use_company($from);
+        $copy = ['persons' => acc_all("SELECT code, name, type, mobile, phone2, national_id, legal_type, address, groups, credit_limit FROM acc_persons"),
+            'products' => acc_all("SELECT code, name, unit, sale_price, buy_price, barcode, group_name, unit2, unit2_factor, reorder_point, max_stock, tax_code, kind FROM acc_products"),
+            'coa' => acc_all('SELECT code, name, level, nature, parent_code FROM acc_coa')];
+    }
+    acc_use_company($id);
+    acc_db();
+    acc_update('acc_company', 1, ['name' => $name]);
+    acc_tx(function () use ($copy) {
+        foreach ($copy['coa'] ?? [] as $r) {
+            acc_q('INSERT OR IGNORE INTO acc_coa (code, name, level, nature, parent_code) VALUES (?, ?, ?, ?, ?)', array_values($r));
+        }
+        foreach (['persons', 'products'] as $t) {
+            foreach ($copy[$t] ?? [] as $r) {
+                acc_insert('acc_' . $t, $r);
+            }
+        }
+    });
+    acc_use_company(1);
+    $list[] = ['id' => $id, 'name' => $name];
+    ba_kv_set('acc_companies', $list);
+    acc_log($u['username'], 'company_create', $name);
+    return ['ok' => true, 'id' => $id];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1079,10 +1170,11 @@ function r_count_create($u)
 
 function acc_tax_out(array $t)
 {
-    $labels = ['ready' => 'آماده ارسال', 'sent' => 'ارسال‌شده (شبیه‌سازی)', 'failed' => 'ناموفق', 'inquired' => 'استعلام‌شده', 'draft' => 'پیش‌نویس'];
+    $labels = ['ready' => 'آماده ارسال', 'sent' => 'ارسال شد (در انتظار نتیجه)', 'accepted' => 'پذیرفته شد', 'rejected' => 'رد شد', 'failed' => 'ارسال نشد',
+        'cancel_sent' => 'ابطال ارسال شد', 'cancelled' => 'باطل شد', 'draft' => 'پیش‌نویس'];
     return ['id' => (int)$t['id'], 'invoice_id' => (int)$t['invoice_id'], 'taxid' => $t['taxid'], 'kind' => $t['kind'], 'buyer_name' => $t['buyer_name'],
         'buyer_id' => $t['buyer_id'], 'seller_id' => $t['seller_id'], 'date' => $t['date'], 'pre_tax' => (float)$t['pre_tax'], 'vat' => (float)$t['vat'],
-        'total' => (float)$t['total'], 'status' => $t['status'], 'status_label' => $labels[$t['status']] ?? $t['status'], 'payload' => $t['payload'], 'response' => $t['response']];
+        'total' => (float)$t['total'], 'status' => $t['status'], 'status_label' => $labels[$t['status']] ?? $t['status'], 'payload' => $t['payload'], 'response' => $t['response'], 'reference' => $t['reference'] ?? ''];
 }
 
 function r_tax_list()
@@ -1105,27 +1197,6 @@ function r_tax_get($u, $id)
     return acc_tax_out(acc_tax_get($id));
 }
 
-function r_tax_send($u, $id)
-{
-    $t = acc_tax_get($id);
-    if (!$t['buyer_id']) {
-        acc_update('acc_tax_invoices', $id, ['status' => 'failed', 'response' => json_encode(['ok' => false, 'message' => 'شناسه ملی خریدار خالی است'], JSON_UNESCAPED_UNICODE)]);
-        throw new AccError('برای ارسال، شناسه ملی/کد اقتصادی طرف حساب لازم است');
-    }
-    acc_update('acc_tax_invoices', $id, ['status' => 'sent', 'response' => json_encode(['ok' => true, 'mode' => 'simulation', 'uid' => $t['taxid'],
-        'message' => 'ارسال واقعی به سامانه مؤدیان نیاز به حافظه مالیاتی و کلید خصوصی دارد. این پاسخ شبیه‌سازی شده است.'], JSON_UNESCAPED_UNICODE)]);
-    acc_log($u['username'], 'tax_send', $t['taxid']);
-    acc_webhook('update', 'TaxInvoice', [$id], ['taxid' => $t['taxid'], 'status' => 'sent']);
-    return acc_tax_out(acc_tax_get($id));
-}
-
-function r_tax_inquire($u, $id)
-{
-    $t = acc_tax_get($id);
-    acc_update('acc_tax_invoices', $id, ['status' => 'inquired', 'response' => json_encode(['ok' => true, 'mode' => 'simulation', 'state' => 'SUCCESS', 'taxid' => $t['taxid']])]);
-    return acc_tax_out(acc_tax_get($id));
-}
-
 function r_tax_report()
 {
     $rows = acc_all('SELECT * FROM acc_tax_invoices');
@@ -1135,7 +1206,7 @@ function r_tax_report()
     $vb = array_sum(array_column($buy, 'vat'));
     return ['sale_count' => count($sale), 'purchase_count' => count($buy), 'vat_sale' => (float)$vs, 'vat_purchase' => (float)$vb,
         'vat_payable' => (float)($vs - $vb), 'missing_buyer_id' => count(array_filter($sale, fn($r) => !$r['buyer_id'])),
-        'sent' => count(array_filter($rows, fn($r) => in_array($r['status'], ['sent', 'inquired'], true))),
+        'sent' => count(array_filter($rows, fn($r) => in_array($r['status'], ['sent', 'accepted'], true))),
         'ready' => count(array_filter($rows, fn($r) => $r['status'] === 'ready')), 'failed' => count(array_filter($rows, fn($r) => $r['status'] === 'failed'))];
 }
 
