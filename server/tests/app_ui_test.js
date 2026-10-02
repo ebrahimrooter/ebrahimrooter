@@ -50,8 +50,8 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.evaluate(() => { location.hash = '#/orb/2'; });
   await page.waitForTimeout(1500);
   const siri = await page.evaluate(() => ({ mode: document.body.classList.contains('siri-mode'), open: document.getElementById('orbStage').classList.contains('open'),
-    line: document.getElementById('orbLine').textContent, appHidden: getComputedStyle(document.getElementById('app')).visibility === 'hidden' }));
-  check('notification opens the full-screen orb', siri.mode && siri.open && siri.appHidden && siri.line.includes('برداشت'), JSON.stringify(siri));
+    line: document.getElementById('orbLine').textContent, third: document.getElementById('orbStage').getBoundingClientRect().height < innerHeight * 0.45 }));
+  check('notification opens the orb in the bottom third', siri.mode && siri.open && siri.third && siri.line.includes('برداشت'), JSON.stringify(siri));
   await page.screenshot({ path: OUT + '/app-siri.png' });
   await page.click('#orbClose');
   await page.waitForTimeout(600);
