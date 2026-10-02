@@ -54,6 +54,7 @@ function job_bale_setup() {
 function job_daemon() {
     echo '[' . date('H:i:s') . "] daemon started\n";
     $polling_token = null;   // bot this process is polling for
+    $poll_fails = 0;
     while (true) {
         try {
             // Re-read the settings: a bot token saved later in the app is picked up
@@ -84,7 +85,14 @@ function job_daemon() {
                     }
                 }
                 if (!is_array($updates)) {
-                    sleep(5);   // no internet / Bale unreachable: retry calmly
+                    // no internet / Bale unreachable: retry calmly. A webhook set
+                    // meanwhile also blocks getUpdates: remove it now and then.
+                    if (++$poll_fails % 6 === 0) {
+                        ba_bale('deleteWebhook', []);
+                    }
+                    sleep(5);
+                } else {
+                    $poll_fails = 0;
                 }
             } else {
                 ba_otp_purge();

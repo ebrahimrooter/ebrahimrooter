@@ -6,10 +6,12 @@
 #   sudo bash deploy-vps.sh --domain bank.example.ir
 #
 # Options:
-#   --domain NAME     domain already pointing at this server's IP: HTTPS, Bale
-#                     webhook, full phone app. Without it the app is on
-#                     http://IP/bank and the Bale bot runs as a background
-#                     service that fetches its messages (bank-bot.service).
+#   --domain NAME     domain already pointing at this server's IP: HTTPS for
+#                     the phone app (microphone, notifications, home screen).
+#                     No domain? <IP-with-dashes>.sslip.io points at the IP,
+#                     e.g. --domain 185-221-237-61.sslip.io
+#                     The Bale bot works either way: a background service
+#                     fetches its messages (bank-bot.service).
 #   --email ADDR      for Let's Encrypt expiry notices (optional)
 #   --no-voice        skip the local STT/TTS (faster-whisper + Piper)
 #   --stt-model NAME  passed to voice/install.sh (default large-v3-turbo)
@@ -82,7 +84,7 @@ restart_apache
 if [ -n "$DOMAIN" ]; then
   say "HTTPS certificate for $DOMAIN"
   if [ -n "$EMAIL" ]; then M=(-m "$EMAIL"); else M=(--register-unsafely-without-email); fi
-  if certbot --apache -d "$DOMAIN" --non-interactive --agree-tos --redirect "${M[@]}"; then
+  if certbot --apache -d "$DOMAIN" --non-interactive --agree-tos "${M[@]}"; then
     BASE="https://$DOMAIN/bank"
   else
     warn "certbot failed: is the domain's DNS (A record) pointing at this server? Run again later."
@@ -95,7 +97,6 @@ else
   warn "(without HTTPS the phone app can't use the microphone or notifications - use voice in Bale)."
 fi
 
-case "$BASE" in https://*) MODE=webhook;; *) MODE=polling;; esac
 
 # --------------------------------------------------------------- config
 CFG="$WEB/config.php"
@@ -139,25 +140,13 @@ php -l "$CFG" >/dev/null
 rm -f "$WEB/install.php"
 
 # ------------------------------------------- Bale bot + scheduled jobs
-if [ "$MODE" = webhook ]; then
-  # HTTPS: Bale calls the server (webhook); cron runs the scheduled jobs.
-  say "Scheduled jobs (weekly report, daily reminder, device health)"
-  cat > /etc/cron.d/bank-assistant <<EOF
-# Bank assistant (deploy-vps.sh)
-0 20 * * 5   www-data php $WEB/cron.php weekly >/dev/null 2>&1
-0 21 * * *   www-data php $WEB/cron.php remind >/dev/null 2>&1
-*/15 * * * * www-data php $WEB/cron.php health >/dev/null 2>&1
-EOF
-  chmod 0644 /etc/cron.d/bank-assistant
-  if [ -f /etc/systemd/system/bank-bot.service ] && command -v systemctl >/dev/null; then
-    systemctl disable --now bank-bot >/dev/null 2>&1 || true
-  fi
-else
-  # No domain / HTTPS: a background service fetches the bot's messages from
-  # Bale itself (polling) and also runs the scheduled jobs, so no cron.
-  say "Background service bank-bot (Bale bot without a domain + scheduled jobs)"
-  rm -f /etc/cron.d/bank-assistant
-  cat > /etc/systemd/system/bank-bot.service <<EOF
+# A background service fetches the bot's messages from Bale itself (polling),
+# with or without a domain: nothing has to reach this server from outside, and
+# adding HTTPS later changes nothing for the bot. It also runs the scheduled
+# jobs, so there is no cron.
+say "Background service bank-bot (Bale bot + scheduled jobs)"
+rm -f /etc/cron.d/bank-assistant
+cat > /etc/systemd/system/bank-bot.service <<EOF
 [Unit]
 Description=Bank assistant - Bale bot (polling) and scheduled jobs
 After=network-online.target bank-voice.service
@@ -172,13 +161,12 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-  if command -v systemctl >/dev/null && systemctl is-system-running >/dev/null 2>&1; then
-    systemctl daemon-reload
-    systemctl enable --now bank-bot >/dev/null
-    systemctl restart bank-bot
-  else
-    warn "systemd is not running here: start it by hand: sudo -u www-data php $WEB/cron.php daemon"
-  fi
+if command -v systemctl >/dev/null && systemctl is-system-running >/dev/null 2>&1; then
+  systemctl daemon-reload
+  systemctl enable --now bank-bot >/dev/null
+  systemctl restart bank-bot
+else
+  warn "systemd is not running here: start it by hand: sudo -u www-data php $WEB/cron.php daemon"
 fi
 
 # ---------------------------------------------------------------- voice
@@ -208,4 +196,4 @@ echo "    DEVICE_TOKEN = \"$DEV\""
 echo
 echo "  Next: open the app -> Settings -> Bale bot -> paste the bot token -> Connect,"
 echo "        then within 10 minutes send /start to the bot in Bale."
-if [ "$MODE" = polling ]; then echo "  Bot mode: no domain (polling). Status: systemctl status bank-bot"; fi
+echo "  Bot status: systemctl status bank-bot"

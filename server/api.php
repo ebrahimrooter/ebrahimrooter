@@ -292,9 +292,9 @@ case 'bale_connect':
     }
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
     $apiUrl = ($https ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/api.php';
-    // Without https (a server with no domain) the bot can't get a webhook, but the
-    // background service (cron.php daemon) can fetch its messages instead (polling).
-    $polling = !$https && (int)ba_kv_get('daemon:alive', 0) > time() - 120;
+    // When the background service (cron.php daemon) runs, it fetches the bot's
+    // messages itself (polling): no webhook, and it works without https too.
+    $polling = (int)ba_kv_get('daemon:alive', 0) > time() - 120;
     if (!$https && !$polling) {
         fail('ربات بله فقط به آدرس https وصل می‌شود. در کنترل‌پنل هاست SSL را فعال کن و اپ را با https باز کن'
             . ' (یا روی سرور بدون دامنه، سرویس bank-bot را با deploy-vps.sh راه بینداز).');

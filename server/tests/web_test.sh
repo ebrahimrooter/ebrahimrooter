@@ -55,6 +55,7 @@ echo "server without a domain (http): bot through the background service"
 check "http connect refused while no service runs" "$(curl -s -H "$A" -H 'Content-Type: application/json' -d '{}' "$U/api.php?r=bale_connect" | grep -c 'https')" "1"
 (cd "$T/s" && php -r 'require "lib.php"; ba_config(); ba_kv_set("daemon:alive", time());')
 check "http connect works in polling mode when it runs" "$(curl -s -H "$A" -H 'Content-Type: application/json' -d '{}' "$U/api.php?r=bale_connect" | grep -c '"mode":"polling"')" "1"
+check "with https too: no webhook while the service polls" "$(curl -s -H "$H" -H "$A" -H 'Content-Type: application/json' -d '{}' "$U/api.php?r=bale_connect" | grep -c '"mode":"polling"')" "1"
 check "settings report polling" "$(curl -s -H "$A" "$U/api.php?r=settings" | grep -c '"polling":true')" "1"
 
 echo "ESP32 path"
