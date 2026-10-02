@@ -51,6 +51,22 @@ PIPER_URL = ("https://huggingface.co/rhasspy/piper-voices/resolve/main/"
              "{family}/{code}/{name}/{quality}/{code}-{name}-{quality}{ext}?download=true")
 
 
+def load_env_file(path=None):
+    """KEY=VALUE lines from voice.env (next to this file) into the environment.
+    systemd already does this on Linux; on Windows / by hand this is how the
+    settings are read. Variables already set win."""
+    path = path or os.environ.get("VOICE_ENV_FILE") or os.path.join(HERE, "voice.env")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8-sig") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"'))
+
+
 def env(name, default=None):
     v = os.environ.get(name)
     return v if v not in (None, "") else default
@@ -401,6 +417,7 @@ def main(argv=None):
     common(sub.add_parser("status", help="show which models are present"))
 
     a = ap.parse_args(argv)
+    load_env_file()
     s = settings(a)
     if a.cmd != "download":
         # Run time is offline: models are only read from disk, never fetched.

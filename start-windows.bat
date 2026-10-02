@@ -21,11 +21,25 @@ if not exist "%PHPEXE%" (
 )
 
 set PHPOPT=-n -d "extension_dir=%~dp0php\ext" -d extension=pdo_sqlite -d extension=sqlite3 -d extension=curl -d extension=mbstring -d extension=openssl -d extension=sodium -d date.timezone=Asia/Tehran -d upload_max_filesize=20M -d post_max_size=25M -d display_errors=0 -d log_errors=1
+set "VOICEPY=%~dp0voice\venv\Scripts\python.exe"
+
+rem  start-windows.bat voice-test  : checks the local Persian voice (TTS -> STT round trip)
+if /i "%~1"=="voice-test" (
+  "%PHPEXE%" %PHPOPT% server\cron.php voice-test
+  exit /b
+)
 
 "%PHPEXE%" %PHPOPT% server\setup.php %PORT%
 if errorlevel 1 (
   pause
   exit /b 1
+)
+
+rem Local Persian voice (installed by voice\install-windows.ps1), in its own window
+if exist "%VOICEPY%" (
+  start "Bank assistant - voice STT-TTS" "%VOICEPY%" voice\voice_service.py serve
+) else (
+  echo  Persian voice not installed. For voice: powershell -ExecutionPolicy Bypass -File voice\install-windows.ps1
 )
 
 rem Scheduled jobs + Bale bot in their own window

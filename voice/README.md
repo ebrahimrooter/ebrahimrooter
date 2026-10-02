@@ -85,6 +85,19 @@ php /var/www/bank/cron.php voice-test
 ```
 یک جمله را با Piper می‌سازد و دوباره با Whisper به متن برمی‌گرداند. حالا در بله به ربات ویس بفرست: متن را نشان می‌دهد، پیش‌نویس را می‌سازد و **جواب را هم به‌صورت ویس** می‌فرستد. (برای خاموش کردن ویس جواب: `'bale_voice_reply' => false`.)
 
+### تست روی ویندوز (کامپیوتر خودت، با PowerShell)
+همه‌چیز روی خود کامپیوتر اجرا می‌شود؛ هاست و WSL لازم نیست. پیشنهاد: حداقل ۸ گیگ رم (یا با `-SttModel small` روی سیستم ضعیف‌تر).
+```powershell
+# ۱. PHP ویندوز را در پوشه‌ی php بگذار (README اصلی) و یک بار اجرا کن تا config.php ساخته شود، بعد پنجره‌ها را ببند
+.\start-windows.bat
+# ۲. نصب صدا (Python 3.12، ffmpeg و مدل‌ها را خودش می‌گیرد؛ ۱۰ تا ۲۰ دقیقه)
+powershell -ExecutionPolicy Bypass -File voice\install-windows.ps1
+# ۳. اجرا: یک پنجره‌ی «voice» هم باز می‌شود (بار اول ~۳۰ ثانیه مدل بار می‌شود)
+.\start-windows.bat
+# ۴. تست در یک PowerShell دیگر
+.\start-windows.bat voice-test
+```
+
 ### سرور بدون دسترسی به Hugging Face
 روی یک سیستم دیگر که اینترنت دارد:
 ```bash

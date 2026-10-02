@@ -158,6 +158,14 @@ ESP32 پیامک بانک را با اینترنت سیم‌کارت مستقی�
    - سه خطی که باید در `sms_forwarder.ino` بگذاری (`SERVER_URL`، `HEARTBEAT_URL`، `DEVICE_TOKEN`)
 5. مرورگر خودش باز می‌شود (`http://localhost:8080/app/`). تا وقتی پنجره‌ها باز است سیستم کار می‌کند.
 
+**ویس فارسی محلی روی ویندوز (اختیاری):** بعد از اولین اجرای `start-windows.bat`، در PowerShell از پوشه‌ی برنامه:
+```powershell
+powershell -ExecutionPolicy Bypass -File voice\install-windows.ps1
+.\start-windows.bat              # حالا پنجره‌ی «voice» هم باز می‌شود
+.\start-windows.bat voice-test   # در PowerShell دیگر: متن ← صدا ← متن
+```
+جزئیات: [`voice/README.md`](voice/README.md).
+
 **لینوکس / مک:** PHP را نصب کن (`sudo apt install php-cli php-sqlite3 php-curl php-mbstring` یا `brew install php`) و `./start.sh` را اجرا کن.
 
 نکته‌ها:
