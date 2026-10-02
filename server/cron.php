@@ -11,6 +11,9 @@
 // One-off: connect the Bale bot to this server (after filling config.php):
 // php /path/to/server/cron.php bale-setup
 //
+// Check the local voice (STT + TTS on this server, see voice/README.md):
+// php /path/to/server/cron.php voice-test
+//
 // On your own computer instead of a host: one process does all of the above
 // and polls the Bale bot (no public address needed):
 // php /path/to/server/cron.php daemon
@@ -81,11 +84,38 @@ function job_daemon() {
     }
 }
 
+/**
+ * Local voice round trip: Piper says a sentence, faster-whisper writes it
+ * back. Shows that both engines work on this server without the internet.
+ */
+function job_voice_test() {
+    $st = ba_voice_status(true);
+    echo 'mode: ' . ($st['mode'] ?? 'not configured') . (isset($st['stt_model']) ? ", STT {$st['stt_model']}, TTS {$st['tts_voice']}" : '') . "\n";
+    if (!empty($st['error']) || !$st['mode']) {
+        fwrite(STDERR, ($st['error'] ?? 'voice_url / voice_cli is empty in config.php') . "\n");
+        return 1;
+    }
+    $say = 'برداشت ۲,۵۰۰,۰۰۰ تومان، ۱۴۰۵/۰۷/۰۶ ساعت ۱۸:۴۰. بابت چی بود؟';
+    echo "TTS text:  {$say}\nspoken as: " . ba_speech_text($say) . "\n";
+    try {
+        $t = microtime(true);
+        $file = ba_tts($say, 'ogg');
+        printf("TTS ok:    %s (%d KB, %.1f s)\n", $file, filesize($file) / 1024, microtime(true) - $t);
+        $t = microtime(true);
+        $text = ba_transcribe($file, 'audio/ogg', 'test.ogg');
+        printf("STT ok:    «%s» (%.1f s)\n", $text, microtime(true) - $t);
+    } catch (Throwable $e) {
+        fwrite(STDERR, 'failed: ' . $e->getMessage() . "\n");
+        return 1;
+    }
+    return 0;
+}
+
 $job = $argv[1] ?? 'weekly';
 $jobs = ['weekly' => 'job_weekly', 'remind' => 'job_remind', 'health' => 'job_health',
-    'bale-setup' => 'job_bale_setup', 'daemon' => 'job_daemon'];
+    'bale-setup' => 'job_bale_setup', 'daemon' => 'job_daemon', 'voice-test' => 'job_voice_test'];
 if (!isset($jobs[$job])) {
-    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon\n");
+    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon|voice-test\n");
     exit(1);
 }
 exit((int)$jobs[$job]());

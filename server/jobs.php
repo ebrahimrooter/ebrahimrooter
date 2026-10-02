@@ -52,6 +52,7 @@ function job_remind() {
     ba_db()->prepare("UPDATE sms_raw SET body = '' WHERE status IN ('new', 'ignored') AND received_at < ?")
         ->execute([date('Y-m-d H:i:s', time() - 86400)]);
     ba_otp_purge();
+    ba_tts_cleanup();
     $n = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
     if ($n) {
         ba_notify("🕓 {$n} تراکنش منتظر جواب «بابت چی بود؟» است.");

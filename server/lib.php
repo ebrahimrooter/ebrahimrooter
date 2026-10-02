@@ -777,6 +777,7 @@ function ba_bale($method, array $params, $timeout = 15) {
 
 /** Sends a message to the owner's Bale chat. Silent no-op if not configured. */
 function ba_notify($text, $keyboard = null) {
+    ba_voice_capture('add', $text);   // also spoken, when answering a voice message
     $chat = ba_config()['bale_chat_id'] ?? '';
     if ($chat === '' || !ba_bale_enabled()) {
         return null;
@@ -788,70 +789,346 @@ function ba_notify($text, $keyboard = null) {
     return ba_bale('sendMessage', $params);
 }
 
-/**
- * Speech to text through any OpenAI-compatible /audio/transcriptions
- * endpoint (config stt_url). Returns the text, or throws.
+/* ------------------------------------------------------------------ */
+/* Local speech: STT + TTS on this same server (voice/ folder)          */
+/* ------------------------------------------------------------------ */
+/*
+ * No cloud service and no API key: speech is handled by the local voice
+ * service (faster-whisper + Piper, see voice/README.md), reached either
+ *   - over HTTP on the loopback interface (config voice_url, recommended:
+ *     models stay loaded), or
+ *   - as a command run per request (config voice_cli, no daemon needed).
+ * voice_url must point at this machine; anything else is refused, so audio
+ * never leaves the server.
  */
-function ba_transcribe($path, $mime, $name) {
-    $cfg = ba_config();
-    if (empty($cfg['stt_url'])) {
-        throw new RuntimeException('تبدیل صدا به متن روی سرور تنظیم نشده');
+
+/** The configured voice_url if it is a loopback address, else null. */
+function ba_voice_url() {
+    $url = trim((string)(ba_config()['voice_url'] ?? ''));
+    if ($url === '') {
+        return null;
     }
-    $ch = ba_curl($cfg['stt_url'], [
+    $p = parse_url($url);
+    $host = strtolower(trim((string)($p['host'] ?? ''), '[]'));
+    if (($p['scheme'] ?? '') !== 'http' || !in_array($host, ['127.0.0.1', 'localhost', '::1'], true)) {
+        throw new RuntimeException('voice_url باید روی همین سرور باشد (http://127.0.0.1:...)');
+    }
+    return rtrim($url, '/');
+}
+
+/** voice_cli split into argv, or null. */
+function ba_voice_cli() {
+    $cli = trim((string)(ba_config()['voice_cli'] ?? ''));
+    return $cli === '' ? null : preg_split('/\s+/', $cli);
+}
+
+function ba_voice_configured() {
+    $cfg = ba_config();
+    return trim((string)($cfg['voice_url'] ?? '')) !== '' || trim((string)($cfg['voice_cli'] ?? '')) !== '';
+}
+
+/**
+ * Is local speech usable right now? Asks the service's /health (cached a
+ * minute so the app's start-up call stays fast). The CLI mode counts as ready.
+ * Returns ['stt' => bool, 'tts' => bool, 'mode' => 'http'|'cli'|null, ...].
+ */
+function ba_voice_status($fresh = false) {
+    if (!ba_voice_configured()) {
+        return ['stt' => false, 'tts' => false, 'mode' => null];
+    }
+    try {
+        $url = ba_voice_url();
+    } catch (RuntimeException $e) {
+        return ['stt' => false, 'tts' => false, 'mode' => null, 'error' => $e->getMessage()];
+    }
+    if (!$url) {
+        return ['stt' => true, 'tts' => true, 'mode' => 'cli'];
+    }
+    $cached = ba_kv_get('voice:status');
+    if (!$fresh && is_array($cached) && ($cached['at'] ?? 0) > time() - 60) {
+        return $cached;
+    }
+    $ch = ba_curl($url . '/health', [CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 1,
+        CURLOPT_HTTPHEADER => ['X-Voice-Token: ' . (ba_config()['voice_token'] ?? '')]]);
+    $h = json_decode((string)curl_exec($ch), true);
+    curl_close($ch);
+    $st = ['stt' => !empty($h['stt_ready']), 'tts' => !empty($h['tts_ready']), 'mode' => 'http',
+        'stt_model' => $h['stt_model'] ?? null, 'tts_voice' => $h['tts_voice'] ?? null,
+        'error' => is_array($h) ? null : 'سرویس صدا روی ' . $url . ' جواب نمی‌دهد', 'at' => time()];
+    ba_kv_set('voice:status', $st);
+    return $st;
+}
+
+/** POST to the local service. Returns [http code, body, content type]. */
+function ba_voice_post($path, $body, $content_type, $timeout) {
+    $ch = ba_curl(ba_voice_url() . $path, [
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => [
-            'file' => new CURLFile($path, $mime ?: 'audio/mp4', $name ?: 'voice.m4a'),
-            'model' => $cfg['stt_model'] ?? 'whisper-1',
-            'language' => 'fa',
-        ],
-        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . ($cfg['stt_key'] ?? '')],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 60,
+        CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: ' . $content_type, 'X-Voice-Token: ' . (ba_config()['voice_token'] ?? '')],
+        CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_TIMEOUT => $timeout,
     ]);
     $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $type = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
     curl_close($ch);
-    $data = json_decode((string)$resp, true);
+    if ($resp === false || $code === 0) {
+        ba_kv_set('voice:status', null);
+        throw new RuntimeException('سرویس صدای سرور در دسترس نیست (systemctl status bank-voice)');
+    }
+    return [$code, (string)$resp, $type];
+}
+
+/** Runs the CLI fallback. Returns [exit code, stdout, stderr]. */
+function ba_voice_run(array $args, $stdin, $timeout) {
+    if (!function_exists('proc_open')) {
+        throw new RuntimeException('proc_open روی این PHP غیرفعال است؛ از voice_url استفاده کن');
+    }
+    $p = proc_open(array_merge(ba_voice_cli(), $args), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($p)) {
+        throw new RuntimeException('اجرای voice_cli نشد');
+    }
+    fwrite($pipes[0], (string)$stdin);
+    fclose($pipes[0]);
+    stream_set_blocking($pipes[1], false);
+    stream_set_blocking($pipes[2], false);
+    $out = $err = '';
+    $end = microtime(true) + $timeout;
+    while (true) {
+        $out .= stream_get_contents($pipes[1]);
+        $err .= stream_get_contents($pipes[2]);
+        $st = proc_get_status($p);
+        if (!$st['running']) {
+            $out .= stream_get_contents($pipes[1]);
+            break;
+        }
+        if (microtime(true) > $end) {
+            proc_terminate($p, 9);
+            throw new RuntimeException('تبدیل صدا بیش از حد طول کشید');
+        }
+        usleep(50000);
+    }
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($p);
+    return [$st['exitcode'], $out, $err];
+}
+
+/**
+ * Persian speech to text, on this server. $path is any audio file
+ * (Bale OGG/Opus voice, iPhone m4a, Chrome webm). Returns the text, or throws.
+ */
+function ba_transcribe($path, $mime = null, $name = null) {
+    if (!ba_voice_configured()) {
+        throw new RuntimeException('تبدیل صدا به متن روی سرور نصب نشده (voice/install.sh)');
+    }
+    $timeout = (int)(ba_config()['voice_timeout'] ?? 120);
+    if (filesize($path) > 25 * 1024 * 1024) {
+        throw new RuntimeException('فایل صدا خیلی بزرگ است');
+    }
+    if (ba_voice_url()) {
+        [$code, $resp] = ba_voice_post('/stt?lang=fa', file_get_contents($path), 'application/octet-stream', $timeout);
+    } else {
+        [$code, $resp] = ba_voice_run(['stt', $path, '--lang', 'fa'], '', $timeout);
+        $code = $code === 0 ? 200 : 500;
+    }
+    $data = json_decode($resp, true);
     if ($code !== 200 || !isset($data['text'])) {
-        throw new RuntimeException('سرویس تبدیل صدا جواب نداد (' . $code . ')');
+        throw new RuntimeException('تبدیل صدا به متن نشد' . (isset($data['error']) ? ' (' . $data['error'] . ')' : ''));
     }
     return trim($data['text']);
 }
 
 /**
- * Persian text to speech through any OpenAI-compatible /audio/speech
- * endpoint (config tts_url). Files are cached, so the fixed phrases
- * ("ثبت شد", "بابت چی بود؟") are generated only once. Returns the mp3 path.
+ * Persian text to speech, on this server. $format: 'ogg' (OGG/Opus, what Bale
+ * voice notes need), 'mp3' (the app) or 'wav'. Files are cached in data/tts,
+ * so fixed phrases ("ثبت شد") are made only once. Returns the file path.
  */
-function ba_tts($text) {
-    $cfg = ba_config();
-    if (empty($cfg['tts_url'])) {
-        throw new RuntimeException('صدای سرور (tts_url) تنظیم نشده');
+function ba_tts($text, $format = 'mp3') {
+    if (!ba_voice_configured()) {
+        throw new RuntimeException('صدای سرور نصب نشده (voice/install.sh)');
+    }
+    $format = in_array($format, ['ogg', 'mp3', 'wav'], true) ? $format : 'mp3';
+    $speech = ba_speech_text($text);
+    if ($speech === '') {
+        throw new RuntimeException('متنی برای خواندن نیست');
     }
     $dir = BA_ROOT . '/data/tts';
     if (!is_dir($dir)) {
         mkdir($dir, 0775, true);
     }
-    $model = $cfg['tts_model'] ?? 'tts-1';
-    $voice = $cfg['tts_voice'] ?? 'alloy';
-    $file = $dir . '/' . sha1($model . '|' . $voice . '|' . $text) . '.mp3';
+    // After changing the Piper voice, empty data/tts so old recordings aren't reused.
+    $file = $dir . '/' . sha1($format . '|' . $speech) . '.' . $format;
     if (is_file($file) && filesize($file) > 0) {
+        @touch($file);
         return $file;
     }
-    $ch = ba_curl($cfg['tts_url'], [
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'voice' => $voice, 'input' => $text, 'response_format' => 'mp3'], JSON_UNESCAPED_UNICODE),
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . ($cfg['tts_key'] ?? '')],
-        CURLOPT_TIMEOUT => 30,
-    ]);
-    $audio = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code !== 200 || !$audio) {
-        throw new RuntimeException('سرویس صدا جواب نداد (' . $code . ')');
+    $timeout = (int)(ba_config()['voice_timeout'] ?? 120);
+    $tmp = $file . '.' . getmypid() . '.part';
+    if (ba_voice_url()) {
+        [$code, $audio, $type] = ba_voice_post('/tts', json_encode(['text' => $speech, 'format' => $format], JSON_UNESCAPED_UNICODE),
+            'application/json', $timeout);
+        if ($code !== 200 || $audio === '' || strpos($type, 'audio/') !== 0) {
+            $err = json_decode($audio, true)['error'] ?? $code;
+            throw new RuntimeException('ساخت صدا نشد (' . $err . ')');
+        }
+        file_put_contents($tmp, $audio);
+    } else {
+        [$code, , $err] = ba_voice_run(['tts', '--format', $format, '--out', $tmp], $speech, $timeout);
+        if ($code !== 0 || !is_file($tmp) || !filesize($tmp)) {
+            @unlink($tmp);
+            throw new RuntimeException('ساخت صدا نشد (' . trim(substr($err, -200)) . ')');
+        }
     }
-    file_put_contents($file, $audio);
+    rename($tmp, $file);
     return $file;
+}
+
+/** Deletes spoken files not used for $days days (run from the daily job). */
+function ba_tts_cleanup($days = 30) {
+    foreach (glob(BA_ROOT . '/data/tts/*') ?: [] as $f) {
+        if (is_file($f) && filemtime($f) < time() - $days * 86400) {
+            @unlink($f);
+        }
+    }
+}
+
+/* -------- making chat text speakable for the Persian voice -------- */
+
+/** 2500000 -> "دو میلیون و پانصد هزار" */
+function ba_num_words($n) {
+    $n = (int)$n;
+    if ($n === 0) {
+        return 'صفر';
+    }
+    if ($n < 0) {
+        return 'منفی ' . ba_num_words(-$n);
+    }
+    static $ones = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه', 'ده', 'یازده', 'دوازده', 'سیزده',
+        'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
+    static $tens = ['', '', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
+    static $hundreds = ['', 'صد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
+    static $scales = ['', 'هزار', 'میلیون', 'میلیارد', 'هزار میلیارد'];
+    $below1000 = function ($x) use ($ones, $tens, $hundreds) {
+        $w = [];
+        if ($x >= 100) {
+            $w[] = $hundreds[intdiv($x, 100)];
+            $x %= 100;
+        }
+        if ($x >= 20) {
+            $w[] = $tens[intdiv($x, 10)];
+            $x %= 10;
+        }
+        if ($x > 0) {
+            $w[] = $ones[$x];
+        }
+        return implode(' و ', $w);
+    };
+    $parts = [];
+    for ($i = 0; $n > 0 && $i < count($scales); $i++, $n = intdiv($n, 1000)) {
+        $chunk = $n % 1000;
+        if ($chunk === 0) {
+            continue;
+        }
+        // "هزار", not "یک هزار"
+        $parts[] = ($i === 1 && $chunk === 1) ? 'هزار' : trim($below1000($chunk) . ' ' . $scales[$i]);
+    }
+    return implode(' و ', array_reverse($parts));
+}
+
+/**
+ * Chat text -> what the voice should say: no emoji or commands, amounts,
+ * Jalali dates and times as Persian words (Piper's phonemizer would read
+ * "4,000,000" digit by digit).
+ */
+function ba_speech_text($text) {
+    static $months = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    $s = ba_normalize((string)$text, true);                                   // Persian/Arabic digits -> ASCII
+    $s = preg_replace('~https?://\S+~u', ' ', $s);
+    $s = preg_replace('~(^|\s)/[a-z_]+\b~u', ' ', $s);                        // /pending, /p ...
+    $s = preg_replace('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}\x{20E3}\x{2190}-\x{21FF}\x{2500}-\x{257F}]/u', ' ', $s);
+    // 1405/07/06 -> شش مهر هزار و چهارصد و پنج
+    $s = preg_replace_callback('~\b(1[34]\d\d)/(\d{1,2})/(\d{1,2})\b~', function ($m) use ($months) {
+        $mo = (int)$m[2];
+        return $mo >= 1 && $mo <= 12 ? ba_num_words($m[3]) . ' ' . $months[$mo] . ' ' . ba_num_words($m[1]) : $m[0];
+    }, $s);
+    // 18:40 -> ساعت هجده و چهل دقیقه
+    $s = preg_replace_callback('~(ساعت\s*)?\b([01]?\d|2[0-3]):([0-5]\d)\b~u', function ($m) {
+        return 'ساعت ' . ba_num_words($m[2]) . ((int)$m[3] ? ' و ' . ba_num_words($m[3]) . ' دقیقه' : '');
+    }, $s);
+    // amounts and other numbers; very long digit runs (account numbers) are skipped
+    $s = preg_replace_callback('~\d{1,3}(?:,\d{3})+|\d+~', function ($m) {
+        $digits = str_replace(',', '', $m[0]);
+        return strlen($digits) > 15 ? ' ' : ba_num_words($digits);
+    }, $s);
+    $s = str_replace(['·', '—', '–', '•', '|', '«', '»', '"', '(', ')', ':'], ['،', '،', '،', '،', '،', '', '', '', '، ', '، ', '،'], $s);
+    $s = preg_replace("/\s*\n+\s*/u", '. ', $s);
+    $s = preg_replace('/([.،؟!?])(\s*[.،])+/u', '$1', $s);
+    $s = preg_replace('/^[\s.،]+|[\s.،]+$/u', '', preg_replace('/\s+/u', ' ', $s));   // trim() is byte-based
+    return mb_substr($s, 0, 1200);
+}
+
+/** Uploads a file to a Bale method (sendVoice, sendAudio...) as multipart. */
+function ba_bale_upload($method, array $params, $field, $path, $mime, $filename, $timeout = 60) {
+    if (!ba_bale_enabled()) {
+        return null;
+    }
+    $cfg = ba_config();
+    $base = rtrim($cfg['bale_api_base'] ?? 'https://tapi.bale.ai', '/');
+    foreach ($params as $k => $v) {
+        if (is_array($v)) {
+            $params[$k] = json_encode($v, JSON_UNESCAPED_UNICODE);
+        }
+    }
+    $params[$field] = new CURLFile($path, $mime, $filename);
+    $ch = ba_curl($base . '/bot' . $cfg['bale_bot_token'] . '/' . $method, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $params,
+        CURLOPT_TIMEOUT => $timeout,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    $data = json_decode((string)$resp, true);
+    return !empty($data['ok']) ? ($data['result'] ?? true) : null;
+}
+
+/** Speaks $text into the owner's Bale chat as a voice message. */
+function ba_send_voice($text, $reply_to = null) {
+    $chat = ba_config()['bale_chat_id'] ?? '';
+    if ($chat === '' || !ba_bale_enabled()) {
+        return null;
+    }
+    $file = ba_tts($text, 'ogg');
+    $params = ['chat_id' => $chat];
+    if ($reply_to) {
+        $params['reply_to_message_id'] = (int)$reply_to;
+    }
+    return ba_bale_upload('sendVoice', $params, 'voice', $file, 'audio/ogg', 'answer.ogg');
+}
+
+/*
+ * While the bot answers a voice message, everything it writes is also
+ * collected here and then spoken back as one voice message (bot.php):
+ *   ba_voice_capture('start') ... ba_voice_capture('add', $text) ... ba_voice_capture('stop') -> [texts]
+ * 'add' does nothing when no capture is running.
+ */
+function ba_voice_capture($action, $text = null) {
+    static $buf = null;
+    switch ($action) {
+        case 'start':
+            $buf = [];
+            return null;
+        case 'add':
+            if ($buf !== null && trim((string)$text) !== '') {
+                $buf[] = (string)$text;
+            }
+            return null;
+        case 'stop':
+            $out = $buf ?? [];
+            $buf = null;
+            return $out;
+    }
+    return $buf !== null;
 }
 
 /* ------------------------------------------------------------------ */

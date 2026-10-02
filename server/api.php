@@ -188,13 +188,32 @@ if ($route === 'bale') {
         fail('forbidden', 403);
     }
     $update = json_decode(file_get_contents('php://input'), true);
-    if (is_array($update)) {
+    if (!is_array($update)) {
+        out(['ok' => true]);
+    }
+    // Bale re-sends an update it thinks timed out; handle each one only once.
+    if (isset($update['update_id'])) {
+        $seen = (array)ba_kv_get('bale:seen', []);
+        if (in_array((int)$update['update_id'], $seen, true)) {
+            out(['ok' => true, 'duplicate' => true]);
+        }
+        ba_kv_set('bale:seen', array_slice(array_merge($seen, [(int)$update['update_id']]), -100));
+    }
+    $handle = function () use ($update) {
         try {
             bot_handle_update($update);
         } catch (Throwable $e) {
             error_log('bale webhook: ' . $e->getMessage());
         }
+    };
+    $msg = $update['message'] ?? [];
+    if (isset($msg['voice']) || isset($msg['audio'])) {
+        // Local speech-to-text and the spoken answer take a few seconds on a
+        // CPU: tell Bale "received" first, then work.
+        @set_time_limit(300);
+        out_then(['ok' => true], $handle);
     }
+    $handle();
     out(['ok' => true]);
 }
 
@@ -243,7 +262,8 @@ case 'settings':
         'chat_id' => (string)($cfg['bale_chat_id'] ?? ''), 'webhook' => is_array($info) ? ($info['url'] ?? '') !== '' : null,
         'webhook_error' => is_array($info) ? ($info['last_error_message'] ?? null) : null,
         'waiting_for_start' => (int)ba_kv_get('bale_claim_until', 0) > time(),
-        'otp_to_bale' => !empty($cfg['otp_to_bale'])]);
+        'otp_to_bale' => !empty($cfg['otp_to_bale']), 'voice' => ba_voice_status(true),
+        'voice_reply' => (bool)($cfg['bale_voice_reply'] ?? true)]);
 
 case 'bale_connect':
     // Save the bot token (checked with getMe), point the bot's webhook at this
@@ -419,10 +439,11 @@ case 'report':
     out(['ok' => true, 'pl' => ba_profit_loss($from, $to), 'wallets' => ba_wallets(), 'people' => ba_people_totals()]);
 
 case 'me':
-    out(['ok' => true, 'stt' => !empty($cfg['stt_url']), 'accounting_webhook' => !empty($cfg['accounting_webhook']),
+    $voice = ba_voice_status();
+    out(['ok' => true, 'stt' => $voice['stt'], 'accounting_webhook' => !empty($cfg['accounting_webhook']),
         'bale' => ba_bale_enabled() && !empty($cfg['bale_chat_id']), 'device' => ba_kv_get('device'),
         'otp_ready' => strlen((string)($cfg['otp_pin'] ?? '')) >= 4, 'wallets' => ba_wallets(),
-        'tts' => !empty($cfg['tts_url']), 'push_subs' => (int)$db->query('SELECT COUNT(*) FROM push_subs')->fetchColumn()]);
+        'tts' => $voice['tts'], 'push_subs' => (int)$db->query('SELECT COUNT(*) FROM push_subs')->fetchColumn()]);
 
 case 'push_key':
     out(['ok' => true, 'key' => wp_vapid()['public']]);
@@ -453,16 +474,16 @@ case 'push_test':
     out(['ok' => true, 'sent' => $n]);
 
 case 'tts':
-    // Persian speech from the server for phones without a Persian voice (iPhone).
+    // Persian speech made on this server (local Piper) for phones without a Persian voice (iPhone).
     require_post();
     $text = trim((string)($in['text'] ?? ''));
     if ($text === '' || mb_strlen($text) > 400) {
         fail('متن نامعتبر');
     }
     try {
-        $file = ba_tts($text);
+        $file = ba_tts($text, 'mp3');
     } catch (RuntimeException $e) {
-        fail($e->getMessage(), empty($cfg['tts_url']) ? 501 : 502);
+        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
     }
     header('Content-Type: audio/mpeg');
     header('Cache-Control: private, max-age=86400');
@@ -627,8 +648,8 @@ case 'reconciliations':
     out(['ok' => true, 'items' => $rows]);
 
 case 'transcribe':
-    // Optional server-side speech-to-text for phones whose browser can't
-    // recognise Persian (iPhone). Any OpenAI-compatible /audio/transcriptions endpoint.
+    // Speech-to-text on this server (local faster-whisper) for phones whose
+    // browser can't recognise Persian (iPhone). Nothing is sent to the internet.
     require_post();
     if (!isset($_FILES['audio']) || !is_uploaded_file($_FILES['audio']['tmp_name'])) {
         fail('فایل صدا نرسید');
@@ -636,7 +657,7 @@ case 'transcribe':
     try {
         $text = ba_transcribe($_FILES['audio']['tmp_name'], $_FILES['audio']['type'], $_FILES['audio']['name']);
     } catch (RuntimeException $e) {
-        fail($e->getMessage(), empty($cfg['stt_url']) ? 501 : 502);
+        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
     }
     out(['ok' => true, 'text' => $text]);
 

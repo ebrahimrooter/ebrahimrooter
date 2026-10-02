@@ -12,16 +12,25 @@ $work = $tmp . '/server';
 copy(__DIR__ . '/../lib.php', $work . '/lib.php');
 copy(__DIR__ . '/../bot.php', $work . '/bot.php');
 
-// Local stand-in for the Bale bot API and the speech-to-text service.
+// Local stand-in for the Bale bot API and the local voice service (voice/voice_service.py).
 $port = 18000 + getmypid() % 1000;
 $log = $tmp . '/bale.log';
 file_put_contents($tmp . '/mock.php', '<?php
 $uri = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
 $body = file_get_contents("php://input");
-file_put_contents(' . var_export($log, true) . ', json_encode(["uri" => $uri, "body" => json_decode($body, true)], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+$j = json_decode($body, true);
+if ($j === null && $_POST) {   // multipart upload (sendVoice)
+    $j = $_POST;
+    foreach ($_FILES as $k => $f) { $j[$k] = ["type" => $f["type"], "name" => $f["name"], "data" => file_get_contents($f["tmp_name"])]; }
+}
+if ($uri === "/stt") { $j = ["bytes" => strlen($body), "head" => substr($body, 0, 4)]; }
+file_put_contents(' . var_export($log, true) . ', json_encode(["uri" => $uri, "body" => $j], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
 header("Content-Type: application/json");
 if (strpos($uri, "/file/") !== false) { echo str_repeat("OggS", 1000); exit; }
-if ($uri === "/stt") { echo json_encode(["text" => "حقوق کارگر ها"], JSON_UNESCAPED_UNICODE); exit; }
+if (in_array($uri, ["/health", "/stt", "/tts"], true) && ($_SERVER["HTTP_X_VOICE_TOKEN"] ?? "") !== "vt") { http_response_code(401); echo "{}"; exit; }
+if ($uri === "/health") { echo json_encode(["ok" => true, "stt_ready" => true, "tts_ready" => true, "stt_model" => "large-v3-turbo", "tts_voice" => "fa_IR-gyro-medium"]); exit; }
+if ($uri === "/stt") { echo json_encode(["ok" => true, "text" => "حقوق کارگر ها"], JSON_UNESCAPED_UNICODE); exit; }
+if ($uri === "/tts") { header("Content-Type: " . ($j["format"] === "mp3" ? "audio/mpeg" : "audio/ogg")); echo "OggS" . $j["text"]; exit; }
 if (substr($uri, -8) === "/getFile") { echo json_encode(["ok" => true, "result" => ["file_path" => "voice/1.ogg"]]); exit; }
 static $n; $n = (int)@file_get_contents(__FILE__ . ".n") + 1; file_put_contents(__FILE__ . ".n", $n);
 echo json_encode(["ok" => true, "result" => ["message_id" => 1000 + $n]]);
@@ -30,7 +39,7 @@ $mock = proc_open(['php', '-S', "127.0.0.1:$port", $tmp . '/mock.php'], [1 => ['
 usleep(400000);
 
 file_put_contents($work . '/config.php', "<?php return ['app_token'=>'a','device_token'=>'d','allowed_senders'=>[],'timezone'=>'Asia/Tehran','otp_pin'=>'1234',
-    'bale_bot_token'=>'T','bale_chat_id'=>'42','bale_api_base'=>'http://127.0.0.1:$port','stt_url'=>'http://127.0.0.1:$port/stt','stt_key'=>'k'];");
+    'bale_bot_token'=>'T','bale_chat_id'=>'42','bale_api_base'=>'http://127.0.0.1:$port','voice_url'=>'http://127.0.0.1:$port','voice_token'=>'vt'];");
 require $work . '/lib.php';
 require $work . '/bot.php';
 ba_config();
@@ -175,7 +184,18 @@ bale_calls();
 bot_handle_update(['message' => ['chat' => ['id' => 42], 'voice' => ['file_id' => 'F1'], 'reply_to_message' => ['message_id' => $q2]]]);
 $c = bale_calls();
 $uris = array_map(fn($x) => basename($x['uri']), $c);
-check('voice downloaded + transcribed', [in_array('getFile', $uris, true), in_array('1.ogg', $uris, true)], [true, true]);
+check('voice downloaded + transcribed on this server', [in_array('getFile', $uris, true), in_array('1.ogg', $uris, true), in_array('stt', $uris, true)], [true, true, true]);
+$stt = array_values(array_filter($c, fn($x) => $x['uri'] === '/stt'))[0]['body'] ?? [];
+check('the Bale OGG itself went to local STT', [$stt['bytes'] ?? 0, $stt['head'] ?? ''], [4000, 'OggS']);
+$sv = array_values(array_filter($c, fn($x) => str_ends_with($x['uri'], '/sendVoice')));
+check('voice answered with one voice message', count($sv), 1);
+$spoken = substr($sv[0]['body']['voice']['data'] ?? '', 4);
+check('voice is OGG for Bale, replies to the voice', [substr($sv[0]['body']['voice']['data'] ?? '', 0, 4), $sv[0]['body']['voice']['type'] ?? '', (string)($sv[0]['body']['chat_id'] ?? '')],
+    ['OggS', 'audio/ogg', '42']);
+check('spoken answer = the draft, amount in words, no emoji, own words not echoed',
+    [str_contains($spoken, 'واریز نود هزار تومان'), str_contains($spoken, 'بابت، حقوق کارگر ها'), str_contains($spoken, 'درسته'),
+     (bool)preg_match('/[\x{1F300}-\x{1FAFF}]/u', $spoken), str_contains($spoken, '«')],
+    [true, true, true, false, false]);
 check('voice echoed', (bool)array_filter($c, fn($x) => str_contains($x['body']['text'] ?? '', '«حقوق کارگر ها»')), true);
 // t2 is a deposit, so the (out) category "حقوق" must not be picked
 $d2 = ba_kv_get('bot:draft:' . $t2['id']);
@@ -193,6 +213,37 @@ bot_handle_update(['message' => ['chat' => ['id' => 99], 'text' => '/start']]);
 $c = bale_calls();
 check('stranger /start gets own chat id', [(string)($c[0]['body']['chat_id'] ?? ''), str_contains($c[0]['body']['text'] ?? '', '99')], ['99', true]);
 check('stranger changed nothing', ba_get_transaction($t2['id'])['status'], 'pending');
+
+echo "Local voice\n";
+check('number words', [ba_num_words(2500000), ba_num_words(1000), ba_num_words(1405), ba_num_words(90000), ba_num_words(17)],
+    ['دو میلیون و پانصد هزار', 'هزار', 'هزار و چهارصد و پنج', 'نود هزار', 'هفده']);
+check('speech text', ba_speech_text("🔴 برداشت ۲,۵۰۰,۰۰۰ تومان\n🕓 1405/07/06 18:40\nبابت چی بود؟ /pending"),
+    'برداشت دو میلیون و پانصد هزار تومان. شش مهر هزار و چهارصد و پنج ساعت هجده و چهل دقیقه. بابت چی بود؟');
+check('time on the hour', ba_speech_text('ساعت 12:00'), 'ساعت دوازده');
+check('account numbers are not read out', ba_speech_text('حساب 1234567890123456789'), 'حساب');
+bale_calls();
+$f1 = ba_tts('ثبت شد.', 'mp3');
+$f2 = ba_tts('ثبت شد.', 'mp3');
+check('TTS cached: one call for a repeated phrase', [$f1 === $f2, count(array_filter(bale_calls(), fn($x) => $x['uri'] === '/tts'))], [true, 1]);
+check('status from /health', [ba_voice_status(true)['stt'], ba_voice_status()['tts_voice']], [true, 'fa_IR-gyro-medium']);
+// Audio must never leave the server: a non-local voice_url is refused.
+$cfgBak = file_get_contents($work . '/config.php');
+file_put_contents($work . '/config.php', str_replace("'voice_url'=>'http://127.0.0.1:$port'", "'voice_url'=>'https://api.example.com'", $cfgBak));
+ba_config(true);
+try { ba_transcribe(__FILE__); $refused = false; } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'همین سرور'); }
+check('non-local voice_url refused', [$refused, ba_voice_status(true)['stt']], [true, false]);
+// CLI mode (no daemon): voice_cli is run per request.
+$fake = $tmp . '/fake_voice.php';
+file_put_contents($fake, '<?php $a = $argv; if ($a[1] === "stt") { echo json_encode(["ok" => true, "text" => "cli:" . filesize($a[2])]); exit(0); }
+$out = $a[array_search("--out", $a) + 1]; file_put_contents($out, "OggS" . stream_get_contents(STDIN)); exit(0);');
+file_put_contents($work . '/config.php', str_replace("'voice_url'=>'http://127.0.0.1:$port'", "'voice_url'=>'','voice_cli'=>'php $fake'", $cfgBak));
+ba_config(true);
+$wav = $tmp . '/a.ogg';
+file_put_contents($wav, 'OggS12345');
+check('CLI mode STT', ba_transcribe($wav), 'cli:9');
+check('CLI mode TTS', file_get_contents(ba_tts('سلام ۵ تومان', 'ogg')), 'OggSسلام پنج تومان');
+file_put_contents($work . '/config.php', $cfgBak);
+ba_config(true);
 
 echo "OTP\n";
 $db = ba_db();
@@ -331,6 +382,7 @@ bot_handle_update(['callback_query' => ['id' => 'r5', 'data' => 'relay:ans', 'me
 check('stranger cannot book', $count(), $n1);
 
 proc_terminate($mock);
-array_map('unlink', glob($work . '/data/*') ?: []);
+array_map('unlink', array_merge(glob($work . '/data/tts/*') ?: [], array_filter(glob($work . '/data/*') ?: [], 'is_file')));
+@rmdir($work . '/data/tts');
 echo $fails ? "\n$fails FAILED\n" : "\nall passed\n";
 exit($fails ? 1 : 0);

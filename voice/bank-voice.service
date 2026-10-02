@@ -1,0 +1,27 @@
+# systemd unit for the local voice service. install.sh copies it to
+# /etc/systemd/system/bank-voice.service with the right paths.
+[Unit]
+Description=Bank assistant local Persian STT/TTS (faster-whisper + Piper)
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+EnvironmentFile=__DIR__/voice.env
+Environment=HF_HUB_OFFLINE=1
+ExecStart=__DIR__/venv/bin/python __DIR__/voice_service.py serve
+Restart=on-failure
+RestartSec=5
+# Hardening: the service needs no network beyond loopback and no writes outside its folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=__DIR__
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

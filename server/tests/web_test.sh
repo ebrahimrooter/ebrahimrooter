@@ -44,6 +44,11 @@ S=$(curl -s -H "$H" -H "$A" "$U/api.php?r=settings")
 check "first /start after connect claims the bot" "$(printf '%s' "$S" | grep -c '"chat_id":"555"')" "1"
 curl -s -H 'Content-Type: application/json' -d '{"message":{"chat":{"id":666},"text":"/start"}}' "$U/api.php?r=bale&key=$KEY" >/dev/null
 check "a later stranger cannot take it over" "$(curl -s -H "$H" -H "$A" "$U/api.php?r=settings" | grep -c '"chat_id":"555"')" "1"
+V='{"update_id":77,"message":{"message_id":9,"chat":{"id":555},"voice":{"file_id":"F"}}}'
+check "voice update: Bale gets its answer at once" "$(curl -s -H 'Content-Type: application/json' -d "$V" "$U/api.php?r=bale&key=$KEY")" '{"ok":true}'
+for i in 1 2 3 4 5 6; do grep -q 'install.sh' "$T/bale.log" 2>/dev/null && break; sleep 0.5; done
+check "...then says local voice isn't installed yet" "$(grep sendMessage "$T/bale.log" | grep -c 'install.sh')" "1"
+check "Bale retry of the same update is dropped" "$(curl -s -H 'Content-Type: application/json' -d "$V" "$U/api.php?r=bale&key=$KEY" | grep -c duplicate)" "1"
 check "wrong webhook key refused" "$(curl -s -o /dev/null -w '%{http_code}' -d '{}' "$U/api.php?r=bale&key=wrong")" "403"
 
 echo "ESP32 path"

@@ -98,6 +98,7 @@ function bot_show_draft($tx, array $draft, $edit_message_id = null) {
         [['text' => '👤 بدون طرف حساب', 'callback_data' => 'np:' . $tx['id']], ['text' => '🚫 نادیده', 'callback_data' => 'ign:' . $tx['id']]],
     ];
     if ($edit_message_id) {
+        ba_voice_capture('add', $text);
         return ba_bale('editMessageText', ['chat_id' => ba_config()['bale_chat_id'], 'message_id' => $edit_message_id,
             'text' => $text, 'reply_markup' => ['inline_keyboard' => $kb]]);
     }
@@ -109,6 +110,7 @@ function bot_show_draft($tx, array $draft, $edit_message_id = null) {
 function bot_finish($tx_id, $message_id, $text) {
     ba_kv_set('bot:draft:' . $tx_id, null);
     if ($message_id) {
+        ba_voice_capture('add', $text);
         ba_bale('editMessageText', ['chat_id' => ba_config()['bale_chat_id'], 'message_id' => $message_id, 'text' => $text]);
     } else {
         ba_notify($text);
@@ -328,8 +330,11 @@ function bot_relay_tx(array $msg) {
     return $tx;
 }
 
-/** Downloads a voice message from Bale and transcribes it. */
+/** Downloads a voice message from Bale and transcribes it on this server. */
 function bot_voice_to_text($file_id) {
+    if (!ba_voice_configured()) {
+        throw new RuntimeException('تبدیل صدا به متن روی سرور هنوز نصب نشده (voice/install.sh)');
+    }
     $file = ba_bale('getFile', ['file_id' => $file_id]);
     if (!is_array($file) || empty($file['file_path'])) {
         throw new RuntimeException('دانلود ویس از بله نشد');
@@ -345,9 +350,32 @@ function bot_voice_to_text($file_id) {
     $tmp = tempnam(sys_get_temp_dir(), 'bav');
     file_put_contents($tmp, $audio);
     try {
-        return ba_transcribe($tmp, 'audio/ogg', 'voice.ogg');
+        return ba_transcribe($tmp, 'audio/ogg', 'voice.ogg');   // local faster-whisper
     } finally {
         @unlink($tmp);
+    }
+}
+
+/** Answer voice with voice? config bale_voice_reply (default on) and local TTS present. */
+function bot_voice_reply_on() {
+    return (ba_config()['bale_voice_reply'] ?? true) && ba_voice_configured();
+}
+
+/**
+ * Speaks what the bot just wrote as one voice message (local Piper TTS).
+ * The text messages with their buttons were already sent, so a failure here
+ * loses nothing: it is only logged.
+ */
+function bot_speak(array $texts, $reply_to = null) {
+    $text = trim(implode("\n", $texts));
+    if ($text === '') {
+        return null;
+    }
+    try {
+        return ba_send_voice($text, $reply_to);
+    } catch (Throwable $e) {
+        error_log('voice reply: ' . $e->getMessage());
+        return null;
     }
 }
 
@@ -520,6 +548,17 @@ function bot_handle_update(array $u) {
             return;
         }
         ba_notify('🎙 «' . $text . '»');
+        if (bot_voice_reply_on()) {
+            // Spoken question -> spoken answer: whatever the bot writes now is also said.
+            ba_voice_capture('start');
+            try {
+                bot_handle_answer($text, $m['reply_to_message']['message_id'] ?? null);
+            } finally {
+                $said = ba_voice_capture('stop');
+            }
+            bot_speak($said, $m['message_id'] ?? null);
+            return;
+        }
     }
     if ($text === '') {
         return;

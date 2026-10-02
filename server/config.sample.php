@@ -41,16 +41,18 @@ return [
     // so it can be written into your accounting program automatically.
     'accounting_webhook' => '',
 
-    // Optional: server-side Persian speech-to-text for iPhone
-    // (any OpenAI-compatible /v1/audio/transcriptions endpoint).
-    'stt_url' => '',
-    'stt_key' => '',
-    'stt_model' => 'whisper-1',
-
-    // Optional: Persian voice for the orb on iPhone (iOS has no Persian
-    // voice). Any OpenAI-compatible /v1/audio/speech endpoint.
-    'tts_url' => '',
-    'tts_key' => '',
-    'tts_model' => 'tts-1',
-    'tts_voice' => 'alloy',
+    // Persian voice, entirely on this server (no cloud, no API key):
+    // speech-to-text with faster-whisper and text-to-speech with Piper.
+    // Install once with:  sudo voice/install.sh --php-config /path/to/config.php
+    // (it fills in the three lines below). See voice/README.md.
+    //   voice_url: the local voice service; must be 127.0.0.1 / localhost.
+    //   voice_cli: instead of the service, run the engine per request, e.g.
+    //              '/opt/bank-voice/venv/bin/python /opt/bank-voice/voice_service.py'
+    //              (no daemon, but every voice loads the model again: slow).
+    'voice_url' => '',
+    'voice_token' => '',
+    'voice_cli' => '',
+    'voice_timeout' => 120,
+    // Answer a Bale voice message with a voice message too (plus the usual text).
+    'bale_voice_reply' => true,
 ];

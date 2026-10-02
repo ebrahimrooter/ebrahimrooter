@@ -144,7 +144,7 @@
       } catch (e) { /* no audio */ }
     },
 
-    /** Persian speech generated on the server (config tts_url), played through the unlocked element. */
+    /** Persian speech generated on the server (local Piper voice), played through the unlocked element. */
     speakServer: function (text) {
       return fetch(API + '?r=tts', { method: 'POST', headers: { 'X-App-Token': token(), 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text }) })
         .then(function (res) { if (!res.ok) throw new Error('tts ' + res.status); return res.blob(); })
@@ -1138,9 +1138,9 @@
         n === 'denied' ? 'Settings گوشی ← Notifications ← دستیار بانک' : '') +
       row('🎙', 'میکروفون', Perm.mic(), '<button class="btn" type="button" id="pMic">اجازه بده</button>') +
       row('🗣', 'صدای فارسی دستیار', me.tts || hasPersianVoice, '<span class="muted">زنگ + متن</span>',
-        me.tts ? 'از سرور' : hasPersianVoice ? 'صدای خود گوشی' : 'گوشی صدای فارسی ندارد؛ برای حرف زدن orb، tts_url را در config.php بگذار') +
+        me.tts ? 'از سرور' : hasPersianVoice ? 'صدای خود گوشی' : 'گوشی صدای فارسی ندارد؛ برای حرف زدن orb، صدای محلی سرور را نصب کن (voice/install.sh)') +
       row('👂', 'فهمیدن حرف تو', me.stt || (Voice.SR && !Voice.isIOS), '<span class="muted">تایپ</span>',
-        me.stt ? 'از سرور' : Voice.SR && !Voice.isIOS ? 'خود مرورگر' : 'برای آیفون stt_url را در config.php بگذار؛ تا آن موقع فرم باز می‌شود') +
+        me.stt ? 'از سرور' : Voice.SR && !Voice.isIOS ? 'خود مرورگر' : 'برای آیفون، تبدیل صدای محلی سرور را نصب کن (voice/install.sh)؛ تا آن موقع فرم باز می‌شود') +
       (n === 'granted' && store('ba_push_ok') === '1' ? '<div class="btns"><button class="btn ghost" type="button" id="pTest">نوتیف آزمایشی</button></div>' : '');
     var bind = function (id, fn) {
       var b = document.getElementById(id);
