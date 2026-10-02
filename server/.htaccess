@@ -1,0 +1,9 @@
+DirectoryIndex app/index.html
+
+# Only the API and the app are reachable from the web.
+<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup)\.php$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "\.(sqlite|db)$">
+  Require all denied
+</FilesMatch>

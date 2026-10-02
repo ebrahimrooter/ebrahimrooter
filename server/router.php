@@ -1,0 +1,37 @@
+<?php
+/**
+ * Router for PHP's built-in web server (running on your own computer):
+ *   php -S 0.0.0.0:8080 -t server server/router.php
+ * The built-in server ignores .htaccess, so this is what keeps the
+ * database, config.php and the PHP internals unreachable from the network.
+ * Only api.php and the app/ folder are served.
+ */
+
+$path = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
+
+if ($path === '/' || $path === '/app') {
+    header('Location: /app/');
+    exit;
+}
+if ($path === '/api.php') {
+    require __DIR__ . '/api.php';
+    return true;
+}
+if (strpos($path, '/app/') === 0 && strpos($path, '..') === false) {
+    if ($path === '/app/') {
+        header('Content-Type: text/html; charset=utf-8');
+        readfile(__DIR__ . '/app/index.html');
+        return true;
+    }
+    if (is_file(__DIR__ . $path)) {
+        if (substr($path, -12) === '.webmanifest') {
+            header('Content-Type: application/manifest+json');
+            readfile(__DIR__ . $path);
+            return true;
+        }
+        return false;   // let the built-in server send the static file
+    }
+}
+http_response_code(404);
+echo 'Not found';
+return true;
