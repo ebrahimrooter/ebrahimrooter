@@ -4,3 +4,4 @@ voice/venv/
 voice/models/
 voice/voice.env
 __pycache__/
+dist/
