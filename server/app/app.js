@@ -1198,13 +1198,15 @@
     if (!box) return;
     api('settings').then(function (st) {
       var https = location.protocol === 'https:';
+      var canConnect = https || st.polling;   // no https: the server's background service polls Bale
       var lines = [];
       if (st.bot) lines.push('🤖 ربات: <b class="num">@' + esc(st.bot) + '</b>');
+      if (st.has_token && !https && st.polling) lines.push('🔗 اتصال به این سرور: ✅ <span class="muted">(بدون دامنه، سرویس پس‌زمینه پیام‌ها را می‌گیرد)</span>');
       if (st.has_token && https) lines.push(st.webhook ? '🔗 اتصال به این سرور: ✅' : '🔗 اتصال به این سرور: ❌' + (st.webhook_error ? ' <span class="muted">(' + esc(st.webhook_error) + ')</span>' : ''));
       if (st.chat_id) lines.push('💬 چت تو: ✅ وصل');
       else if (st.waiting_for_start) lines.push('<b class="warn">⏳ حالا در بله به ' + (st.bot ? '<span class="num">@' + esc(st.bot) + '</span>' : 'ربات') + ' پیام <span class="num">/start</span> بفرست…</b>');
       box.innerHTML = (lines.length ? '<p>' + lines.join('<br>') + '</p>' : '') +
-        (!https ? '<p class="muted">روی کامپیوتر خودت (بدون https) توکن و شناسه‌ی چت را در <span class="num">config.php</span> بگذار؛ این بخش برای هاست است.</p>' :
+        (!canConnect ? '<p class="muted">روی کامپیوتر خودت (بدون https) توکن و شناسه‌ی چت را در <span class="num">config.php</span> بگذار؛ این بخش برای هاست است.</p>' :
           '<p class="muted">ربات را در بله با <span class="num">@botfather</span> بساز و توکنش را اینجا بگذار. توکن مثل رمز است؛ به کسی نده.</p>' +
           '<form id="bf"><input id="btok" type="password" autocomplete="off" placeholder="' + (st.has_token ? 'توکن ذخیره شده — برای عوض کردن، توکن جدید' : 'توکن ربات') + '">' +
           '<div class="btns"><button class="btn">' + (st.has_token ? 'اتصال دوباره' : 'اتصال') + '</button>' +

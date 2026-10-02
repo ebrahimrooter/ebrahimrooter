@@ -6,8 +6,10 @@
 #   sudo bash deploy-vps.sh --domain bank.example.ir
 #
 # Options:
-#   --domain NAME     domain already pointing at this server's IP (needed for
-#                     HTTPS, which the Bale bot requires)
+#   --domain NAME     domain already pointing at this server's IP: HTTPS, Bale
+#                     webhook, full phone app. Without it the app is on
+#                     http://IP/bank and the Bale bot runs as a background
+#                     service that fetches its messages (bank-bot.service).
 #   --email ADDR      for Let's Encrypt expiry notices (optional)
 #   --no-voice        skip the local STT/TTS (faster-whisper + Piper)
 #   --stt-model NAME  passed to voice/install.sh (default large-v3-turbo)
@@ -29,7 +31,7 @@ while [ $# -gt 0 ]; do
     --email) EMAIL="$2"; shift 2;;
     --no-voice) VOICE=0; shift;;
     --stt-model|--models-from|--tts-voice) VOICE_ARGS+=("$1" "$2"); shift 2;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0;;
     *) echo "unknown option: $1" >&2; exit 1;;
   esac
 done
@@ -82,8 +84,11 @@ if [ -n "$DOMAIN" ]; then
 else
   IP=$(curl -fsS -4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
   BASE="http://$IP/bank"
-  warn "no --domain: the app works on $BASE, but the Bale bot needs HTTPS (a domain)."
+  warn "no --domain: the Bale bot works through a background service (polling); the app opens on $BASE"
+  warn "(without HTTPS the phone app can't use the microphone or notifications - use voice in Bale)."
 fi
+
+case "$BASE" in https://*) MODE=webhook;; *) MODE=polling;; esac
 
 # --------------------------------------------------------------- config
 CFG="$WEB/config.php"
@@ -116,15 +121,48 @@ php -l "$CFG" >/dev/null
 # install.php is not needed: the config was made here
 rm -f "$WEB/install.php"
 
-# ----------------------------------------------------------------- cron
-say "Scheduled jobs (weekly report, daily reminder, device health)"
-cat > /etc/cron.d/bank-assistant <<EOF
+# ------------------------------------------- Bale bot + scheduled jobs
+if [ "$MODE" = webhook ]; then
+  # HTTPS: Bale calls the server (webhook); cron runs the scheduled jobs.
+  say "Scheduled jobs (weekly report, daily reminder, device health)"
+  cat > /etc/cron.d/bank-assistant <<EOF
 # Bank assistant (deploy-vps.sh)
 0 20 * * 5   www-data php $WEB/cron.php weekly >/dev/null 2>&1
 0 21 * * *   www-data php $WEB/cron.php remind >/dev/null 2>&1
 */15 * * * * www-data php $WEB/cron.php health >/dev/null 2>&1
 EOF
-chmod 0644 /etc/cron.d/bank-assistant
+  chmod 0644 /etc/cron.d/bank-assistant
+  if [ -f /etc/systemd/system/bank-bot.service ] && command -v systemctl >/dev/null; then
+    systemctl disable --now bank-bot >/dev/null 2>&1 || true
+  fi
+else
+  # No domain / HTTPS: a background service fetches the bot's messages from
+  # Bale itself (polling) and also runs the scheduled jobs, so no cron.
+  say "Background service bank-bot (Bale bot without a domain + scheduled jobs)"
+  rm -f /etc/cron.d/bank-assistant
+  cat > /etc/systemd/system/bank-bot.service <<EOF
+[Unit]
+Description=Bank assistant - Bale bot (polling) and scheduled jobs
+After=network-online.target bank-voice.service
+Wants=network-online.target
+
+[Service]
+User=www-data
+ExecStart=/usr/bin/php $WEB/cron.php daemon
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  if command -v systemctl >/dev/null && systemctl is-system-running >/dev/null 2>&1; then
+    systemctl daemon-reload
+    systemctl enable --now bank-bot >/dev/null
+    systemctl restart bank-bot
+  else
+    warn "systemd is not running here: start it by hand: sudo -u www-data php $WEB/cron.php daemon"
+  fi
+fi
 
 # ---------------------------------------------------------------- voice
 if [ "$VOICE" = 1 ]; then
@@ -152,4 +190,5 @@ echo "    SERVER_URL   = \"$BASE/api.php\""
 echo "    DEVICE_TOKEN = \"$DEV\""
 echo
 echo "  Next: open the app -> Settings -> Bale bot -> paste the bot token -> Connect,"
-echo "        then send /start to the bot in Bale."
+echo "        then within 10 minutes send /start to the bot in Bale."
+if [ "$MODE" = polling ]; then echo "  Bot mode: no domain (polling). Status: systemctl status bank-bot"; fi

@@ -52,15 +52,28 @@ function job_bale_setup() {
  *   php cron.php daemon
  */
 function job_daemon() {
-    $bale = ba_bale_enabled();
-    echo '[' . date('H:i:s') . '] daemon started' . ($bale ? ', Bale bot polling' : ' (Bale not configured)') . "\n";
-    if ($bale) {
-        ba_bale('deleteWebhook', []);   // polling and a webhook can't both be active
-    }
+    echo '[' . date('H:i:s') . "] daemon started\n";
+    $polling_token = null;   // bot this process is polling for
     while (true) {
         try {
+            // Re-read the settings: a bot token saved later in the app is picked up
+            // without a restart (a server without a domain/https works this way).
+            $cfg = ba_config(true);
+            ba_kv_set('daemon:alive', time());
             jobs_due();
-            if ($bale) {
+            $token = ba_bale_enabled() ? (string)$cfg['bale_bot_token'] : null;
+            if ($token !== $polling_token) {
+                if ($token) {
+                    ba_bale('deleteWebhook', []);   // polling and a webhook can't both be active
+                    if ($polling_token !== null || ba_kv_get('bale:offset_bot') !== sha1($token)) {
+                        ba_kv_set('bale:offset', 0);
+                        ba_kv_set('bale:offset_bot', sha1($token));
+                    }
+                }
+                echo '[' . date('H:i:s') . '] ' . ($token ? 'Bale bot polling' : 'Bale not configured') . "\n";
+                $polling_token = $token;
+            }
+            if ($token) {
                 $updates = ba_bale('getUpdates', ['offset' => (int)ba_kv_get('bale:offset', 0), 'timeout' => 25], 40);
                 foreach (is_array($updates) ? $updates : [] as $u) {
                     ba_kv_set('bale:offset', (int)$u['update_id'] + 1);

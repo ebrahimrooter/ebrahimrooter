@@ -51,6 +51,12 @@ check "...then says local voice isn't installed yet" "$(grep sendMessage "$T/bal
 check "Bale retry of the same update is dropped" "$(curl -s -H 'Content-Type: application/json' -d "$V" "$U/api.php?r=bale&key=$KEY" | grep -c duplicate)" "1"
 check "wrong webhook key refused" "$(curl -s -o /dev/null -w '%{http_code}' -d '{}' "$U/api.php?r=bale&key=wrong")" "403"
 
+echo "server without a domain (http): bot through the background service"
+check "http connect refused while no service runs" "$(curl -s -H "$A" -H 'Content-Type: application/json' -d '{}' "$U/api.php?r=bale_connect" | grep -c 'https')" "1"
+(cd "$T/s" && php -r 'require "lib.php"; ba_config(); ba_kv_set("daemon:alive", time());')
+check "http connect works in polling mode when it runs" "$(curl -s -H "$A" -H 'Content-Type: application/json' -d '{}' "$U/api.php?r=bale_connect" | grep -c '"mode":"polling"')" "1"
+check "settings report polling" "$(curl -s -H "$A" "$U/api.php?r=settings" | grep -c '"polling":true')" "1"
+
 echo "ESP32 path"
 SMS=$(php -r 'echo strtoupper(bin2hex(mb_convert_encoding("حساب1234567890\nواریز50,000\nمانده12,345,670\n05/07/10-00:40","UTF-16BE","UTF-8")));')
 check "SMS from the device is booked" "$(curl -s -H "X-Device-Token: $DEV" --data "text_hex=$SMS" "$U/api.php?r=ingest" | grep -c '"transaction_id":1')" "1"

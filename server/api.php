@@ -262,6 +262,7 @@ case 'settings':
         'chat_id' => (string)($cfg['bale_chat_id'] ?? ''), 'webhook' => is_array($info) ? ($info['url'] ?? '') !== '' : null,
         'webhook_error' => is_array($info) ? ($info['last_error_message'] ?? null) : null,
         'waiting_for_start' => (int)ba_kv_get('bale_claim_until', 0) > time(),
+        'polling' => (int)ba_kv_get('daemon:alive', 0) > time() - 120,   // background service fetches Bale messages
         'otp_to_bale' => !empty($cfg['otp_to_bale']), 'voice' => ba_voice_status(true),
         'voice_reply' => (bool)($cfg['bale_voice_reply'] ?? true)]);
 
@@ -291,11 +292,15 @@ case 'bale_connect':
     }
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
     $apiUrl = ($https ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/api.php';
-    if (!$https) {
-        fail('ربات بله فقط به آدرس https وصل می‌شود. در کنترل‌پنل هاست SSL را فعال کن و اپ را با https باز کن.');
+    // Without https (a server with no domain) the bot can't get a webhook, but the
+    // background service (cron.php daemon) can fetch its messages instead (polling).
+    $polling = !$https && (int)ba_kv_get('daemon:alive', 0) > time() - 120;
+    if (!$https && !$polling) {
+        fail('ربات بله فقط به آدرس https وصل می‌شود. در کنترل‌پنل هاست SSL را فعال کن و اپ را با https باز کن'
+            . ' (یا روی سرور بدون دامنه، سرویس bank-bot را با deploy-vps.sh راه بینداز).');
     }
     $cfg = ba_settings_save(['api_url' => $apiUrl, 'app_url' => dirname($apiUrl) . '/app/']);
-    if (!ba_bale('setWebhook', ['url' => $apiUrl . '?r=bale&key=' . bot_webhook_key()])) {
+    if (!$polling && !ba_bale('setWebhook', ['url' => $apiUrl . '?r=bale&key=' . bot_webhook_key()])) {
         fail('بله وب‌هوک را قبول نکرد. چند دقیقه بعد دوباره امتحان کن.');
     }
     if (empty($cfg['bale_chat_id'])) {
@@ -303,7 +308,8 @@ case 'bale_connect':
     } else {
         ba_notify('✅ ربات دوباره به حسابداری وصل شد.');
     }
-    out(['ok' => true, 'bot' => ba_kv_get('bale_bot_username'), 'waiting_for_start' => empty($cfg['bale_chat_id'])]);
+    out(['ok' => true, 'bot' => ba_kv_get('bale_bot_username'), 'waiting_for_start' => empty($cfg['bale_chat_id']),
+        'mode' => $polling ? 'polling' : 'webhook']);
 
 case 'bale_forget_chat':
     require_post();
