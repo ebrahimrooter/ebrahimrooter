@@ -1,3 +1,3 @@
 # Local speech engines for the bank assistant (CPU only, no cloud).
-faster-whisper>=1.1,<2      # STT: Whisper on CTranslate2 (+ PyAV for decoding audio)
+faster-whisper>=1.1,<2      # STT: Whisper on CTranslate2 (audio is decoded with ffmpeg)
 piper-tts>=1.3,<2           # TTS: Piper ONNX voices, espeak-ng bundled

@@ -134,6 +134,27 @@ def piper_files(s):
     return onnx, onnx + ".json"
 
 
+def decode_audio_16k(audio_bytes):
+    """Any audio (Bale OGG/Opus, iPhone m4a, Chrome webm, mp3, wav) -> 16 kHz
+    mono float32, decoded by ffmpeg. (faster-whisper's own decoder breaks with
+    PyAV 19+: "open() got an unexpected keyword argument 'metadata_errors'".)
+    A temporary file, not a pipe: m4a keeps its index at the end of the file."""
+    import numpy as np
+    fd, path = tempfile.mkstemp(suffix=".audio")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(audio_bytes)
+        try:
+            pcm = run_ffmpeg(["-i", path, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "pipe:1"], b"")
+        except RuntimeError as e:
+            raise ValueError("unreadable audio (%s)" % e)
+    finally:
+        os.unlink(path)
+    if not pcm:
+        raise ValueError("no audio in the file")
+    return np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 # --------------------------------------------------------------------------
 # Engines (loaded once, used under a lock: one CPU-heavy job at a time)
 # --------------------------------------------------------------------------
@@ -167,8 +188,7 @@ class Engines:
             raise ValueError("empty audio")
         if len(audio_bytes) > MAX_AUDIO_BYTES:
             raise ValueError("audio too large")
-        from faster_whisper.audio import decode_audio
-        audio = decode_audio(io.BytesIO(audio_bytes), sampling_rate=16000)
+        audio = decode_audio_16k(audio_bytes)
         duration = len(audio) / 16000.0
         if duration > MAX_AUDIO_SECONDS:
             raise ValueError("audio longer than %d s" % MAX_AUDIO_SECONDS)
