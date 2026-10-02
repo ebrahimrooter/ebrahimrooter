@@ -496,6 +496,14 @@ function r_production_create($u)
     $wh = (int)($b['warehouse_id'] ?? 0) ?: acc_default_warehouse();
     $runs = $qty / (float)$bom['qty_out'];
     $date = trim((string)($b['date'] ?? '')) ?: acc_today();
+    if (!(int)(acc_company()['allow_negative_stock'] ?? 0)) {
+        foreach (acc_all('SELECT i.qty, p.name, p.kind, COALESCE((SELECT qty FROM acc_stock s WHERE s.warehouse_id = ? AND s.product_id = p.id), 0) have
+            FROM acc_bom_items i JOIN acc_products p ON p.id = i.product_id WHERE i.bom_id = ?', [$wh, $bom['id']]) as $m) {
+            if ($m['kind'] !== 'service' && (float)$m['qty'] * $runs > (float)$m['have'] + 1e-9) {
+                throw new AccError('موجودی «' . $m['name'] . '» در انبار برای این تولید کافی نیست (لازم: ' . round((float)$m['qty'] * $runs, 3) . '، موجود: ' . round((float)$m['have'], 3) . ')');
+            }
+        }
+    }
     return acc_tx(function () use ($bom, $qty, $wh, $runs, $date, $u) {
         $number = sprintf('PR-%04d', acc_next('production'));
         $id = acc_insert('acc_productions', ['number' => $number, 'date' => $date, 'bom_id' => $bom['id'], 'product_id' => $bom['product_id'],
@@ -542,6 +550,7 @@ function r_production_delete($u, $id)
         }
         acc_void_source('production', $p['id'], 'حذف تولید');
         acc_update('acc_productions', $p['id'], ['status' => 'void']);
+        acc_recalc_avg_cost($p['product_id']);
     });
     acc_log($u['username'], 'production_delete', $p['number']);
     return ['ok' => true];
@@ -964,7 +973,7 @@ function r_report_due_invoices()
     $out = [];
     foreach (acc_all("SELECT i.*, p.name pn, p.mobile FROM acc_invoices i LEFT JOIN acc_persons p ON p.id = i.person_id
         WHERE i.kind IN ('sale', 'purchase') AND i.settled = 0 AND i.status = 'final' ORDER BY CASE WHEN i.due_date = '' THEN 1 ELSE 0 END, i.due_date") as $i) {
-        $paid = (float)acc_val('SELECT COALESCE(SUM(amount), 0) FROM acc_treasury WHERE invoice_id = ? AND kind = ?', [$i['id'], $i['kind'] === 'sale' ? 'receive' : 'pay']);
+        $paid = acc_invoice_paid($i['id']);
         $due = $i['due_date'] ?: $i['date'];
         $out[] = ['id' => (int)$i['id'], 'number' => $i['number'], 'kind' => $i['kind'], 'person_name' => $i['pn'], 'mobile' => $i['mobile'], 'date' => $i['date'],
             'due_date' => $i['due_date'], 'total' => (float)$i['total'], 'paid' => $paid, 'remaining' => (float)$i['total'] - $paid,
@@ -1018,12 +1027,12 @@ function r_report_ttms()
     header('Content-Disposition: attachment; filename="TTMS-' . $year . '-' . $season . '-' . $kind . '.csv"');
     $fh = fopen('php://output', 'w');
     fwrite($fh, "\xEF\xBB\xBF");
-    fputcsv($fh, ['ردیف', 'نوع شخص', 'کد/شناسه ملی', 'کد اقتصادی', 'نام', 'کد پستی', 'نشانی', 'تاریخ', 'شماره فاکتور', 'مبلغ بدون مالیات', 'مالیات و عوارض', 'مبلغ کل', 'فروشنده/خریدار'], ',', '"', '');
+    ba_csv_put($fh, ['ردیف', 'نوع شخص', 'کد/شناسه ملی', 'کد اقتصادی', 'نام', 'کد پستی', 'نشانی', 'تاریخ', 'شماره فاکتور', 'مبلغ بدون مالیات', 'مالیات و عوارض', 'مبلغ کل', 'فروشنده/خریدار']);
     $n = 0;
     foreach (acc_all('SELECT i.*, p.name pn, p.national_id, p.legal_type, p.address FROM acc_invoices i LEFT JOIN acc_persons p ON p.id = i.person_id
         WHERE i.kind = ? AND i.date BETWEEN ? AND ? ORDER BY i.date, i.id', [$kind, $from, $to]) as $i) {
-        fputcsv($fh, [++$n, $i['legal_type'] === 'legal' ? 'حقوقی' : 'حقیقی', $i['national_id'], '', $i['pn'], '', $i['address'], $i['date'], $i['number'],
-            (float)$i['subtotal'] - (float)$i['discount'], (float)$i['tax'], (float)$i['total'], $c['name']], ',', '"', '');
+        ba_csv_put($fh, [++$n, $i['legal_type'] === 'legal' ? 'حقوقی' : 'حقیقی', $i['national_id'], '', $i['pn'], '', $i['address'], $i['date'], $i['number'],
+            (float)$i['subtotal'] - (float)$i['discount'], (float)$i['tax'], (float)$i['total'], $c['name']]);
     }
     fclose($fh);
     return null;
@@ -1106,6 +1115,7 @@ function r_close_year($u)
     }
     $next = (string)((int)$fy['name'] + 1);
     acc_q('UPDATE acc_fiscal SET name = ?, locked = 0 WHERE id = ?', [$next, $fy['id']]);
+    ba_kv_set('acc_closed_until:' . acc_company_id(), $fy['name'] . '/12/31');
     acc_log($u['username'], 'close_year', $fy['name'] . ' -> ' . $next);
     return ['ok' => true, 'closed' => $fy['name'], 'year' => $next, 'profit' => $profit];
 }
@@ -1120,10 +1130,10 @@ function r_treasury_delete($u, $id)
     }
     acc_tx(function () use ($t) {
         acc_void_source('treasury', $t['id'], 'حذف ' . $t['number']);
-        if ($t['invoice_id']) {
-            acc_q('UPDATE acc_invoices SET settled = 0 WHERE id = ?', [$t['invoice_id']]);
-        }
         acc_q('DELETE FROM acc_treasury WHERE id = ?', [$t['id']]);
+        if ($t['invoice_id']) {
+            acc_invoice_refresh_settled($t['invoice_id']);
+        }
     });
     acc_log($u['username'], 'treasury_delete', $t['number']);
     return ['ok' => true];

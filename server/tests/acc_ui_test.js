@@ -95,6 +95,14 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.screenshot({ path: OUT + '/5-sms.png' });
   await page.evaluate(() => document.body._x_dataStack[0].loadBalanceSheet && document.body._x_dataStack[0].loadBalanceSheet());
   await page.waitForTimeout(500);
+  // company settings really saved (VAT rate field)
+  await page.evaluate(() => document.body._x_dataStack[0].currentPage = 'settings');
+  await page.waitForTimeout(300);
+  await page.fill('input[x-model\\.number="company.vat_rate"]', '9');
+  await page.click('button[\\@click="saveCompany"]');
+  await page.waitForTimeout(600);
+  const vat = await page.evaluate(() => document.body._x_dataStack[0].req('/api/company').then(c => c.vat_rate));
+  check('VAT rate saved from the settings page', +vat === 9, String(vat));
   // more features: every tab and every report opens without errors
   for (const t of await page.evaluate(() => document.body._x_dataStack[0].moreTabs.map(x => x[0]))) {
     await page.evaluate(x => { const d = document.body._x_dataStack[0]; d.currentPage = 'more'; d.moreSetTab(x); }, t);

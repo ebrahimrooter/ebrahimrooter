@@ -97,7 +97,7 @@ function accountingApp() {
     editingInvoiceId: null,
     personForm: { name: "", type: "customer", mobile: "", national_id: "", credit_limit: 0, legal_type: "real", address: "", groups: "" },
     productForm: { name: "", code: "", unit: "عدد", sale_price: 0, buy_price: 0, stock: 0, reorder_point: 5, max_stock: 0, barcode: "", group_name: "", track_serial: false, track_lot: false, kind: "goods", brand_id: "", tax_code: "" },
-    invoiceForm: { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "" },
+    invoiceForm: { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "", no_vat: false },
     journalForm: { description: "", date: JDATE, lines: [{ account_id: "", debit: 0, credit: 0 }] },
     userForm: { username: "", password: "", full_name: "", role: "seller" },
     reportContent: null,
@@ -617,7 +617,7 @@ function accountingApp() {
     openInvoiceModal(type) {
       this.invoiceType = type;
       this.editingInvoiceId = null;
-      this.invoiceForm = { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "" };
+      this.invoiceForm = { person_id: "", date: JDATE, items: [{ product_id: "", qty: 1, price: 0, unit: "primary" }], discount: 0, discount_percent: 0, freight: 0, customs: 0, other_cost: 0, subtotal: 0, tax: 0, total: 0, due_date: "", marketer_id: "", department_id: "", note: "", no_vat: false };
       this.showInvoiceModal = true;
     },
     async editInvoice(inv) {
@@ -631,7 +631,7 @@ function accountingApp() {
           discount: d.discount || 0, discount_percent: d.discount_percent || 0,
           freight: d.freight || 0, customs: d.customs || 0, other_cost: d.other_cost || 0,
           subtotal: d.subtotal || 0, tax: d.tax || 0, total: d.total || 0,
-          due_date: d.due_date || "", marketer_id: d.marketer_id || "", department_id: d.department_id || "", note: d.note || ""
+          due_date: d.due_date || "", marketer_id: d.marketer_id || "", department_id: d.department_id || "", note: d.note || "", no_vat: !!d.no_vat
         };
         this.showInvoiceModal = true;
       } catch (e) { alert(e.message); }
@@ -652,7 +652,7 @@ function accountingApp() {
       this.invoiceForm.items.forEach(it => { sub += (it.qty || 0) * (it.price || 0); });
       this.invoiceForm.subtotal = sub;
       const after = sub - (this.invoiceForm.discount || 0) - Math.round(sub * ((this.invoiceForm.discount_percent || 0)/100));
-      this.invoiceForm.tax = Math.round(after * ((this.company.vat_rate || 0) / 100));
+      this.invoiceForm.tax = this.invoiceForm.no_vat || /proforma|order/.test(this.invoiceType) ? 0 : Math.round(after * ((this.company.vat_rate || 0) / 100));
       this.invoiceForm.total = after + this.invoiceForm.tax;
     },
     async saveInvoice() {
@@ -663,7 +663,7 @@ function accountingApp() {
             person_id: Number(this.invoiceForm.person_id),
             date: this.invoiceForm.date,
             discount: this.invoiceForm.discount || 0, discount_percent: this.invoiceForm.discount_percent || 0, freight: this.invoiceForm.freight||0, customs: this.invoiceForm.customs||0, other_cost: this.invoiceForm.other_cost||0,
-            due_date: this.invoiceForm.due_date, note: this.invoiceForm.note, marketer_id: Number(this.invoiceForm.marketer_id) || null, department_id: Number(this.invoiceForm.department_id) || null,
+            due_date: this.invoiceForm.due_date, note: this.invoiceForm.note, no_vat: !!this.invoiceForm.no_vat, marketer_id: Number(this.invoiceForm.marketer_id) || null, department_id: Number(this.invoiceForm.department_id) || null,
             items: this.invoiceForm.items.filter(i => i.product_id).map(i => ({ product_id: Number(i.product_id), qty: i.qty, price: i.price, unit: i.unit || "primary" }))
           };
         if (this.editingInvoiceId) await this.req("/api/invoices/" + this.editingInvoiceId, { method: "PUT", body: JSON.stringify(payload) });
@@ -813,7 +813,8 @@ function accountingApp() {
       try {
         await this.req("/api/company", { method: "PUT", body: JSON.stringify({
           name: this.company.name, national_id: this.company.national_id, economic_code: this.company.economic_code, vat_rate: this.company.vat_rate,
-          tax_memory: this.company.tax_memory, tax_key_set: this.company.tax_key_set,
+          tax_memory: this.company.tax_memory, address: this.company.address, phone: this.company.phone, postal_code: this.company.postal_code,
+          invoice_footer: this.company.invoice_footer, allow_negative_stock: !!this.company.allow_negative_stock,
           invoice_prefix_sale: this.company.invoice_prefix_sale, invoice_prefix_buy: this.company.invoice_prefix_buy
         })});
         alert("تنظیمات شرکت ذخیره شد");

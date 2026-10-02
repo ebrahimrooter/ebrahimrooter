@@ -1540,16 +1540,33 @@
               </div>
               <div>
                 <label class="block text-sm text-slate-600 mb-1">شناسه ملی</label>
-                <input type="text" x-model="company.nationalId" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <input type="text" x-model="company.national_id" class="w-full px-3 py-2 border rounded-lg text-sm">
               </div>
               <div>
                 <label class="block text-sm text-slate-600 mb-1">کد اقتصادی</label>
-                <input type="text" x-model="company.economicCode" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <input type="text" x-model="company.economic_code" class="w-full px-3 py-2 border rounded-lg text-sm">
               </div>
               <div>
                 <label class="block text-sm text-slate-600 mb-1">نرخ مالیات ارزش افزوده (%)</label>
-                <input type="number" x-model.number="company.vatRate" class="w-full px-3 py-2 border rounded-lg text-sm">
+                <input type="number" x-model.number="company.vat_rate" class="w-full px-3 py-2 border rounded-lg text-sm">
               </div>
+              <div>
+                <label class="block text-sm text-slate-600 mb-1">تلفن</label>
+                <input type="text" x-model="company.phone" class="w-full px-3 py-2 border rounded-lg text-sm" dir="ltr">
+              </div>
+              <div>
+                <label class="block text-sm text-slate-600 mb-1">کد پستی</label>
+                <input type="text" x-model="company.postal_code" class="w-full px-3 py-2 border rounded-lg text-sm" dir="ltr">
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm text-slate-600 mb-1">نشانی</label>
+                <input type="text" x-model="company.address" class="w-full px-3 py-2 border rounded-lg text-sm">
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm text-slate-600 mb-1">متن پایین فاکتور چاپی</label>
+                <input type="text" x-model="company.invoice_footer" class="w-full px-3 py-2 border rounded-lg text-sm">
+              </div>
+              <label class="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" x-model="company.allow_negative_stock"> اجازه‌ی فروش/خروج بیشتر از موجودی انبار (منفی شدن موجودی)</label>
             </div>
             <button @click="saveCompany" class="mt-4 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">ذخیره تنظیمات شرکت</button>
           </div>
@@ -2012,6 +2029,7 @@
             <label class="block text-sm mb-1">توضیحات</label>
             <input type="text" x-model="invoiceForm.note" class="w-full px-3 py-2 border rounded-lg text-sm">
           </div>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="invoiceForm.no_vat" @change="calcInvoice()"> بدون مالیات بر ارزش افزوده (فروشنده/کالای معاف)</label>
         </div>
         
         <div class="border rounded-lg p-3">
@@ -2047,7 +2065,7 @@
           <div class="flex justify-between"><span>تخفیف:</span>
             <input type="number" x-model.number="invoiceForm.discount" @input="calcInvoice" class="w-24 px-2 py-1 border rounded text-left">
           </div>
-          <div class="flex justify-between"><span>مالیات (<span x-text="company.vatRate"></span>%):</span><span x-text="formatNumber(invoiceForm.tax)"></span></div>
+          <div class="flex justify-between"><span>مالیات (<span x-text="invoiceForm.no_vat ? 0 : company.vat_rate"></span>%):</span><span x-text="formatNumber(invoiceForm.tax)"></span></div>
           <div class="flex justify-between font-bold text-base border-t pt-2"><span>مبلغ قابل پرداخت:</span><span x-text="formatNumber(invoiceForm.total)"></span></div>
         </div>
       </div>

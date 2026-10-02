@@ -234,13 +234,14 @@ function r_change_password($u)
 
 function r_dashboard()
 {
-    $low = acc_all('SELECT id, name, stock, reorder_point, unit FROM acc_products WHERE stock <= reorder_point');
+    $low = acc_all("SELECT id, name, stock, reorder_point, unit FROM acc_products WHERE kind != 'service' AND stock <= reorder_point");
     return [
-        'sales' => (float)acc_val("SELECT COALESCE(SUM(total), 0) FROM acc_invoices WHERE kind = 'sale'"),
-        'purchases' => (float)acc_val("SELECT COALESCE(SUM(total), 0) FROM acc_invoices WHERE kind = 'purchase'"),
+        // net of returns, without VAT
+        'sales' => (float)acc_val("SELECT COALESCE(SUM(CASE kind WHEN 'sale' THEN 1 ELSE -1 END * (subtotal - discount)), 0) FROM acc_invoices WHERE kind IN ('sale', 'sale_return')"),
+        'purchases' => (float)acc_val("SELECT COALESCE(SUM(CASE kind WHEN 'purchase' THEN 1 ELSE -1 END * (subtotal - discount + freight + customs + other_cost)), 0) FROM acc_invoices WHERE kind IN ('purchase', 'purchase_return')"),
         'receivables' => acc_people_split()[0],
         'payables' => acc_people_split()[1],
-        'stock_value' => (float)acc_val('SELECT COALESCE(SUM(stock * CASE WHEN avg_cost > 0 THEN avg_cost ELSE buy_price END), 0) FROM acc_products'),
+        'stock_value' => (float)acc_val("SELECT COALESCE(SUM(stock * CASE WHEN avg_cost > 0 THEN avg_cost ELSE buy_price END), 0) FROM acc_products WHERE kind != 'service'"),
         'cash' => (float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_cash_accounts'),
         'low_stock' => $low,
     ];
@@ -249,7 +250,7 @@ function r_dashboard()
 function r_company()
 {
     $c = acc_company();
-    foreach (['webhook_enabled', 'tax_key_set'] as $k) {
+    foreach (['webhook_enabled', 'tax_key_set', 'allow_negative_stock'] as $k) {
         $c[$k] = (bool)$c[$k];
     }
     unset($c['id'], $c['tax_private_key'], $c['tax_certificate']);
@@ -260,7 +261,7 @@ function r_company_save($u)
 {
     $b = acc_body();
     $allowed = ['name', 'national_id', 'economic_code', 'vat_rate', 'tax_memory', 'tax_key_set', 'invoice_prefix_sale',
-        'invoice_prefix_buy', 'webhook_enabled', 'webhook_url', 'webhook_secret', 'address', 'phone', 'invoice_footer', 'postal_code'];
+        'invoice_prefix_buy', 'allow_negative_stock', 'webhook_enabled', 'webhook_url', 'webhook_secret', 'address', 'phone', 'invoice_footer', 'postal_code'];
     $set = [];
     foreach ($allowed as $k) {
         if (array_key_exists($k, $b)) {
@@ -641,7 +642,8 @@ function r_invoice_create($u)
     acc_log($u['username'], 'create_invoice', $inv['number']);
     acc_sms_after_invoice($inv);
     acc_webhook('create', 'Invoice', [(int)$inv['id']], ['number' => $inv['number'], 'total' => (float)$inv['total'], 'kind' => $inv['kind']]);
-    return ['id' => (int)$inv['id'], 'number' => $inv['number'], 'total' => (float)$inv['total'], 'tax' => (float)$inv['tax'], 'atf' => $inv['atf']];
+    return ['id' => (int)$inv['id'], 'number' => $inv['number'], 'subtotal' => (float)$inv['subtotal'], 'discount' => (float)$inv['discount'],
+        'total' => (float)$inv['total'], 'tax' => (float)$inv['tax'], 'atf' => $inv['atf']];
 }
 
 function r_invoice_update($u, $id)
@@ -690,7 +692,7 @@ function r_invoice_detail($u, $id)
         'discount_percent' => (float)$inv['discount_percent'], 'tax' => (float)$inv['tax'], 'total' => (float)$inv['total'],
         'freight' => (float)$inv['freight'], 'customs' => (float)$inv['customs'], 'other_cost' => (float)$inv['other_cost'],
         'status' => $inv['status'], 'settled' => (bool)$inv['settled'], 'due_date' => $inv['due_date'], 'note' => $inv['note'],
-        'marketer_id' => $inv['marketer_id'] ? (int)$inv['marketer_id'] : null, 'department_id' => $inv['department_id'] ? (int)$inv['department_id'] : null,
+        'no_vat' => (bool)$inv['no_vat'], 'marketer_id' => $inv['marketer_id'] ? (int)$inv['marketer_id'] : null, 'department_id' => $inv['department_id'] ? (int)$inv['department_id'] : null,
         'branch_id' => $inv['branch_id'] ? (int)$inv['branch_id'] : null,
         'items' => array_map(fn($it) => ['product_id' => (int)$it['product_id'], 'qty' => (float)$it['qty'], 'price' => (float)$it['price'],
             'unit' => (float)$it['unit_factor'] != 1.0 ? 'secondary' : 'primary'], $items)];
@@ -780,8 +782,24 @@ function r_journal_create($u)
             throw new AccError('روی حساب کل («' . $acc['name'] . '») سند زده نمی‌شود؛ حساب معین را انتخاب کن');
         }
         $pid = !empty($l['person_id']) ? (int)$l['person_id'] : null;
+        $cash = !empty($l['cash_account_id']) ? (int)$l['cash_account_id'] : null;
+        $dr = acc_num($l['debit'] ?? 0);
+        $cr = acc_num($l['credit'] ?? 0);
+        if ($dr < 0 || $cr < 0 || ($dr > 0 && $cr > 0)) {
+            throw new AccError('هر ردیف یا بدهکار است یا بستانکار، و مبلغ منفی نمی‌شود');
+        }
+        // the subsidiary balances must follow the books
+        if ($acc['code'] === '1101' && !acc_val('SELECT 1 FROM acc_cash_accounts WHERE id = ?', [(int)$cash])) {
+            throw new AccError('برای ردیف «صندوق و بانک»، صندوق/بانک را انتخاب کن');
+        }
+        if (in_array($acc['code'], ['1102', '2101'], true) && !$pid) {
+            throw new AccError('برای ردیف حساب‌های دریافتنی/پرداختنی، طرف حساب را انتخاب کن');
+        }
+        if ($acc['code'] !== '1101') {
+            $cash = null;
+        }
         $lines[] = ['code' => null, 'account_id' => $aid, 'debit' => acc_num($l['debit'] ?? 0), 'credit' => acc_num($l['credit'] ?? 0),
-            'desc' => (string)($l['description'] ?? ''), 'person' => $pid, 'cash' => !empty($l['cash_account_id']) ? (int)$l['cash_account_id'] : null];
+            'desc' => (string)($l['description'] ?? ''), 'person' => $pid, 'cash' => $cash];
     }
     if (!$lines) {
         throw new AccError('سند باید ردیف بدهکار و بستانکار داشته باشد');
@@ -837,8 +855,9 @@ function r_closing($u)
     // close every income/expense account into accumulated profit (3102)
     $lines = [];
     $profit = 0;
+    // only this year's entries: anything dated in the next year stays for that year
     foreach (acc_all("SELECT a.id, a.code, SUM(l.debit) d, SUM(l.credit) c FROM acc_journal_lines l JOIN acc_coa a ON a.id = l.account_id
-        WHERE a.code LIKE '4%' OR a.code LIKE '5%' GROUP BY a.id") as $r) {
+        JOIN acc_journals j ON j.id = l.journal_id WHERE (a.code LIKE '4%' OR a.code LIKE '5%') AND j.date <= ? GROUP BY a.id", [$fy['name'] . '/12/31']) as $r) {
         $bal = (float)$r['d'] - (float)$r['c'];
         if (abs($bal) < 0.01) {
             continue;
@@ -1270,14 +1289,19 @@ function r_balance_sheet()
     ];
 }
 
+/** Profit and loss of a date range; by default the current fiscal year. */
 function r_profit_loss()
 {
+    $fy = (string)acc_val('SELECT name FROM acc_fiscal ORDER BY id LIMIT 1');
+    $from = acc_jalali_parse($_GET['from'] ?? '') ? acc_jalali_fmt(...acc_jalali_parse($_GET['from'])) : $fy . '/01/01';
+    $to = acc_jalali_parse($_GET['to'] ?? '') ? acc_jalali_fmt(...acc_jalali_parse($_GET['to'])) : $fy . '/12/31';
     $rows = acc_all("SELECT a.code, a.name, COALESCE(SUM(l.credit - l.debit), 0) amt FROM acc_coa a JOIN acc_journal_lines l ON l.account_id = a.id
-        JOIN acc_journals j ON j.id = l.journal_id WHERE (a.code LIKE '4%' OR a.code LIKE '5%') AND j.kind != 'closing' GROUP BY a.id ORDER BY a.code");
+        JOIN acc_journals j ON j.id = l.journal_id WHERE (a.code LIKE '4%' OR a.code LIKE '5%') AND j.kind != 'closing' AND j.date BETWEEN ? AND ?
+        GROUP BY a.id ORDER BY a.code", [$from, $to]);
     $income = array_sum(array_map(fn($r) => $r['code'][0] === '4' ? (float)$r['amt'] : 0, $rows));
     $expense = -array_sum(array_map(fn($r) => $r['code'][0] === '5' ? (float)$r['amt'] : 0, $rows));
     return ['rows' => array_map(fn($r) => ['code' => $r['code'], 'name' => $r['name'], 'amount' => (float)$r['amt']], $rows),
-        'income' => $income, 'expense' => $expense, 'profit' => $income - $expense];
+        'income' => $income, 'expense' => $expense, 'profit' => $income - $expense, 'from' => $from, 'to' => $to];
 }
 
 function r_ledger($u, $account_id)
@@ -1289,7 +1313,7 @@ function r_ledger($u, $account_id)
     $bal = 0;
     $rows = [];
     foreach (acc_all('SELECT j.number, j.date, j.description jd, l.description, l.debit, l.credit FROM acc_journal_lines l JOIN acc_journals j ON j.id = l.journal_id
-        JOIN acc_coa a ON a.id = l.account_id WHERE a.code LIKE ? ORDER BY j.id, l.id', [$a['code'] . '%']) as $r) {
+        JOIN acc_coa a ON a.id = l.account_id WHERE a.code LIKE ? ORDER BY j.date, j.id, l.id', [$a['code'] . '%']) as $r) {
         $bal += $r['debit'] - $r['credit'];
         $rows[] = ['number' => $r['number'], 'date' => $r['date'], 'description' => trim($r['jd'] . ' ' . $r['description']),
             'debit' => (float)$r['debit'], 'credit' => (float)$r['credit'], 'balance' => $bal];
@@ -1306,7 +1330,7 @@ function r_person_statement($u, $pid)
     $bal = 0;
     $rows = [];
     foreach (acc_all('SELECT j.number, j.date, j.description jd, l.description, l.debit, l.credit FROM acc_journal_lines l
-        JOIN acc_journals j ON j.id = l.journal_id WHERE l.person_id = ? ORDER BY j.id, l.id', [$pid]) as $r) {
+        JOIN acc_journals j ON j.id = l.journal_id WHERE l.person_id = ? ORDER BY j.date, j.id, l.id', [$pid]) as $r) {
         $bal += $r['debit'] - $r['credit'];
         $rows[] = ['number' => $r['number'], 'date' => $r['date'], 'description' => $r['jd'], 'debit' => (float)$r['debit'],
             'credit' => (float)$r['credit'], 'balance' => $bal];
@@ -1314,12 +1338,23 @@ function r_person_statement($u, $pid)
     return ['person' => acc_person_out($p), 'rows' => $rows, 'balance' => $bal];
 }
 
+/** Money in and out of cash/bank accounts (receipts, payments, cheques cleared, loans...); transfers between them apart. */
 function r_cashflow()
 {
-    $sum = fn($k) => (float)acc_val('SELECT COALESCE(SUM(amount), 0) FROM acc_treasury WHERE kind = ?', [$k]);
-    $in = $sum('receive');
-    $out = $sum('pay');
-    return ['operating_in' => $in, 'operating_out' => $out, 'net_operating' => $in - $out, 'transfers' => $sum('transfer'),
+    $in = $out = $tr = 0;
+    foreach (acc_all("SELECT j.id, SUM(CASE WHEN a.code = '1101' THEN l.debit - l.credit ELSE 0 END) net,
+        SUM(CASE WHEN a.code != '1101' THEN 1 ELSE 0 END) others, SUM(CASE WHEN a.code = '1101' THEN l.debit ELSE 0 END) moved
+        FROM acc_journals j JOIN acc_journal_lines l ON l.journal_id = j.id JOIN acc_coa a ON a.id = l.account_id
+        WHERE j.kind != 'opening' GROUP BY j.id") as $r) {
+        if ((int)$r['others'] === 0) {
+            $tr += (float)$r['moved'];
+        } elseif ($r['net'] > 0) {
+            $in += (float)$r['net'];
+        } else {
+            $out -= (float)$r['net'];
+        }
+    }
+    return ['operating_in' => $in, 'operating_out' => $out, 'net_operating' => $in - $out, 'transfers' => $tr,
         'cash_balance' => (float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_cash_accounts'),
         'rows' => array_map(fn($t) => ['kind' => $t['kind'], 'number' => $t['number'], 'date' => $t['date'], 'amount' => (float)$t['amount'], 'description' => $t['description']],
             acc_all('SELECT * FROM acc_treasury ORDER BY id DESC LIMIT 50'))];
@@ -1349,19 +1384,19 @@ function r_export_csv()
     $fh = fopen('php://output', 'w');
     fwrite($fh, "\xEF\xBB\xBF");   // Excel reads UTF-8 Persian with the BOM
     if ($what === 'sales' || $what === 'purchases') {
-        fputcsv($fh, ['شماره', 'تاریخ', 'طرف حساب', 'جمع', 'تخفیف', 'مالیات', 'مبلغ کل'], ',', '"', '');
+        ba_csv_put($fh, ['شماره', 'تاریخ', 'طرف حساب', 'جمع', 'تخفیف', 'مالیات', 'مبلغ کل']);
         foreach (acc_all('SELECT i.*, p.name pn FROM acc_invoices i LEFT JOIN acc_persons p ON p.id = i.person_id WHERE kind = ? ORDER BY i.id', [$what === 'sales' ? 'sale' : 'purchase']) as $i) {
-            fputcsv($fh, [$i['number'], $i['date'], $i['pn'], $i['subtotal'], $i['discount'], $i['tax'], $i['total']], ',', '"', '');
+            ba_csv_put($fh, [$i['number'], $i['date'], $i['pn'], $i['subtotal'], $i['discount'], $i['tax'], $i['total']]);
         }
     } elseif ($what === 'products') {
-        fputcsv($fh, ['کد', 'نام', 'واحد', 'موجودی', 'قیمت فروش', 'میانگین بها'], ',', '"', '');
+        ba_csv_put($fh, ['کد', 'نام', 'واحد', 'موجودی', 'قیمت فروش', 'میانگین بها']);
         foreach (acc_all('SELECT * FROM acc_products ORDER BY id') as $p) {
-            fputcsv($fh, [$p['code'], $p['name'], $p['unit'], $p['stock'], $p['sale_price'], $p['avg_cost']], ',', '"', '');
+            ba_csv_put($fh, [$p['code'], $p['name'], $p['unit'], $p['stock'], $p['sale_price'], $p['avg_cost']]);
         }
     } else {
-        fputcsv($fh, ['کد', 'نام', 'نوع', 'موبایل', 'مانده (+ بدهکار)'], ',', '"', '');
+        ba_csv_put($fh, ['کد', 'نام', 'نوع', 'موبایل', 'مانده (+ بدهکار)']);
         foreach (acc_all('SELECT * FROM acc_persons ORDER BY id') as $p) {
-            fputcsv($fh, [$p['code'], $p['name'], $p['type'], $p['mobile'], $p['balance']], ',', '"', '');
+            ba_csv_put($fh, [$p['code'], $p['name'], $p['type'], $p['mobile'], $p['balance']]);
         }
     }
     fclose($fh);

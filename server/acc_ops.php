@@ -66,10 +66,13 @@ function acc_invoice_totals($kind, array $lines, array $b)
     }
     $pct = acc_num($b['discount_percent'] ?? 0);
     $disc = acc_num($b['discount'] ?? 0) + ($pct ? round($sub * $pct / 100) : 0);
-    $net = max($sub - $disc, 0);
+    if ($disc < 0 || $disc > $sub) {
+        throw new AccError('تخفیف نمی‌تواند منفی یا بیشتر از جمع فاکتور باشد');
+    }
+    $net = $sub - $disc;
     $extra = in_array($kind, ['purchase', 'purchase_return'], true)
         ? acc_num($b['freight'] ?? 0) + acc_num($b['customs'] ?? 0) + acc_num($b['other_cost'] ?? 0) : 0;
-    $tax = acc_is_draft_kind($kind) ? 0 : round($net * (float)acc_company()['vat_rate'] / 100);
+    $tax = acc_is_draft_kind($kind) || !empty($b['no_vat']) ? 0 : round($net * (float)acc_company()['vat_rate'] / 100);
     return ['subtotal' => $sub, 'discount' => $disc, 'discount_percent' => $pct, 'net' => $net, 'extra' => $extra, 'tax' => $tax, 'total' => $net + $tax + $extra];
 }
 
@@ -87,15 +90,18 @@ function acc_invoice_save($id, array $b)
     }
     $lines = acc_invoice_lines((array)($b['items'] ?? []));
     $t = acc_invoice_totals($kind, $lines, $b);
+    if (!acc_is_draft_kind($kind)) {
+        acc_check_stock($lines, $kind, $id);
+    }
     return acc_tx(function () use ($id, $b, $kind, $person, $lines, $t) {
-        $fields = ['kind' => $kind, 'date' => (string)($b['date'] ?? '') ?: acc_today(), 'person_id' => (int)$person['id'],
+        $fields = ['kind' => $kind, 'date' => acc_date($b['date'] ?? ''), 'person_id' => (int)$person['id'],
             'subtotal' => $t['subtotal'], 'discount' => $t['discount'], 'discount_percent' => $t['discount_percent'], 'tax' => $t['tax'],
             'total' => $t['total'], 'status' => acc_is_draft_kind($kind) ? 'draft' : 'final',
             'freight' => acc_num($b['freight'] ?? 0), 'customs' => acc_num($b['customs'] ?? 0), 'other_cost' => acc_num($b['other_cost'] ?? 0),
             'branch_id' => !empty($b['branch_id']) ? (int)$b['branch_id'] : null,
             'due_date' => trim((string)($b['due_date'] ?? '')), 'note' => trim((string)($b['note'] ?? '')),
             'marketer_id' => !empty($b['marketer_id']) ? (int)$b['marketer_id'] : null,
-            'department_id' => !empty($b['department_id']) ? (int)$b['department_id'] : null];
+            'department_id' => !empty($b['department_id']) ? (int)$b['department_id'] : null, 'no_vat' => !empty($b['no_vat']) ? 1 : 0];
         if ($id) {
             $old = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [$id]);
             acc_invoice_unpost($old, 'اصلاح فاکتور');
@@ -119,6 +125,7 @@ function acc_invoice_save($id, array $b)
         if ($inv['status'] === 'final') {
             acc_invoice_post($inv);
         }
+        acc_invoice_refresh_settled($id);
         return acc_row('SELECT * FROM acc_invoices WHERE id = ?', [$id]);
     });
 }
@@ -171,8 +178,13 @@ function acc_invoice_post(array $inv)
             $unit_cost = acc_unit_cost($p);
             $cost += $unit_cost * $base;
             acc_change_stock($wh, $p['id'], $base, $doc + ['cost' => $unit_cost]);
-        } else {   // purchase_return
-            $unit_cost = acc_unit_cost($p);
+        } else {   // purchase_return: leaves at the value it was bought for (as written on the return)
+            $unit_cost = $base > 0 ? (float)$it['qty'] * (float)$it['price'] * $ratio / $base : 0;
+            $left = (float)$p['stock'] - $base;
+            if ($left > 1e-9) {
+                $avg = max(((float)$p['stock'] * acc_unit_cost($p) - $base * $unit_cost) / $left, 0);
+                acc_update('acc_products', $p['id'], ['avg_cost' => $avg]);
+            }
             acc_change_stock($wh, $p['id'], -$base, $doc + ['cost' => $unit_cost]);
         }
         acc_q('UPDATE acc_invoice_items SET cost = ? WHERE id = ?', [$unit_cost, $it['id']]);
@@ -222,15 +234,72 @@ function acc_invoice_service_share(array $items, $net_total, $subtotal)
     return $svc * $net_total / $subtotal;
 }
 
-/** Undoes a posted invoice: stock moves back, entries reversed. */
+/** Undoes a posted invoice: stock moves back, entries reversed, average cost recomputed. */
 function acc_invoice_unpost(array $inv, $why)
 {
+    $touched = [];
     foreach (acc_all("SELECT * FROM acc_stock_moves WHERE doc_type = 'invoice' AND doc_id = ? AND kind NOT IN ('reversal', 'reversed')", [$inv['id']]) as $m) {
         acc_change_stock($m['warehouse_id'], $m['product_id'], -(float)$m['qty'], ['type' => 'invoice', 'id' => (int)$inv['id'],
             'number' => $inv['number'], 'date' => $inv['date'], 'kind' => 'reversal', 'cost' => $m['unit_cost']]);
         acc_q("UPDATE acc_stock_moves SET kind = 'reversed' WHERE id = ?", [$m['id']]);
+        $touched[(int)$m['product_id']] = true;
     }
     acc_void_source('invoice', $inv['id'], $why);
+    if (in_array($inv['kind'], ['purchase', 'purchase_return'], true)) {
+        foreach (array_keys($touched) as $pid) {
+            acc_recalc_avg_cost($pid);
+        }
+    }
+}
+
+/**
+ * Moving weighted average rebuilt from the live stock moves, in order: every
+ * purchase / opening / production takes part at its cost, a purchase return
+ * leaves at its own value. Used after a purchase is edited or deleted.
+ */
+function acc_recalc_avg_cost($product_id)
+{
+    $q = 0.0;
+    $avg = null;
+    foreach (acc_all("SELECT * FROM acc_stock_moves WHERE product_id = ? AND kind NOT IN ('reversal', 'reversed') ORDER BY id", [(int)$product_id]) as $m) {
+        $qty = (float)$m['qty'];
+        $cost = (float)$m['unit_cost'];
+        if ($qty > 0 && in_array($m['kind'], ['purchase', 'opening', 'production'], true)) {
+            $base = max($q, 0);
+            $avg = ($base + $qty) > 0 ? ($base * (float)$avg + $qty * $cost) / ($base + $qty) : $cost;
+        } elseif ($qty < 0 && $m['kind'] === 'purchase_return' && $q + $qty > 1e-9 && $avg !== null) {
+            $avg = max(($q * $avg + $qty * $cost) / ($q + $qty), 0);
+        }
+        $q += $qty;
+    }
+    if ($avg !== null) {
+        acc_update('acc_products', $product_id, ['avg_cost' => $avg]);
+    }
+}
+
+/** Refuses to send more out than the warehouse has (unless allowed in the settings). */
+function acc_check_stock(array $lines, $kind, $old_id = null)
+{
+    if (!in_array($kind, ['sale', 'purchase_return'], true) || (int)(acc_company()['allow_negative_stock'] ?? 0)) {
+        return;
+    }
+    $need = [];
+    foreach ($lines as $l) {
+        if (($l['product']['kind'] ?? 'goods') !== 'service') {
+            $need[$l['product']['id']] = ($need[$l['product']['id']] ?? 0) + $l['base_qty'];
+        }
+    }
+    foreach ($need as $pid => $q) {
+        // invoices take from the default warehouse
+        $wh = acc_default_warehouse();
+        $have = (float)acc_val('SELECT COALESCE((SELECT qty FROM acc_stock WHERE warehouse_id = ? AND product_id = ?), 0)', [$wh, $pid]);
+        if ($old_id) {   // what the invoice being edited already took out comes back first
+            $have -= (float)acc_val("SELECT COALESCE(SUM(qty), 0) FROM acc_stock_moves WHERE doc_type = 'invoice' AND doc_id = ? AND product_id = ? AND warehouse_id = ? AND kind NOT IN ('reversal', 'reversed')", [$old_id, $pid, $wh]);
+        }
+        if ($q > $have + 1e-9) {
+            throw new AccError('موجودی «' . acc_val('SELECT name FROM acc_products WHERE id = ?', [$pid]) . '» کافی نیست (موجودی: ' . round($have, 3) . '، درخواست: ' . round($q, 3) . ')');
+        }
+    }
 }
 
 /** Pro-forma / order -> final sale or purchase. */
@@ -250,7 +319,8 @@ function acc_invoice_detail_body(array $inv)
 {
     return ['kind' => $inv['kind'], 'person_id' => $inv['person_id'], 'date' => $inv['date'], 'discount' => (float)$inv['discount'] - round((float)$inv['subtotal'] * (float)$inv['discount_percent'] / 100),
         'discount_percent' => $inv['discount_percent'], 'freight' => $inv['freight'], 'customs' => $inv['customs'], 'other_cost' => $inv['other_cost'],
-        'branch_id' => $inv['branch_id'],
+        'branch_id' => $inv['branch_id'], 'no_vat' => (int)$inv['no_vat'], 'due_date' => $inv['due_date'], 'note' => $inv['note'],
+        'marketer_id' => $inv['marketer_id'], 'department_id' => $inv['department_id'],
         'items' => array_map(fn($it) => ['product_id' => $it['product_id'], 'qty' => $it['qty'], 'price' => $it['price'],
             'unit' => (float)$it['unit_factor'] != 1.0 ? 'secondary' : 'primary'], acc_all('SELECT * FROM acc_invoice_items WHERE invoice_id = ?', [$inv['id']]))];
 }
@@ -323,7 +393,7 @@ function acc_wh_doc_record(array $b)
     }
     return acc_tx(function () use ($kind, $items, $wh, $to, $b) {
         $prefix = ['receipt' => 'WR', 'issue' => 'WI', 'transfer' => 'WT'][$kind];
-        $date = (string)($b['date'] ?? '') ?: acc_today();
+        $date = acc_date($b['date'] ?? '');
         $number = sprintf('%s-%04d', $prefix, acc_next('wh:' . $kind));
         $id = acc_insert('acc_wh_docs', ['number' => $number, 'date' => $date, 'kind' => $kind, 'warehouse_id' => $wh,
             'to_warehouse_id' => $kind === 'transfer' ? $to : null, 'description' => (string)($b['description'] ?? ''), 'created_at' => acc_now()]);
@@ -334,6 +404,12 @@ function acc_wh_doc_record(array $b)
             $p = acc_product((int)($it['product_id'] ?? 0));
             if (!$p || $qty <= 0) {
                 throw new AccError('کالا و تعداد بزرگتر از صفر لازم است');
+            }
+            if ($kind !== 'receipt' && !(int)(acc_company()['allow_negative_stock'] ?? 0)) {
+                $have = (float)acc_val('SELECT COALESCE((SELECT qty FROM acc_stock WHERE warehouse_id = ? AND product_id = ?), 0)', [$wh, $p['id']]);
+                if ($qty > $have + 1e-9) {
+                    throw new AccError('موجودی «' . $p['name'] . '» در این انبار کافی نیست (موجودی: ' . round($have, 3) . ')');
+                }
             }
             acc_insert('acc_wh_doc_items', ['doc_id' => $id, 'product_id' => $p['id'], 'qty' => $qty]);
             $cost = acc_unit_cost($p);
@@ -365,7 +441,7 @@ function acc_stock_count_record(array $b)
         throw new AccError('انبار را انتخاب کنید');
     }
     return acc_tx(function () use ($wh, $b) {
-        $date = (string)($b['date'] ?? '') ?: acc_today();
+        $date = acc_date($b['date'] ?? '');
         $number = sprintf('SC-%04d', acc_next('count'));
         $id = acc_insert('acc_stock_counts', ['number' => $number, 'date' => $date, 'warehouse_id' => $wh, 'status' => 'posted',
             'note' => (string)($b['note'] ?? ''), 'created_at' => acc_now()]);
@@ -407,6 +483,17 @@ function acc_treasury_record(array $b)
         throw new AccError('طرف حساب یافت نشد');
     }
     $inv_id = !empty($b['invoice_id']) ? (int)$b['invoice_id'] : null;
+    if ($inv_id) {
+        $inv = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [$inv_id]);
+        if (!$inv) {
+            throw new AccError('فاکتور یافت نشد');
+        }
+        // money for an invoice goes to that invoice's person, never to income/expense
+        if ($pid && $pid !== (int)$inv['person_id']) {
+            throw new AccError('طرف حساب با طرف فاکتور یکی نیست');
+        }
+        $pid = (int)$inv['person_id'];
+    }
     $to = null;
     if ($kind === 'transfer') {
         $to = acc_row('SELECT * FROM acc_cash_accounts WHERE id = ?', [(int)($b['to_account_id'] ?? 0)]);
@@ -416,7 +503,7 @@ function acc_treasury_record(array $b)
     } elseif (!in_array($kind, ['receive', 'pay'], true)) {
         throw new AccError('نوع عملیات نامعتبر است');
     }
-    $date = (string)($b['date'] ?? '') ?: acc_today();
+    $date = acc_date($b['date'] ?? '');
     $desc = trim((string)($b['description'] ?? ''));
     return acc_tx(function () use ($kind, $amount, $acc, $to, $pid, $inv_id, $date, $desc, $b) {
         $number = sprintf('TR-%04d', acc_next('treasury'));
@@ -460,16 +547,30 @@ function acc_treasury_record(array $b)
         }
         acc_post($date, $title . ' ' . $number . ($desc !== '' ? ' - ' . $desc : ''), $lines, 'auto', 'treasury', $id);
         if ($inv_id) {
-            $inv = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [$inv_id]);
-            if ($inv && (($kind === 'receive' && $inv['kind'] === 'sale') || ($kind === 'pay' && $inv['kind'] === 'purchase'))) {
-                $paid = (float)acc_val('SELECT COALESCE(SUM(amount), 0) FROM acc_treasury WHERE invoice_id = ? AND kind = ?', [$inv_id, $kind]);
-                if ($paid >= (float)$inv['total'] - 0.5) {
-                    acc_q('UPDATE acc_invoices SET settled = 1 WHERE id = ?', [$inv_id]);
-                }
-            }
+            acc_invoice_refresh_settled($inv_id);
         }
         return ['id' => $id, 'number' => $number, 'kind' => $kind, 'amount' => $amount];
     });
+}
+
+/** What has been paid on an invoice: receipts/payments and cheques (bounced ones not) for it. */
+function acc_invoice_paid($inv_id)
+{
+    $inv = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [(int)$inv_id]);
+    if (!$inv || !in_array($inv['kind'], ['sale', 'purchase'], true)) {
+        return 0.0;
+    }
+    $sale = $inv['kind'] === 'sale';
+    return (float)acc_val('SELECT COALESCE(SUM(amount), 0) FROM acc_treasury WHERE invoice_id = ? AND kind = ?', [$inv_id, $sale ? 'receive' : 'pay'])
+        + (float)acc_val("SELECT COALESCE(SUM(amount), 0) FROM acc_cheques WHERE invoice_id = ? AND direction = ? AND status != 'returned'", [$inv_id, $sale ? 'received' : 'payable']);
+}
+
+function acc_invoice_refresh_settled($inv_id)
+{
+    $inv = acc_row('SELECT * FROM acc_invoices WHERE id = ?', [(int)$inv_id]);
+    if ($inv) {
+        acc_q('UPDATE acc_invoices SET settled = ? WHERE id = ?', [acc_invoice_paid($inv_id) >= (float)$inv['total'] - 0.5 ? 1 : 0, $inv_id]);
+    }
 }
 
 function acc_cheque_record(array $b)
@@ -486,17 +587,25 @@ function acc_cheque_record(array $b)
         throw new AccError('شماره و مبلغ چک لازم است');
     }
     $account = !empty($b['account_id']) ? (int)$b['account_id'] : null;
-    return acc_tx(function () use ($dir, $person, $amount, $number, $account, $b) {
+    $inv_id = !empty($b['invoice_id']) ? (int)$b['invoice_id'] : null;
+    if ($inv_id && (int)acc_val('SELECT person_id FROM acc_invoices WHERE id = ?', [$inv_id]) !== (int)$person['id']) {
+        throw new AccError('این فاکتور مال این طرف حساب نیست');
+    }
+    $date = acc_date($b['date'] ?? '');
+    return acc_tx(function () use ($dir, $person, $amount, $number, $account, $b, $inv_id, $date) {
         $id = acc_insert('acc_cheques', ['number' => $number, 'direction' => $dir, 'person_id' => $person['id'], 'account_id' => $account,
             'amount' => $amount, 'due_date' => (string)($b['due_date'] ?? ''), 'bank_name' => (string)($b['bank_name'] ?? ''),
-            'status' => $dir === 'received' ? 'in_hand' : 'issued', 'description' => (string)($b['description'] ?? ''), 'created_at' => acc_now()]);
-        $date = acc_today();
+            'status' => $dir === 'received' ? 'in_hand' : 'issued', 'description' => (string)($b['description'] ?? ''), 'created_at' => acc_now(),
+            'invoice_id' => $inv_id, 'date' => $date]);
         if ($dir === 'received') {
             acc_post($date, 'دریافت چک ' . $number . ' از ' . $person['name'], [acc_line('1104', $amount, 0, 'چک ' . $number),
                 acc_person_line($person['id'], -$amount, 'چک ' . $number)], 'auto', 'cheque', $id);
         } else {
             acc_post($date, 'صدور چک ' . $number . ' برای ' . $person['name'], [acc_person_line($person['id'], $amount, 'چک ' . $number),
                 acc_line('2102', 0, $amount, 'چک ' . $number)], 'auto', 'cheque', $id);
+        }
+        if ($inv_id) {
+            acc_invoice_refresh_settled($inv_id);
         }
         return acc_row('SELECT * FROM acc_cheques WHERE id = ?', [$id]);
     });
@@ -515,7 +624,7 @@ function acc_cheque_act($id, $action, array $b)
     }
     $amt = (float)$c['amount'];
     $label = 'چک ' . $c['number'];
-    $date = (string)($b['date'] ?? '') ?: acc_today();
+    $date = acc_date($b['date'] ?? '');
     $need_account = function () use ($acc_id) {
         if (!$acc_id) {
             throw new AccError('حساب بانک/صندوق را انتخاب کن');
@@ -567,6 +676,9 @@ function acc_cheque_act($id, $action, array $b)
             }
         }
         acc_update('acc_cheques', $c['id'], $set);
+        if ($c['invoice_id']) {
+            acc_invoice_refresh_settled($c['invoice_id']);
+        }
         return acc_row('SELECT * FROM acc_cheques WHERE id = ?', [$c['id']]);
     });
 }

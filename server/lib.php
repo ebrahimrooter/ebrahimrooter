@@ -721,6 +721,22 @@ function ba_toman($rial) {
 }
 
 /** Small key/value store (bot conversation state, device heartbeat). */
+/**
+ * One CSV row for Excel: whole numbers without ".0", and text that Excel
+ * would run as a formula (=, +, -, @ at the start) made plain text.
+ */
+function ba_csv_put($fh, array $row) {
+    $row = array_map(function ($v) {
+        if (is_float($v) || (is_string($v) && preg_match('/^-?\d+\.0+$/', $v))) {
+            $f = (float)$v;
+            return floor($f) == $f ? (string)(int)$f : (string)$f;
+        }
+        $v = (string)$v;
+        return $v !== '' && strpos('=+-@', $v[0]) !== false && !is_numeric($v) ? "'" . $v : $v;
+    }, $row);
+    fputcsv($fh, $row, ',', '"', '');
+}
+
 function ba_kv_get($key, $default = null) {
     $q = ba_db()->prepare('SELECT v FROM kv WHERE k = ?');
     $q->execute([$key]);

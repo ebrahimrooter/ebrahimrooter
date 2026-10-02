@@ -190,7 +190,11 @@ const ACC_COLUMNS = [
     ['acc_company', 'tax_private_key', "TEXT DEFAULT ''"],
     ['acc_company', 'tax_certificate', "TEXT DEFAULT ''"],
     ['acc_company', 'tax_env', "TEXT DEFAULT 'main'"],
-    ['acc_tax_invoices', 'reference', "TEXT DEFAULT ''"],                // transaction of the bank assistant it came from
+    ['acc_tax_invoices', 'reference', "TEXT DEFAULT ''"],
+    ['acc_company', 'allow_negative_stock', 'INTEGER DEFAULT 0'],
+    ['acc_invoices', 'no_vat', 'INTEGER DEFAULT 0'],          // seller not registered for VAT / exempt goods
+    ['acc_cheques', 'invoice_id', 'INTEGER'],
+    ['acc_cheques', 'date', "TEXT DEFAULT ''"],                // transaction of the bank assistant it came from
 ];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */
@@ -474,8 +478,38 @@ function acc_cash_line($cash_id, $amount, $desc = '')
  * Zero lines are dropped; an entry with nothing left is not recorded.
  * Returns the journal id (or null).
  */
+/**
+ * A document date as YYYY/MM/DD (Jalali): Persian digits and 1405/7/5 are
+ * accepted; anything else is refused so that date ranges sort correctly.
+ */
+function acc_date($d)
+{
+    $d = trim(ba_normalize((string)$d));
+    if ($d === '') {
+        return acc_today();
+    }
+    if (!preg_match('~^(1[34]\d\d)[/\-.](\d{1,2})[/\-.](\d{1,2})$~', $d, $m) || (int)$m[2] < 1 || (int)$m[2] > 12 || (int)$m[3] < 1
+        || (int)$m[3] > ((int)$m[2] <= 6 ? 31 : 30)) {
+        throw new AccError('تاریخ «' . $d . '» درست نیست؛ به شکل ۱۴۰۵/۰۷/۱۵ بنویس');
+    }
+    return sprintf('%04d/%02d/%02d', $m[1], $m[2], $m[3]);
+}
+
+/** Entries dated in a closed fiscal year are refused (the year's statements stay as closed). */
+function acc_check_period($date)
+{
+    $until = (string)ba_kv_get('acc_closed_until:' . acc_company_id(), '');
+    if ($until !== '' && $date <= $until) {
+        throw new AccError('سال مالی تا ' . $until . ' بسته شده؛ سند با این تاریخ ثبت نمی‌شود');
+    }
+}
+
 function acc_post($date, $description, array $lines, $kind = 'auto', $source_type = null, $source_id = null)
 {
+    $date = acc_date($date);
+    if ($kind !== 'closing') {
+        acc_check_period($date);
+    }
     $lines = array_values(array_filter($lines, fn($l) => round($l['debit'], 2) != 0 || round($l['credit'], 2) != 0));
     if (!$lines) {
         return null;

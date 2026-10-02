@@ -252,6 +252,14 @@ function acc_moadian_invoice(array $t, array $cfg, $ins = 1, $serial = null, $re
         $body[] = ['sstid' => $sstid, 'sstt' => mb_substr($it['name'], 0, 400), 'am' => (float)$it['qty'], 'mu' => '1627', 'fee' => (float)$it['price'],
             'prdis' => $prdis, 'dis' => $dis, 'adis' => $adis, 'vra' => $vat, 'vam' => $vam, 'tsstam' => $adis + $vam];
     }
+    // per-line rounding must add up to what the books have for the invoice
+    if ($body) {
+        $k = count($body) - 1;
+        $body[$k]['dis'] += (float)$inv['discount'] - array_sum(array_column($body, 'dis'));
+        $body[$k]['adis'] = $body[$k]['prdis'] - $body[$k]['dis'];
+        $body[$k]['vam'] += (float)$inv['tax'] - array_sum(array_column($body, 'vam'));
+        $body[$k]['tsstam'] = $body[$k]['adis'] + $body[$k]['vam'];
+    }
     $sum = fn($k) => array_sum(array_column($body, $k));
     $header = ['taxid' => acc_moadian_taxid($cfg['memory'], $ms, $serial), 'inno' => str_pad(dechex($serial), 10, '0', STR_PAD_LEFT),
         'indatim' => $ms, 'indati2m' => $ms, 'inty' => $type, 'inp' => 1, 'ins' => $ins, 'tins' => $seller,

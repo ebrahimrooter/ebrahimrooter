@@ -681,10 +681,10 @@ case 'export':
     header('Content-Disposition: attachment; filename="bank-' . $from . '_' . $to . '.csv"');
     $fh = fopen('php://output', 'w');
     fwrite($fh, "\xEF\xBB\xBF");
-    fputcsv($fh, ['شناسه', 'تاریخ', 'ساعت', 'نوع', 'مبلغ (ریال)', 'طرف حساب', 'دسته', 'شرح', 'یادداشت', 'مانده بانک (ریال)', 'حساب'], ',', '"', '');
+    ba_csv_put($fh, ['شناسه', 'تاریخ', 'ساعت', 'نوع', 'مبلغ (ریال)', 'طرف حساب', 'دسته', 'شرح', 'یادداشت', 'مانده بانک (ریال)', 'حساب']);
     foreach ($q as $t) {
-        fputcsv($fh, [$t['id'], $t['bank_date'], $t['bank_time'], $t['direction'] === 'in' ? 'دریافت' : 'پرداخت', $t['amount'],
-            $t['party'], $t['category_name'], $t['description'], $t['note'], $t['balance'], $t['account']], ',', '"', '');
+        ba_csv_put($fh, [$t['id'], $t['bank_date'], $t['bank_time'], $t['direction'] === 'in' ? 'دریافت' : 'پرداخت', $t['amount'],
+            $t['party'], $t['category_name'], $t['description'], $t['note'], $t['balance'], $t['account']]);
     }
     fclose($fh);
     exit;
