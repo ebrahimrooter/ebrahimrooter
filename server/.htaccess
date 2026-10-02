@@ -1,4 +1,5 @@
-DirectoryIndex app/index.html
+# /bank/ opens the app; inside app/ its own index.html (the rule is inherited by subfolders)
+DirectoryIndex index.html app/index.html
 
 # Only the API and the app are reachable from the web.
 <FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup)\.php$">

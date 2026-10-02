@@ -69,6 +69,13 @@ chown -R www-data:www-data "$WEB"
 # .htaccess must be honoured: it keeps config.php and the database private
 sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 a2enmod -q rewrite headers >/dev/null
+# no file listings for the app's folders
+cat > /etc/apache2/conf-available/bank-assistant.conf <<EOF
+<Directory $WEB>
+    Options -Indexes
+</Directory>
+EOF
+a2enconf -q bank-assistant >/dev/null
 restart_apache
 
 # ---------------------------------------------------------------- HTTPS
