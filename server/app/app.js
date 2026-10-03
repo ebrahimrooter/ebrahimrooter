@@ -1184,16 +1184,16 @@
   /** Opened from a notification (#/orb/<id>): show the orb for that transaction. */
   function openOrbFor(id) {
     document.body.classList.add('siri-mode');
-    // whatever page was on screen stays as it is behind the orb; only an empty app draws its home first
-    var behind = app.innerHTML.trim() !== '' ? Promise.resolve() : viewMoney();
-    return Promise.resolve(behind).then(function () {
+    // only the orb is shown: no page of the app behind it
+    siriTheme(true);
+    return Promise.resolve().then(function () {
       return api('transaction', { query: '&id=' + id });
     }).then(function (d) {
       var tx = d.item;
-      if (tx.status !== 'pending') { document.body.classList.remove('siri-mode'); history.replaceState(null, '', lastHash); toast('این تراکنش قبلاً جواب گرفته'); return; }
+      if (tx.status !== 'pending') { siriExit(); toast('این تراکنش قبلاً جواب گرفته'); return; }
       if (+tx.id > (+store('ba_orb_last') || 0)) store('ba_orb_last', String(tx.id));   // the poller won't announce it again
       siriOpen(tx);
-    }).catch(function (e) { document.body.classList.remove('siri-mode'); toast(e.message); });
+    }).catch(function (e) { siriExit(); toast(e.message); });
   }
 
   /* -- Bale bot connection (host) -- */
@@ -1370,10 +1370,19 @@
     else st.addEventListener('click', go);
   }
 
+  function siriTheme(on) {
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (!m) { m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); }
+    if (on && !m.dataset.app) m.dataset.app = m.content || '';
+    m.content = on ? '#000000' : (m.dataset.app || '');
+  }
+
   function siriExit() {
     document.body.classList.remove('siri-mode');
+    siriTheme(false);
     try { window.close(); } catch (e) { /* only works where the window was opened by the notification */ }
-    if (/^#\/orb/.test(location.hash)) history.replaceState(null, '', lastHash);   // back to the page that was open, untouched
+    if (/^#\/orb/.test(location.hash)) history.replaceState(null, '', lastHash);
+    if (app.innerHTML.trim() === '') viewMoney();   // the window could not close itself (iPhone): the app appears
   }
 
   /** جلسه‌ی صوتی: بپرس ← بشنو ← بفهم ← تأیید ← ثبت */

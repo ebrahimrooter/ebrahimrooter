@@ -213,8 +213,9 @@ td .muted, tr.muted td { font-size: 13px; }
 .txlist .amt { white-space: nowrap; font-size: 15px; }
 #money .stat { margin-bottom: 4px; }
 
-/* حالت سیری (باز شدن از نوتیف): orb در یک‌سوم پایین صفحه با نور رنگی دور کادر؛ صفحه‌ی پشتش دست نمی‌خورد */
-body.siri-mode .notif { visibility: hidden; }
+/* حالت سیری (باز شدن از نوتیف): فقط orb در یک‌سوم پایین صفحه با نور رنگی دور کادر؛ هیچ صفحه‌ای از اپ پشتش نیست */
+body.siri-mode .notif, body.siri-mode #app, body.siri-mode .tabbar, body.siri-mode #toast { visibility: hidden; }
+html:has(body.siri-mode), body.siri-mode { background: #000; }
 body.siri-mode .stage { background: rgba(14,12,20,.86); color: #fff; box-shadow: 0 -12px 50px rgba(255,140,170,.35); overflow: hidden; }
 body.siri-mode .stage::before { background: rgba(255,255,255,.3); }
 body.siri-mode .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; padding: 4px; background: conic-gradient(from var(--a, 0deg), #ff9fb2, #ffb06a, #ffd23f, #7ad7ff, #b48cff, #ff9fb2); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; filter: blur(6px); opacity: .9; animation: siriedge 4s linear infinite; }
