@@ -1262,7 +1262,8 @@
       '<div class="notif-timer"><b></b></div>';
     var s = document.createElement('div');
     s.id = 'orbStage'; s.className = 'stage';
-    s.innerHTML = '<button type="button" class="close" id="orbClose" aria-label="بستن">✕</button>' + orbHtml +
+    s.innerHTML = '<button type="button" class="close" id="orbClose" aria-label="بستن">✕</button>' +
+      '<button type="button" class="close pipbtn" id="orbPip" aria-label="شناور کردن (تصویر در تصویر)" hidden>⧉</button>' + orbHtml +
       '<div class="stage-line" id="orbLine"></div><div class="stage-sub" id="orbSub"></div>';
     document.body.appendChild(n);
     document.body.appendChild(s);
@@ -1271,6 +1272,9 @@
     document.getElementById('orbYes').onclick = function () { Voice.unlock(); orbHide(false); orbStart(orb.tx); };
     document.getElementById('orbNo').onclick = function () { orbHide(true); };
     document.getElementById('orbClose').onclick = orbCloseStage;
+    var pb = document.getElementById('orbPip');
+    pb.hidden = !Pip.supported();
+    pb.onclick = function (e) { e.stopPropagation(); Voice.unlock(); Pip.toggle(); };
 
     // کشیدن کادر به پایین = بستن
     var sy = null;
@@ -1334,6 +1338,78 @@
     if (l) l.textContent = line || '';
     if (s) s.textContent = sub || '';
   }
+
+  /* ---- تصویر در تصویر (PiP): orb در یک پنجره‌ی کوچک شناور که روی صفحه‌ی گوشی و اپ‌های دیگر هم می‌ماند ----
+   * orb و جمله‌ی فعلی هر لحظه روی یک بوم کشیده می‌شوند، از بوم یک ویدیوی زنده
+   * ساخته می‌شود و همان ویدیو به حالت PiP می‌رود (iPhone: iOS 15 به بالا، با یک لمس). */
+  var Pip = {
+    video: null, canvas: null, timer: null,
+    supported: function () {
+      var v = document.createElement('video');
+      return !!(HTMLCanvasElement.prototype.captureStream && (document.pictureInPictureEnabled
+        || (v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture'))));
+    },
+    active: function () {
+      var v = Pip.video;
+      return !!v && (document.pictureInPictureElement === v || v.webkitPresentationMode === 'picture-in-picture');
+    },
+    draw: function () {
+      var c = Pip.canvas, x = c.getContext('2d'), W = c.width, H = c.height;
+      var st = document.getElementById('orbStage');
+      var g = x.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, '#8fc6f5'); g.addColorStop(0.6, '#2f5fd0'); g.addColorStop(1, '#1b2f86');
+      x.fillStyle = g; x.fillRect(0, 0, W, H);
+      var oc = st && st.querySelector('.orb canvas');
+      var s = Math.min(W, H) * 0.62;
+      if (oc) x.drawImage(oc, (W - s) / 2, H * 0.08, s, s);
+      x.fillStyle = '#fff';
+      x.textAlign = 'center';
+      x.direction = 'rtl';
+      var line = (document.getElementById('orbLine') || {}).textContent || '';
+      var sub = (document.getElementById('orbSub') || {}).textContent || '';
+      x.font = 'bold ' + Math.round(H * 0.07) + 'px Vazirmatn, Tahoma, sans-serif';
+      x.fillText(line.length > 34 ? line.slice(0, 33) + '…' : line, W / 2, H * 0.84);
+      x.globalAlpha = 0.8;
+      x.font = Math.round(H * 0.055) + 'px Vazirmatn, Tahoma, sans-serif';
+      x.fillText(sub, W / 2, H * 0.94);
+      x.globalAlpha = 1;
+      // the orb changes state with the assistant: a coloured ring while it listens
+      if (st && st.classList.contains('listening')) {
+        x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 6; x.strokeRect(3, 3, W - 6, H - 6);
+      }
+    },
+    open: function () {
+      if (!Pip.canvas) {
+        Pip.canvas = document.createElement('canvas');
+        Pip.canvas.width = 480; Pip.canvas.height = 480;
+        var v = Pip.video = document.createElement('video');
+        v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.autoplay = true;
+        v.style.cssText = 'position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;bottom:0;left:0';
+        document.body.appendChild(v);
+        v.addEventListener('leavepictureinpicture', Pip.stopDrawing);
+        v.addEventListener('webkitpresentationmodechanged', function () { if (v.webkitPresentationMode !== 'picture-in-picture') Pip.stopDrawing(); });
+      }
+      Pip.draw();
+      if (!Pip.video.srcObject) Pip.video.srcObject = Pip.canvas.captureStream(24);
+      clearInterval(Pip.timer);
+      Pip.timer = setInterval(Pip.draw, 1000 / 24);   // setInterval keeps running where requestAnimationFrame stops
+      var v2 = Pip.video;
+      return v2.play().catch(function () {}).then(function () {
+        if (v2.requestPictureInPicture) return v2.requestPictureInPicture();
+        v2.webkitSetPresentationMode('picture-in-picture');
+      }).catch(function (e) { Pip.stopDrawing(); toast('شناور کردن ممکن نشد: ' + e.message); });
+    },
+    close: function () {
+      if (!Pip.active()) return;
+      try {
+        if (document.exitPictureInPicture && document.pictureInPictureElement) document.exitPictureInPicture();
+        else Pip.video.webkitSetPresentationMode('inline');
+      } catch (e) { /* already closed */ }
+      Pip.stopDrawing();
+    },
+    stopDrawing: function () { clearInterval(Pip.timer); Pip.timer = null; },
+    toggle: function () { return Pip.active() ? Pip.close() : Pip.open(); }
+  };
   function orbMode(mode) {   // speaking | listening | thinking | ''
     var st = document.getElementById('orbStage');
     st.classList.toggle('speaking', mode === 'speaking');
@@ -1375,6 +1451,7 @@
     orbMode('');
     var st = document.getElementById('orbStage');
     if (st) st.classList.remove('open');
+    setTimeout(function () { if (!orb.busy) Pip.close(); }, 1500);
     if (document.body.classList.contains('siri-mode')) siriExit();
   }
 

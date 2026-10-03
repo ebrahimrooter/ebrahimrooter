@@ -54,7 +54,14 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
     line: document.getElementById('orbLine').textContent, third: document.getElementById('orbStage').getBoundingClientRect().height < innerHeight * 0.45 }));
   check('notification opens the orb in the bottom third', siri.mode && siri.open && siri.third && siri.line.includes('برداشت'), JSON.stringify(siri));
   await page.screenshot({ path: OUT + '/app-siri.png' });
+  const pip = await page.evaluate(() => { const b = document.getElementById('orbPip'); return b && !b.hidden; });
+  check('float (picture-in-picture) button where the browser supports it', pip);
+  await page.click('#orbPip');
+  await page.waitForTimeout(800);
+  check('orb floats in a picture-in-picture window', await page.evaluate(() => !!document.pictureInPictureElement));
   await page.click('#orbClose');
+  await page.waitForTimeout(1800);
+  check('closing the orb closes the floating window too', await page.evaluate(() => !document.pictureInPictureElement));
   await page.waitForTimeout(600);
   check('closing the orb goes back to the list', await page.evaluate(() => !document.body.classList.contains('siri-mode') && location.hash === '#/'));
   // the page that was open stays exactly as it was behind the orb

@@ -241,3 +241,7 @@ body.siri-mode .stage.listening::after { animation-duration: 1.6s; opacity: 1; }
 .orb.torb::before, .orb.torb::after { display: none; }
 .orb.torb canvas { display: block; }
 .orb-btn .orb.torb { border-radius: 50%; }
+
+/* دکمه‌ی شناور کردن orb (تصویر در تصویر) کنار دکمه‌ی بستن */
+.stage .pipbtn { inset-inline-start: auto; inset-inline-end: 14px; font-size: 16px; }
+.stage .pipbtn[hidden] { display: none; }
