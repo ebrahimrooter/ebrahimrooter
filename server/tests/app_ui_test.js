@@ -28,6 +28,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('#f button');
   await page.waitForTimeout(1500);
   check('home shows the orb', await page.isVisible('#homeOrb .orb'));
+  check('orb drawn by thinking-orbs (canvas)', await page.isVisible('#homeOrb .orb canvas'));
   const tabs = await page.$$eval('#tabbar a', as => as.map(a => a.textContent.trim()));
   check('only two tabs', tabs.length === 2, JSON.stringify(tabs));
   const rows = await page.$$eval('.txlist .item', xs => xs.map(x => x.textContent));

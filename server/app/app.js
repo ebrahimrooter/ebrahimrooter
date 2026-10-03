@@ -1266,6 +1266,7 @@
       '<div class="stage-line" id="orbLine"></div><div class="stage-sub" id="orbSub"></div>';
     document.body.appendChild(n);
     document.body.appendChild(s);
+    orbMountAll();
 
     document.getElementById('orbYes').onclick = function () { Voice.unlock(); orbHide(false); orbStart(orb.tx); };
     document.getElementById('orbNo').onclick = function () { orbHide(true); };
@@ -1333,10 +1334,38 @@
     if (l) l.textContent = line || '';
     if (s) s.textContent = sub || '';
   }
-  function orbMode(mode) {   // speaking | listening | ''
+  function orbMode(mode) {   // speaking | listening | thinking | ''
     var st = document.getElementById('orbStage');
     st.classList.toggle('speaking', mode === 'speaking');
     st.classList.toggle('listening', mode === 'listening');
+    orbSetState(st.querySelector('.orb'), ORB_STATES[mode] || ORB_STATES['']);
+  }
+
+  /* ---- the orb animation: thinking-orbs (libraries.dev/orbs), bundled in vendor/orbs.js ----
+   * every .orb on the page becomes a dotted ThinkingOrb canvas; without the
+   * bundle the old CSS orb stays. */
+  var ORB_STATES = { '': 'searching', speaking: 'composing', listening: 'listening', thinking: 'solving' };
+  var orbHandles = [];
+
+  function orbMountAll() {
+    if (!window.ThinkingOrbs) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.orb:not([data-torb])'), function (el) {
+      var w = el.getBoundingClientRect().width || el.offsetWidth || 64;
+      var preset = w >= 48 ? 64 : 32;
+      var dpr = Math.min(3, window.devicePixelRatio || 1) * w / preset;
+      el.setAttribute('data-torb', '1');
+      el.classList.add('torb');
+      el.innerHTML = '';
+      var dark = !!el.closest('.siri-mode .stage') || matchMedia('(prefers-color-scheme: dark)').matches;
+      var h = window.ThinkingOrbs.mount(el, { state: 'searching', size: preset, theme: dark ? 'dark' : 'light', 'data-dpr': String(dpr),
+        style: { width: w + 'px', height: w + 'px', display: 'block' } });
+      el._torb = h;
+      orbHandles.push(h);
+    });
+  }
+
+  function orbSetState(el, state) {
+    if (el && el._torb) el._torb.update({ state: state });
   }
   function orbCloseStage() {
     orb.session++;                       // هر مرحله‌ی در حال اجرا را بی‌اثر می‌کند
@@ -1357,6 +1386,8 @@
     document.body.classList.add('siri-mode');
     var st = document.getElementById('orbStage');
     st.classList.add('open');
+    var so = st.querySelector('.orb');
+    if (so && so._torb) so._torb.update({ theme: 'dark', color: '#ffffff', dotSize: 1.35 });
     orbSay((tx.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(tx.amount) + (tx.bank_time ? '، ساعت ' + faDigits(tx.bank_time) : ''), 'روی دستیار بزن تا بپرسد');
     var go = function (e) {
       if (e && e.target.closest('button')) return;
@@ -1379,6 +1410,8 @@
 
   function siriExit() {
     document.body.classList.remove('siri-mode');
+    var so = document.querySelector('#orbStage .orb');
+    if (so && so._torb) so._torb.update({ theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', color: undefined, dotSize: 1 });
     siriTheme(false);
     try { window.close(); } catch (e) { /* only works where the window was opened by the notification */ }
     if (/^#\/orb/.test(location.hash)) history.replaceState(null, '', lastHash);
@@ -1429,6 +1462,7 @@
         if (/(نادیده|حساب نکن|ثبت نکن|تکراری)/.test(a)) {
           return api('ignore', { body: { id: tx.id } }).then(function () { return speak('نادیده گرفتم.'); }).then(function () { return finish('نادیده گرفته شد'); });
         }
+        orbMode('thinking');
         return api('interpret', { body: { text: ans, direction: tx.direction } }).then(function (d) {
           if (!alive()) return;
           var g = d.guess;
@@ -1498,6 +1532,7 @@
         '<div class="hero-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div></div><div id="money"><p class="muted">در حال بارگذاری…</p></div>';
     }
     document.getElementById('homeOrb').onclick = orbTalk;
+    orbMountAll();
     return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending')]).then(function (r) {
       var items = r[0].items, wallets = r[1].wallets, pending = r[2].items;
       setBadge(pending.length);

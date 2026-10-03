@@ -235,3 +235,9 @@ body.siri-mode .stage .close { color: #fff; background: rgba(255,255,255,.14); }
 @keyframes siriedge { to { --a: 360deg; } }
 body.siri-mode .stage.listening::after { animation-duration: 1.6s; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { body.siri-mode .stage::after, body.siri-mode::before { animation: none; } }
+
+/* orb from thinking-orbs (canvas): no CSS blobs, the canvas is the orb */
+.orb.torb { background: none; animation: none; overflow: visible; isolation: auto; border-radius: 0; }
+.orb.torb::before, .orb.torb::after { display: none; }
+.orb.torb canvas { display: block; }
+.orb-btn .orb.torb { border-radius: 50%; }
