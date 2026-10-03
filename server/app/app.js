@@ -1183,12 +1183,14 @@
 
   /** Opened from a notification (#/orb/<id>): show the orb for that transaction. */
   function openOrbFor(id) {
-    document.body.classList.add('siri-mode');   // straight to the orb, the app stays behind it
-    return Promise.resolve(viewMoney()).then(function () {
+    document.body.classList.add('siri-mode');
+    // whatever page was on screen stays as it is behind the orb; only an empty app draws its home first
+    var behind = app.innerHTML.trim() !== '' ? Promise.resolve() : viewMoney();
+    return Promise.resolve(behind).then(function () {
       return api('transaction', { query: '&id=' + id });
     }).then(function (d) {
       var tx = d.item;
-      if (tx.status !== 'pending') { document.body.classList.remove('siri-mode'); history.replaceState(null, '', '#/'); toast('این تراکنش قبلاً جواب گرفته'); return; }
+      if (tx.status !== 'pending') { document.body.classList.remove('siri-mode'); history.replaceState(null, '', lastHash); toast('این تراکنش قبلاً جواب گرفته'); return; }
       if (+tx.id > (+store('ba_orb_last') || 0)) store('ba_orb_last', String(tx.id));   // the poller won't announce it again
       siriOpen(tx);
     }).catch(function (e) { document.body.classList.remove('siri-mode'); toast(e.message); });
@@ -1371,7 +1373,7 @@
   function siriExit() {
     document.body.classList.remove('siri-mode');
     try { window.close(); } catch (e) { /* only works where the window was opened by the notification */ }
-    if (/^#\/orb/.test(location.hash)) { history.replaceState(null, '', '#/'); viewMoney(); }
+    if (/^#\/orb/.test(location.hash)) history.replaceState(null, '', lastHash);   // back to the page that was open, untouched
   }
 
   /** جلسه‌ی صوتی: بپرس ← بشنو ← بفهم ← تأیید ← ثبت */
@@ -1608,8 +1610,15 @@
 
   /* ------------------------------- router ------------------------------ */
 
+  var lastHash = '#/';   // the page under the orb
+
   function route() {
     if (!token()) return viewLogin();
+    if (/^#\/orb\//.test(location.hash)) {   // the orb opens over the current page; nothing else changes
+      openOrbFor(+location.hash.split('/')[2]);
+      return;
+    }
+    lastHash = location.hash || '#/';
     run.active = false;
     if (Voice.stop) Voice.stop();
     var h = location.hash.replace(/^#\/?/, '');

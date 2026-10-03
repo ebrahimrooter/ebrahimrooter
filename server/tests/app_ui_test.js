@@ -56,6 +56,19 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('#orbClose');
   await page.waitForTimeout(600);
   check('closing the orb goes back to the list', await page.evaluate(() => !document.body.classList.contains('siri-mode') && location.hash === '#/'));
+  // the page that was open stays exactly as it was behind the orb
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await page.waitForTimeout(800);
+  const before = await page.evaluate(() => document.getElementById('app').innerHTML.length);
+  await page.evaluate(() => { location.hash = '#/orb/2'; });
+  await page.waitForTimeout(1200);
+  const under = await page.evaluate(() => ({ same: document.getElementById('app').innerHTML.length, h1: document.querySelector('#app h1').textContent,
+    dim: getComputedStyle(document.body, '::before').content }));
+  check('orb over the settings page, page untouched, no dimming', under.same === before && under.h1 === 'تنظیمات' && under.dim === 'none', JSON.stringify(under));
+  await page.screenshot({ path: OUT + '/app-siri-settings.png' });
+  await page.click('#orbClose');
+  await page.waitForTimeout(500);
+  check('back on the same page', await page.evaluate(() => location.hash === '#/settings'));
   check('no JavaScript errors', errors.length === 0, JSON.stringify(errors.slice(0, 5)));
   await browser.close();
   srv.kill();

@@ -1,7 +1,7 @@
 // Caches the app shell so it opens instantly from the home screen.
 // API calls always go to the network (live site data is never cached).
-var CACHE = 'bank-assistant-v10';
-var SHELL = ['./', 'index.html', 'app.css?v=10', 'app.js?v=10', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png'];
+var CACHE = 'bank-assistant-v11';
+var SHELL = ['./', 'index.html', 'app.css?v=11', 'app.js?v=11', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
