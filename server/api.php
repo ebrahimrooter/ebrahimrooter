@@ -231,6 +231,70 @@ if ($route === 'ping') {
     out(['ok' => true, 'time' => date('c')]);
 }
 
+/* ------------------- iPhone voice assistant (device token) ------------------- */
+// The companion app (ios/) never holds the app password: it pairs once with a
+// one-time code from the phone app and then sends "Authorization: Bearer <device token>".
+
+if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route !== 'assistant_devices' && $route !== 'assistant_revoke') {
+    require_once __DIR__ . '/assistant.php';
+    require_post();
+    if ($route === 'assistant_redeem') {
+        try {
+            out(['ok' => true] + assistant_redeem($in['code'] ?? '', $in['device_name'] ?? '', $_SERVER['REMOTE_ADDR'] ?? ''));
+        } catch (RuntimeException $e) {
+            fail($e->getMessage(), $e->getCode() ?: 400);
+        }
+    }
+    $device = assistant_device();
+    if (!$device) {
+        fail('این دستگاه وصل نیست یا دسترسی‌اش لغو شده؛ دوباره اتصال بده', 401);
+    }
+    try {
+        switch ($route) {
+            case 'assistant_me':
+                out(['ok' => true, 'device' => ['id' => (int)$device['id'], 'name' => $device['name']], 'voice' => ba_voice_configured()]);
+            case 'assistant_ask':
+                $text = trim((string)($in['text'] ?? ''));
+                if ($text === '' || mb_strlen($text) > 500) {
+                    fail('متن خالی یا خیلی بلند است');
+                }
+                try {
+                    $ans = assistant_answer($text, $device);
+                } catch (Throwable $e) {
+                    if (!($e instanceof AccError)) {
+                        throw $e;
+                    }
+                    $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];   // e.g. not enough stock
+                }
+                out(['ok' => true, 'heard' => $text] + $ans);
+            case 'assistant_transcribe':
+                if (!isset($_FILES['audio']) || !is_uploaded_file($_FILES['audio']['tmp_name'])) {
+                    fail('فایل صدا نرسید');
+                }
+                if ($_FILES['audio']['size'] > 5 * 1024 * 1024) {
+                    fail('فایل صدا بزرگ است', 413);
+                }
+                out(['ok' => true, 'text' => trim(ba_transcribe($_FILES['audio']['tmp_name'], $_FILES['audio']['type'], $_FILES['audio']['name']))]);
+            case 'assistant_speak':
+                $text = trim((string)($in['text'] ?? ''));
+                if ($text === '' || mb_strlen($text) > 600) {
+                    fail('متن نامعتبر');
+                }
+                $file = ba_tts($text, 'mp3');
+                header('Content-Type: audio/mpeg');
+                header('Content-Length: ' . filesize($file));
+                readfile($file);
+                exit;
+        }
+    } catch (RuntimeException $e) {
+        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
+    } catch (Throwable $e) {
+        error_log('assistant: ' . $e);
+        fail('خطا: ' . $e->getMessage(), 500);
+    }
+    fail('مسیر نامعتبر', 404);
+}
+
 /* ------------------------------ app side ----------------------------- */
 
 $app_token = $_SERVER['HTTP_X_APP_TOKEN'] ?? ($_GET['token'] ?? '');
@@ -683,6 +747,26 @@ case 'transcribe':
         fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
     }
     out(['ok' => true, 'text' => $text]);
+
+case 'assistant_pair':
+    // One-time code (5 minutes) for connecting the iPhone assistant app.
+    require_post();
+    require_once __DIR__ . '/assistant.php';
+    $code = assistant_pair_code();
+    $api = (string)($cfg['api_url'] ?? '') ?: (((($_SERVER['HTTPS'] ?? '') === 'on') ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/api.php', '?'));
+    out(['ok' => true, 'code' => $code, 'expires_in' => ASSISTANT_PAIR_TTL, 'server' => $api,
+        'link' => 'bankassistant://pair?code=' . $code . '&server=' . rawurlencode($api),
+        'universal_link' => preg_replace('~api\.php$~', '', $api) . 'assistant/?a=pair&code=' . $code . '&server=' . rawurlencode($api)]);
+
+case 'assistant_devices':
+    require_once __DIR__ . '/assistant.php';
+    out(['ok' => true, 'items' => assistant_devices()]);
+
+case 'assistant_revoke':
+    require_post();
+    require_once __DIR__ . '/assistant.php';
+    assistant_revoke((int)($in['id'] ?? 0));
+    out(['ok' => true]);
 
 case 'siri_next':
     // iPhone Shortcut / Siri: what to ask about next. 'audio_url' is the same

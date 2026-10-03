@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دستیار حسابداری</title>
+<style>
+  body { font-family: Vazirmatn, Tahoma, sans-serif; background: #0e0f14; color: #eef0f4; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+  .card { width: min(92vw, 420px); background: #1a1c23; border-radius: 28px; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  h1 { font-size: 20px; margin: 0 0 8px; } p { color: #aab0bc; line-height: 1.8; font-size: 15px; }
+  .code { font: 700 24px/1.4 ui-monospace, monospace; letter-spacing: 4px; text-align: center; background: #262933; border-radius: 14px; padding: 12px; direction: ltr; user-select: all; }
+  a.btn { display: block; text-align: center; background: #5b8cff; color: #fff; text-decoration: none; border-radius: 14px; padding: 13px; margin-top: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>دستیار حسابداری</h1>
+  <p id="msg">این لینک برای اپ «دستیار حسابداری» روی آیفون است. اگر اپ نصب بود، به‌جای این صفحه خود اپ باز می‌شد.</p>
+  <div id="pair" hidden>
+    <p>کد اتصال (۵ دقیقه اعتبار):</p>
+    <div class="code" id="code"></div>
+    <p>در اپ این کد و آدرس سرور را وارد کن، یا اگر اپ نصب است دکمه‌ی زیر را بزن:</p>
+    <div class="code" id="server" style="font-size:13px;letter-spacing:0"></div>
+  </div>
+  <a class="btn" id="open" href="bankassistant://listen">باز کردن اپ دستیار</a>
+  <a class="btn" href="../app/" style="background:#2c303b">برگشت به اپ حسابداری</a>
+</div>
+<script>
+  var q = new URLSearchParams(location.search);
+  if (q.get('a') === 'pair' && q.get('code')) {
+    document.getElementById('pair').hidden = false;
+    document.getElementById('code').textContent = q.get('code');
+    document.getElementById('server').textContent = q.get('server') || '';
+    document.getElementById('open').href = 'bankassistant://pair?code=' + encodeURIComponent(q.get('code')) + '&server=' + encodeURIComponent(q.get('server') || '');
+  }
+</script>
+</body>
+</html>

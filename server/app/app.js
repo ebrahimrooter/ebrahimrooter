@@ -1001,6 +1001,8 @@
     app.innerHTML = '<h1>تنظیمات</h1>' +
       '<h2>حسابداری</h2><div class="card"><p class="muted">فاکتور، انبار، چک، پیامک و گزارش‌ها در برنامه حسابداری است. با روشن کردن «اتصال به دستیار بانک» در تنظیمات آن، هر تراکنشی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شود.</p>' +
       '<div class="btns"><a class="btn ghost" href="../acc/" target="_blank" rel="noopener">باز کردن برنامه حسابداری</a></div></div>' +
+      '<h2>اپ دستیار آیفون</h2><div class="card" id="iosBox"><p class="muted">اپ همراه «دستیار حسابداری» (پوشه‌ی ios/) با صدا به سؤال‌های حسابداری جواب می‌دهد و وقتی به صفحه‌ی اصلی گوشی بروی، وضعیتش در Dynamic Island و صفحه‌ی قفل می‌ماند. رمز این اپ به آن داده نمی‌شود؛ با یک کد یک‌بارمصرف وصل می‌شود.</p>' +
+      '<div class="btns"><button class="btn" type="button" id="iosPair">اتصال اپ آیفون</button><a class="btn ghost" href="bankassistant://listen">باز کردن دستیار</a></div><div id="iosCode"></div><div id="iosDevices" class="muted"></div></div>' +
       '<h2>سیری آیفون (بدون باز کردن اپ)</h2><div class="card"><p class="muted">در اپ Shortcuts یک میان‌بر به اسم Bank بساز (مراحلش در README، بخش «میان‌بر سیری»). این دو آدرس و هدر <span class="num">X-App-Token</span> با رمز همین اپ را لازم دارد:</p>' +
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_next</div>' +
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_answer</div>' +
@@ -1067,6 +1069,18 @@
     };
     baleSettings();
     renderPerms(document.getElementById('permBox'));
+    iosDevices();
+    document.getElementById('iosPair').onclick = function () {
+      api('assistant_pair', { body: {} }).then(function (d) {
+        store('ba_ios', '1');
+        var box = document.getElementById('iosCode');
+        box.innerHTML = '<div class="sms num" style="font-size:22px;text-align:center;letter-spacing:4px;user-select:all">' + esc(d.code) + '</div>' +
+          '<p class="muted">کد تا ۵ دقیقه و فقط یک بار. اگر اپ روی همین گوشی نصب است، دکمه‌ی زیر وصلش می‌کند؛ وگرنه کد و آدرس سرور را در اپ وارد کن:</p>' +
+          '<div class="sms num" style="user-select:all">' + esc(d.server) + '</div>' +
+          '<div class="btns"><a class="btn" href="' + esc(d.link) + '">وصل کردن اپ روی همین گوشی</a></div>';
+        setTimeout(iosDevices, 60000);
+      }, function (e) { toast(e.message); });
+    };
     document.getElementById('testVoice').onclick = function () {
       Voice.speak('سلام. یک جمله بگو.').then(function () { return Voice.listen(5000); })
         .then(function (t) { toast(t ? 'شنیدم: ' + t : 'چیزی نشنیدم'); }, function (e) { toast('میکروفون: ' + e.message); });
@@ -1194,6 +1208,25 @@
       if (+tx.id > (+store('ba_orb_last') || 0)) store('ba_orb_last', String(tx.id));   // the poller won't announce it again
       siriOpen(tx);
     }).catch(function (e) { siriExit(); toast(e.message); });
+  }
+
+  /** iPhone assistant devices connected to this server (each can be cut off). */
+  function iosDevices() {
+    var box = document.getElementById('iosDevices');
+    if (!box) return;
+    api('assistant_devices').then(function (d) {
+      var live = d.items.filter(function (x) { return !+x.revoked; });
+      box.innerHTML = live.length ? '<b>گوشی‌های وصل:</b>' + live.map(function (x) {
+        return '<div class="row between" style="margin-top:6px"><span>📱 ' + esc(x.name) + ' <span class="muted">' + (x.last_seen ? '· آخرین استفاده ' + esc(x.last_seen.slice(0, 16)) : '') + '</span></span>' +
+          '<button class="btn plain" type="button" data-revoke="' + x.id + '">لغو دسترسی</button></div>';
+      }).join('') : '';
+      Array.prototype.forEach.call(box.querySelectorAll('[data-revoke]'), function (b) {
+        b.onclick = function () {
+          if (!confirm('دسترسی این گوشی قطع شود؟')) return;
+          api('assistant_revoke', { body: { id: +b.getAttribute('data-revoke') } }).then(iosDevices);
+        };
+      });
+    }).catch(function () {});
   }
 
   /* -- Bale bot connection (host) -- */
@@ -1606,7 +1639,9 @@
     if (!document.getElementById('homeOrb')) {
       app.innerHTML = '<div class="hero"><button type="button" class="orb-btn" id="homeOrb" aria-label="دستیار صوتی">' +
         '<div class="orb"><i></i><i></i><i></i><i></i></div></button>' +
-        '<div class="hero-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div></div><div id="money"><p class="muted">در حال بارگذاری…</p></div>';
+        '<div class="hero-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div>' +
+        (store('ba_ios') ? '<a class="chip" href="bankassistant://listen" style="text-decoration:none">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
+        '</div><div id="money"><p class="muted">در حال بارگذاری…</p></div>';
     }
     document.getElementById('homeOrb').onclick = orbTalk;
     orbMountAll();

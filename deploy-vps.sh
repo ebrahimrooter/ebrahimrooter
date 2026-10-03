@@ -16,6 +16,8 @@
 #   --no-voice        skip the local STT/TTS (faster-whisper + Piper)
 #   --stt-model NAME  passed to voice/install.sh (default large-v3-turbo)
 #   --models-from DIR passed to voice/install.sh (models copied, no download)
+#   --ios-app-id ID   TEAMID.bundle.id of the iPhone assistant app (ios/): serves
+#                     /.well-known/apple-app-site-association for Universal Links
 #
 # Safe to run again (e.g. to update): config.php and the database are kept.
 set -euo pipefail
@@ -26,14 +28,16 @@ DOMAIN=
 EMAIL=
 VOICE=1
 VOICE_ARGS=()
+IOS_APP_ID=
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift 2;;
     --email) EMAIL="$2"; shift 2;;
     --no-voice) VOICE=0; shift;;
+    --ios-app-id) IOS_APP_ID="$2"; shift 2;;
     --stt-model|--models-from|--tts-voice) VOICE_ARGS+=("$1" "$2"); shift 2;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0;;
     *) echo "unknown option: $1" >&2; exit 1;;
   esac
 done
@@ -184,6 +188,16 @@ fi
 APP=$(php -r '$c = require $argv[1]; echo $c["app_token"];' "$CFG")
 DEV=$(php -r '$c = require $argv[1]; echo $c["device_token"];' "$CFG")
 PIN=$(php -r '$c = require $argv[1]; echo $c["otp_pin"];' "$CFG")
+if [ -n "$IOS_APP_ID" ]; then
+  say "Universal Links for the iPhone assistant app ($IOS_APP_ID)"
+  WK="$(dirname "$WEB")/.well-known"
+  mkdir -p "$WK"
+  printf '{"applinks":{"details":[{"appIDs":["%s"],"components":[{"/":"/%s/assistant/*"},{"/":"/%s/assistant/"}]}]}}\n' \
+    "$IOS_APP_ID" "$(basename "$WEB")" "$(basename "$WEB")" > "$WK/apple-app-site-association"
+  printf '<Files "apple-app-site-association">\n  ForceType application/json\n</Files>\n' > "$WK/.htaccess"
+  chmod 644 "$WK/apple-app-site-association" "$WK/.htaccess"
+fi
+
 say "Done"
 echo "  Phone app:      $BASE/app/"
 echo "  Panel:          $BASE/acc/   (user: admin, first password = app password)"

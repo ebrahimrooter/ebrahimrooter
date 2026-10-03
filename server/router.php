@@ -14,6 +14,11 @@ if ($path === '/' || $path === '/index.html') {
     readfile(__DIR__ . '/index.html');
     return true;
 }
+if ($path === '/assistant/' || $path === '/assistant') {   // Universal Link landing page (app not installed)
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/assistant/index.html');
+    return true;
+}
 if ($path === '/app') {
     header('Location: /app/');
     exit;
