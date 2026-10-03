@@ -215,15 +215,23 @@ td .muted, tr.muted td { font-size: 13px; }
 
 /* حالت سیری (باز شدن از نوتیف): فقط orb در یک‌سوم پایین صفحه با نور رنگی دور کادر؛ هیچ صفحه‌ای از اپ پشتش نیست */
 body.siri-mode .notif, body.siri-mode #app, body.siri-mode .tabbar, body.siri-mode #toast { visibility: hidden; }
-html:has(body.siri-mode), body.siri-mode { background: #000; }
-body.siri-mode .stage { background: rgba(14,12,20,.86); color: #fff; box-shadow: 0 -12px 50px rgba(255,140,170,.35); overflow: hidden; }
+/* پشت orb: شیشه‌ی مات رنگی (شبیه والپیپر محوشده‌ی آیفون)؛ وب‌اپ نمی‌تواند واقعاً شفاف باشد */
+html:has(body.siri-mode), body.siri-mode { background: #3a6fd8; }
+body.siri-mode::before { content: ""; position: fixed; inset: -10%; z-index: 0; pointer-events: none;
+  background: radial-gradient(40% 35% at 20% 20%, rgba(170,215,255,.95), transparent 70%), radial-gradient(45% 40% at 85% 30%, rgba(120,170,255,.9), transparent 70%),
+    radial-gradient(50% 45% at 30% 80%, rgba(255,190,210,.75), transparent 70%), radial-gradient(55% 50% at 80% 85%, rgba(40,70,190,.95), transparent 70%), linear-gradient(160deg, #8fc6f5, #2f5fd0 60%, #1b2f86);
+  filter: blur(30px) saturate(1.2); animation: siriglass 18s ease-in-out infinite alternate; }
+body.siri-mode::after { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: rgba(255,255,255,.08); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+@keyframes siriglass { to { transform: scale(1.08) rotate(3deg); } }
+body.siri-mode .stage { background: rgba(255,255,255,.16); -webkit-backdrop-filter: blur(28px) saturate(1.6); backdrop-filter: blur(28px) saturate(1.6); border: 1px solid rgba(255,255,255,.35); border-bottom: 0; color: #fff; box-shadow: 0 -10px 40px rgba(20,30,90,.25); overflow: hidden; z-index: 90; }
 body.siri-mode .stage::before { background: rgba(255,255,255,.3); }
 body.siri-mode .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; padding: 4px; background: conic-gradient(from var(--a, 0deg), #ff9fb2, #ffb06a, #ffd23f, #7ad7ff, #b48cff, #ff9fb2); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; filter: blur(6px); opacity: .9; animation: siriedge 4s linear infinite; }
 body.siri-mode .stage .orb { cursor: pointer; }
 body.siri-mode .stage-line { color: #fff; }
-body.siri-mode .stage-sub { color: rgba(255,255,255,.7); }
+body.siri-mode .stage-sub { color: rgba(255,255,255,.85); }
+body.siri-mode .stage-line, body.siri-mode .stage-sub { text-shadow: 0 1px 8px rgba(0,0,40,.35); }
 body.siri-mode .stage .close { color: #fff; background: rgba(255,255,255,.14); }
 @property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes siriedge { to { --a: 360deg; } }
 body.siri-mode .stage.listening::after { animation-duration: 1.6s; opacity: 1; }
-@media (prefers-reduced-motion: reduce) { body.siri-mode .stage::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { body.siri-mode .stage::after, body.siri-mode::before { animation: none; } }

@@ -1374,7 +1374,7 @@
     var m = document.querySelector('meta[name="theme-color"]');
     if (!m) { m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); }
     if (on && !m.dataset.app) m.dataset.app = m.content || '';
-    m.content = on ? '#000000' : (m.dataset.app || '');
+    m.content = on ? '#8fc6f5' : (m.dataset.app || '');
   }
 
   function siriExit() {

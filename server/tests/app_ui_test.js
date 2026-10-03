@@ -64,7 +64,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.waitForTimeout(1200);
   const under = await page.evaluate(() => ({ app: getComputedStyle(document.getElementById('app')).visibility, tabs: getComputedStyle(document.getElementById('tabbar')).visibility,
     bg: getComputedStyle(document.body).backgroundColor, same: document.getElementById('app').innerHTML.length }));
-  check('only the orb: no app page or tabs behind it', under.app === 'hidden' && under.tabs === 'hidden' && under.bg === 'rgb(0, 0, 0)' && under.same === before, JSON.stringify(under));
+  check('only the orb: no app page or tabs behind it', under.app === 'hidden' && under.tabs === 'hidden' && under.same === before, JSON.stringify(under));
   await page.screenshot({ path: OUT + '/app-siri-settings.png' });
   await page.click('#orbClose');
   await page.waitForTimeout(500);
