@@ -999,8 +999,8 @@
       return '<select name="kind" style="width:auto">' + ['pl', 'party', 'transfer'].map(function (x) { return '<option value="' + x + '"' + (k === x ? ' selected' : '') + '>' + kindLabel[x] + '</option>'; }).join('') + '</select>';
     };
     app.innerHTML = '<h1>تنظیمات</h1>' +
-      '<h2>حسابداری</h2><div class="card"><p class="muted">فاکتور، انبار، چک، پیامک و گزارش‌ها در برنامه حسابداری است. با روشن کردن «اتصال به دستیار بانک» در تنظیمات آن، هر تراکنشی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شود.</p>' +
-      '<div class="btns"><a class="btn ghost" href="../acc/" target="_blank" rel="noopener">باز کردن برنامه حسابداری</a></div></div>' +
+      '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
+      '<div class="btns"><a class="btn ghost" href="#/acc">رفتن به حسابداری</a><a class="btn plain" href="../acc/" target="_blank" rel="noopener">پنل در مرورگر</a></div></div>' +
       '<h2>اپ دستیار آیفون</h2><div class="card" id="iosBox"><p class="muted">اپ همراه «دستیار حسابداری» (پوشه‌ی ios/) با صدا به سؤال‌های حسابداری جواب می‌دهد و وقتی به صفحه‌ی اصلی گوشی بروی، وضعیتش در Dynamic Island و صفحه‌ی قفل می‌ماند. رمز این اپ به آن داده نمی‌شود؛ با یک کد یک‌بارمصرف وصل می‌شود.</p>' +
       '<div class="btns"><button class="btn" type="button" id="iosPair">اتصال اپ آیفون</button><a class="btn ghost" href="bankassistant://listen">باز کردن دستیار</a></div><div id="iosCode"></div><div id="iosDevices" class="muted"></div></div>' +
       '<h2>سیری آیفون (بدون باز کردن اپ)</h2><div class="card"><p class="muted">در اپ Shortcuts یک میان‌بر به اسم Bank بساز (مراحلش در README، بخش «میان‌بر سیری»). این دو آدرس و هدر <span class="num">X-App-Token</span> با رمز همین اپ را لازم دارد:</p>' +
