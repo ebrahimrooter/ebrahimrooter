@@ -34,7 +34,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   const rows = await page.$$eval('.txlist .item', xs => xs.map(x => x.textContent));
   check('both transactions listed', rows.length === 2, JSON.stringify(rows));
   check('pending marked', rows.some(r => r.includes('بی‌جواب')));
-  check('totals', (await page.textContent('.stat')).includes('۲٬۵۰۰٬۰۰۰'));
+  check('totals', (await page.textContent('.stat2')).includes('۲٬۵۰۰٬۰۰۰'));
   await page.screenshot({ path: OUT + '/app-home.png' });
   await page.click('.chip[data-f="out"]');
   await page.waitForTimeout(600);

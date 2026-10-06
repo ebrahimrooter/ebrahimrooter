@@ -1465,9 +1465,12 @@
       el.setAttribute('data-torb', '1');
       el.classList.add('torb');
       el.innerHTML = '';
-      var dark = !!el.closest('.siri-mode .stage') || matchMedia('(prefers-color-scheme: dark)').matches;
-      var h = window.ThinkingOrbs.mount(el, { state: 'searching', size: preset, theme: dark ? 'dark' : 'light', 'data-dpr': String(dpr),
-        style: { width: w + 'px', height: w + 'px', display: 'block' } });
+      var hero = !!el.closest('.gh');
+      var dark = hero || !!el.closest('.siri-mode .stage') || matchMedia('(prefers-color-scheme: dark)').matches;
+      var opts = { state: 'searching', size: preset, theme: dark ? 'dark' : 'light', 'data-dpr': String(dpr),
+        style: { width: w + 'px', height: w + 'px', display: 'block' } };
+      if (hero) { opts.color = '#9be89c'; opts.dotSize = 1.3; }
+      var h = window.ThinkingOrbs.mount(el, opts);
       el._torb = h;
       orbHandles.push(h);
     });
@@ -1634,59 +1637,162 @@
 
   var money = { filter: store('ba_filter') || 'all', days: +(store('ba_days') || 30) };
 
+  /** Jalali «yyyy-mm» key and month name of a Gregorian 'Y-m-d…'. */
+  var jKeyFmt, jNameFmt;
+  function jMonth(iso) {
+    try {
+      jKeyFmt = jKeyFmt || new Intl.DateTimeFormat('en-u-ca-persian-nu-latn', { year: 'numeric', month: 'numeric' });
+      jNameFmt = jNameFmt || new Intl.DateTimeFormat('fa-IR-u-ca-persian', { month: 'long' });
+      var d = new Date(iso.slice(0, 10) + 'T12:00:00'), p = {};
+      jKeyFmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+      return { key: parseInt(p.year, 10) + '-' + String(p.month).padStart(2, '0'), name: jNameFmt.format(d) };
+    } catch (e) { return { key: iso.slice(0, 7), name: iso.slice(0, 7) }; }
+  }
+  function greeting() {
+    var h = new Date().getHours();
+    return h >= 4 && h < 12 ? 'صبح بخیر' : h < 17 && h >= 12 ? 'ظهر بخیر' : h < 21 && h >= 17 ? 'عصر بخیر' : 'شب بخیر';
+  }
+  function shortToman(rial) {
+    var t = Math.abs(rial) / 10;
+    if (t >= 1e9) return faDigits((t / 1e9).toFixed(1)).replace('.', '٫') + ' میلیارد';
+    if (t >= 1e6) return faDigits((t / 1e6).toFixed(1)).replace('.', '٫') + ' م';
+    if (t >= 1e3) return fa(Math.round(t / 1e3)) + ' ه';
+    return fa(Math.round(t));
+  }
+  var ICON = {
+    inn: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M15 9l-6 6M9 10v5h5"/></svg>',
+    out: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9 15l6-6M10 9h5v5"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    grid: '<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="8" r="2.2"/><circle cx="8" cy="16" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>',
+    eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeOff: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>'
+  };
+
   function viewMoney() {
     var from = isoDay(-money.days), to = isoDay(0), q = '&from=' + from + '&to=' + to;
+    var hidden = store('ba_hide') === '1';
     if (!document.getElementById('homeOrb')) {
-      app.innerHTML = '<div class="hero"><button type="button" class="orb-btn" id="homeOrb" aria-label="دستیار صوتی">' +
-        '<div class="orb"><i></i><i></i><i></i><i></i></div></button>' +
-        '<div class="hero-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div>' +
-        (store('ba_ios') ? '<a class="chip" href="bankassistant://listen" style="text-decoration:none">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
-        '</div><div id="money"><p class="muted">در حال بارگذاری…</p></div>';
+      app.innerHTML = '<section class="gh">' +
+        '<div class="gh-top"><div><div class="gh-hi">' + greeting() + '،</div><div class="gh-name" id="ghName">حساب‌های من</div></div>' +
+        '<button type="button" class="orb-btn gh-orb" id="homeOrb" aria-label="دستیار صوتی"><div class="orb"><i></i><i></i><i></i><i></i></div></button></div>' +
+        '<div class="gh-label"><span>موجودی کل</span><button type="button" class="gh-eye" id="ghEye" aria-label="پنهان کردن موجودی"></button></div>' +
+        '<div class="gh-amount" id="ghAmount">…</div>' +
+        '<div class="gh-pills" id="ghPills"></div>' +
+        '<div class="gh-hint" id="heroHint">برای حرف زدن روی دستیار بزن</div>' +
+        '<div class="gh-tiles">' +
+          '<button type="button" class="tile t-in" data-f="in">' + ICON.inn + '<span>واریزها</span></button>' +
+          '<button type="button" class="tile t-out" data-f="out">' + ICON.out + '<span>برداشت‌ها</span></button>' +
+          '<a class="tile t-add" href="#/manual">' + ICON.plus + '<span>ثبت دستی</span></a>' +
+          '<a class="tile t-more" href="#/acc">' + ICON.grid + '<span>حسابداری</span></a>' +
+        '</div>' +
+        (store('ba_ios') ? '<a class="gh-ios" href="bankassistant://listen">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
+        '</section><div class="gsheet" id="money"><p class="muted">در حال بارگذاری…</p></div>';
     }
     document.getElementById('homeOrb').onclick = orbTalk;
     orbMountAll();
-    return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending')]).then(function (r) {
-      var items = r[0].items, wallets = r[1].wallets, pending = r[2].items;
+    var q6 = '&from=' + isoDay(-190) + '&to=' + to;
+    return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending'), api('list', { query: q6 })]).then(function (r) {
+      var items = r[0].items, wallets = r[1].wallets, pending = r[2].items, half = r[3].items;
       setBadge(pending.length);
       document.getElementById('heroHint').textContent = pending.length
         ? faDigits(pending.length) + ' تراکنش بی‌جواب — روی دستیار بزن تا بپرسد'
         : 'برای حرف زدن روی دستیار بزن';
       var sum = function (dir) { return items.filter(function (t) { return t.direction === dir && t.status !== 'ignored'; }).reduce(function (s, t) { return s + +t.amount; }, 0); };
       var total = wallets.reduce(function (s, w) { return s + +w.balance; }, 0);
+      var mask = function (txt) { return hidden ? '••••••' : txt; };
+
+      // header
+      var eye = document.getElementById('ghEye');
+      eye.innerHTML = hidden ? ICON.eye : ICON.eyeOff;
+      eye.onclick = function () { store('ba_hide', hidden ? null : '1'); viewMoney(); };
+      document.getElementById('ghAmount').innerHTML = hidden ? '••••••' :
+        '<span class="num-fa">' + fa(Math.round(Math.abs(total) / 10)) + '</span><small>تومان</small>' + (total < 0 ? ' <em>منفی</em>' : '');
+
+      // six Jalali months
+      var months = [], seen = {};
+      for (var i = 185; i >= 0; i -= 5) {
+        var m = jMonth(isoDay(-i));
+        if (!seen[m.key]) { seen[m.key] = { key: m.key, name: m.name, inn: 0, out: 0 }; months.push(seen[m.key]); }
+      }
+      var cur = jMonth(isoDay(0));
+      if (!seen[cur.key]) { seen[cur.key] = { key: cur.key, name: cur.name, inn: 0, out: 0 }; months.push(seen[cur.key]); }
+      months = months.slice(-6);
+      half.forEach(function (t) {
+        if (t.status === 'ignored') return;
+        var b = seen[jMonth(t.occurred_at).key];
+        if (b) b[t.direction === 'in' ? 'inn' : 'out'] += +t.amount;
+      });
+      var now = months[months.length - 1], prev = months[months.length - 2];
+      var dirKey = money.chart === 'out' ? 'out' : 'inn';
+      var chg = prev && prev[dirKey] ? Math.round((now[dirKey] - prev[dirKey]) * 100 / prev[dirKey]) : null;
+      document.getElementById('ghPills').innerHTML =
+        '<span class="gp">این ماه · واریز <b class="lime">' + mask(shortToman(now.inn)) + '</b> · برداشت <b>' + mask(shortToman(now.out)) + '</b></span>' +
+        (r[1].wallets.length ? '<span class="gp">' + faDigits(wallets.length) + ' حساب</span>' : '');
+      var name = document.getElementById('ghName');
+      if (name && wallets[0]) name.textContent = wallets.length === 1 ? wallets[0].name : 'حساب‌های من';
+      var maxV = Math.max.apply(null, months.map(function (b) { return b[dirKey]; }).concat([1]));
+      var pick = money.pick && seen[money.pick] ? seen[money.pick] : now;
+
       var shown = items.filter(function (t) {
         if (money.filter === 'pending') return t.status === 'pending';
         return t.status !== 'ignored' && (money.filter === 'all' || t.direction === money.filter);
       });
       var chip = function (k, label) { return '<button type="button" class="chip' + (money.filter === k ? ' on' : '') + '" data-f="' + k + '">' + label + '</button>'; };
+      var first = pending[0];
       document.getElementById('money').innerHTML =
-        '<div class="card balance"><div class="muted">موجودی همه‌ی حساب‌ها</div><div class="amount">' + toman(total) + (total < 0 ? ' <small class="out">(منفی)</small>' : '') + '</div>' +
-        '<div class="wallets">' + wallets.map(function (w) {
-          return '<span>' + (w.kind === 'cash' ? '💵 ' : '🏦 ') + esc(w.name) + ' <b' + (w.balance < 0 ? ' class="out"' : '') + '>' + toman(w.balance) + '</b></span>';
-        }).join('') + '</div></div>' +
-        '<div class="stat"><div class="card">واریز<b class="in">' + toman(sum('in')) + '</b></div><div class="card">برداشت<b class="out">' + toman(sum('out')) + '</b></div></div>' +
-        '<div class="row chips">' + chip('all', 'همه') + chip('in', 'واریز') + chip('out', 'برداشت') + chip('pending', 'بی‌جواب' + (pending.length ? ' (' + faDigits(pending.length) + ')' : '')) +
+        '<div class="lcard pend">' +
+          '<div class="grow"><h3>' + (first ? 'بابت چی بود؟' : 'همه‌چیز ثبت شده') + '</h3>' +
+          '<p>' + (first ? faDigits(pending.length) + ' تراکنش بانک منتظر توضیح توست.' : 'تراکنش بانکی بدون توضیح نداری.') + '</p>' +
+          (first ? '<div class="pend-row"><span class="pout">' + (first.direction === 'in' ? 'واریز ' : 'برداشت ') + mask(toman(first.amount)) + '</span>' +
+            '<a class="pbtn" href="#/ask/' + first.id + '" id="pendGo">ثبت کن</a></div>' : '') + '</div>' +
+          '<div class="pend-art" aria-hidden="true"><i></i><b></b></div></div>' +
+        '<div class="seg"><button type="button" data-c="in" class="' + (dirKey === 'inn' ? 'on' : '') + '">واریز</button><button type="button" data-c="out" class="' + (dirKey === 'out' ? 'on' : '') + '">برداشت</button></div>' +
+        '<div class="lcard chart"><div class="row between"><div><div class="ch-t">' + (dirKey === 'inn' ? 'جمع واریز ' : 'جمع برداشت ') + esc(pick.name) + '</div>' +
+          '<div class="ch-a">' + (hidden ? '••••••' : fa(Math.round(pick[dirKey] / 10)) + '<small>تومان</small>') + '</div></div>' +
+          (chg !== null && pick === now ? '<span class="chg">' + (chg >= 0 ? '↗ ' : '↘ ') + faDigits(Math.abs(chg)) + '٪</span>' : '') + '</div>' +
+          '<div class="bars">' + months.map(function (b) {
+            var h = Math.max(14, Math.round(b[dirKey] / maxV * 100));
+            return '<button type="button" class="bcol' + (b === pick ? ' on' : '') + '" data-k="' + b.key + '" aria-label="' + esc(b.name) + ': ' + toman(b[dirKey]) + '">' +
+              (b === pick ? '<span class="tip">' + mask(shortToman(b[dirKey])) + '</span>' : '') +
+              '<i style="height:' + h + '%"></i><span class="bl">' + esc(b.name) + '</span></button>';
+          }).join('') + '</div></div>' +
+        '<a class="dcard" href="#/acc"><span class="dc-art"><i></i><i></i></span><span class="grow"><b>حسابداری کامل</b><small>فاکتور، انبار، چک، مالیات، گزارش‌ها</small></span><span class="dc-go">' + ICON.arrow + '</span></a>' +
+        '<div class="wcard"><div class="row between"><h3>تراکنش‌ها</h3>' +
         '<select id="days" class="days">' + [1, 7, 30, 90, 365].map(function (n) {
           return '<option value="' + n + '"' + (n === money.days ? ' selected' : '') + '>' + (n === 1 ? 'امروز' : faDigits(n) + ' روز') + '</option>';
         }).join('') + '</select></div>' +
-        '<div class="card list txlist">' + (shown.length ? shown.map(function (t) {
+        '<div class="stat2"><div><span>واریز</span><b class="in">' + mask(toman(sum('in'))) + '</b></div><div><span>برداشت</span><b class="out">' + mask(toman(sum('out'))) + '</b></div></div>' +
+        '<div class="row chips">' + chip('all', 'همه') + chip('in', 'واریز') + chip('out', 'برداشت') + chip('pending', 'بی‌جواب' + (pending.length ? ' (' + faDigits(pending.length) + ')' : '')) + '</div>' +
+        '<div class="list txlist">' + (shown.length ? shown.map(function (t) {
           return '<a class="item" href="#/ask/' + t.id + '" data-id="' + t.id + '" data-pending="' + (t.status === 'pending' ? 1 : 0) + '">' +
-            '<span class="dir ' + t.direction + '">' + (t.direction === 'in' ? '↓' : '↑') + '</span>' +
-            '<div class="grow"><div>' + (t.status === 'pending' ? '<span class="pill pending">بی‌جواب</span> ' : '') + esc(t.description || (t.direction === 'in' ? 'واریز' : 'برداشت')) +
-            (t.party ? ' <span class="muted">· ' + esc(t.party) + '</span>' : '') + '</div>' +
-            '<div class="muted">' + when(t) + (t.wallet_name ? ' · ' + esc(t.wallet_name) : '') + '</div></div>' +
-            '<b class="' + t.direction + ' amt">' + toman(t.amount) + '</b></a>';
-        }).join('') : '<p class="muted">در این بازه تراکنشی نیست.</p>') + '</div>';
-      Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (b) {
-        b.onclick = function () { money.filter = b.getAttribute('data-f'); store('ba_filter', money.filter); viewMoney(); };
+            '<span class="dir ' + t.direction + '">' + (t.direction === 'in' ? '↙' : '↗') + '</span>' +
+            '<div class="grow"><div class="it">' + esc(t.description || (t.direction === 'in' ? 'واریز' : 'برداشت')) +
+            (t.status === 'pending' ? ' <span class="pill pending">بی‌جواب</span>' : '') + '</div>' +
+            '<div class="muted">' + (t.party ? esc(t.party) + ' · ' : '') + when(t) + (t.wallet_name ? ' · ' + esc(t.wallet_name) : '') + '</div></div>' +
+            '<b class="' + t.direction + ' amt">' + (t.direction === 'in' ? '+' : '−') + mask(fa(Math.round(t.amount / 10))) + '</b></a>';
+        }).join('') : '<p class="muted">در این بازه تراکنشی نیست.</p>') + '</div></div>';
+      Array.prototype.forEach.call(document.querySelectorAll('.chip, .tile[data-f]'), function (b) {
+        b.onclick = function () {
+          money.filter = b.getAttribute('data-f'); store('ba_filter', money.filter); viewMoney();
+          if (b.classList.contains('tile')) setTimeout(function () { var l = document.querySelector('.wcard'); if (l) l.scrollIntoView({ behavior: 'smooth' }); }, 300);
+        };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (b) {
+        b.onclick = function () { money.chart = b.getAttribute('data-c'); money.pick = null; viewMoney(); };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.bcol'), function (b) {
+        b.onclick = function () { money.pick = b.getAttribute('data-k'); viewMoney(); };
       });
       document.getElementById('days').onchange = function () { money.days = +this.value; store('ba_days', this.value); viewMoney(); };
       // a pending one: the orb asks about it by voice (the form stays one tap away)
-      Array.prototype.forEach.call(document.querySelectorAll('.txlist .item[data-pending="1"]'), function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll('.txlist .item[data-pending="1"], #pendGo'), function (a) {
         a.onclick = function (e) {
           if (!Voice.canListen()) return;
           e.preventDefault();
           Voice.unlock();
-          var tx = items.filter(function (t) { return String(t.id) === a.getAttribute('data-id'); })[0];
+          var id = a.getAttribute('data-id') || (first && String(first.id));
+          var tx = items.concat(pending).filter(function (t) { return String(t.id) === id; })[0];
           if (tx) orbStart(tx);
         };
       });
