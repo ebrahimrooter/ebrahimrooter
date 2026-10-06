@@ -187,14 +187,7 @@ struct BarChart: View {
         .padding(.top, 30)
     }
 
-    /// «۱٫۲ م» (million toman) / «۸۵۰ ه» (thousand toman).
-    private func short(_ rial: Int) -> String {
-        let t = Double(rial) / 10
-        if t >= 1_000_000_000 { return Fa.digits(String(format: "%.1f", t / 1_000_000_000)) + " میلیارد" }
-        if t >= 1_000_000 { return Fa.digits(String(format: "%.1f", t / 1_000_000)) + " م" }
-        if t >= 1_000 { return Fa.number(Int(t / 1_000)) + " ه" }
-        return Fa.number(Int(t))
-    }
+    private func short(_ rial: Int) -> String { Fa.short(rial) }
 }
 
 /// Diagonal lines (the striped bars of the design).

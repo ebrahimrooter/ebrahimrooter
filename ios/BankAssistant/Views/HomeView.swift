@@ -72,7 +72,7 @@ struct HomeView: View {
                     statusPill
                     Spacer()
                     if let m = h?.month {
-                        Text("این ماه: +\(store.hideBalance ? "•••" : Fa.toman(m.incoming))  −\(store.hideBalance ? "•••" : Fa.toman(m.outgoing))")
+                        Text("این ماه · واریز \(store.hideBalance ? "•••" : Fa.short(m.incoming)) · برداشت \(store.hideBalance ? "•••" : Fa.short(m.outgoing))")
                             .font(.fa(12, .medium)).foregroundStyle(.white.opacity(0.75))
                             .padding(.horizontal, 12).padding(.vertical, 7)
                             .background(Capsule().fill(.white.opacity(0.07)))
@@ -169,7 +169,7 @@ struct HomeView: View {
                         .font(.fa(13)).foregroundStyle(Theme.ink.opacity(0.75))
                     if let first = pending.first {
                         HStack(spacing: 8) {
-                            Text((first.isIn ? "+" : "−") + Fa.toman(first.amount))
+                            Text((first.isIn ? "واریز " : "برداشت ") + Fa.toman(first.amount))
                                 .font(.fa(13, .semibold)).foregroundStyle(Theme.ink)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .overlay(Capsule().strokeBorder(Theme.ink, lineWidth: 1))

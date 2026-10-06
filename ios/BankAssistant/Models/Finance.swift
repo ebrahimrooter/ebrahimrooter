@@ -135,6 +135,16 @@ enum Fa {
         return out
     }
 
+    /// «۲۵۴٫۵ م» (million toman), «۸۵۰ ه» (thousand toman).
+    static func short(_ rial: Int) -> String {
+        let t = Double(abs(rial)) / 10
+        let one: (Double) -> String = { digits(String(format: "%.1f", $0)).replacingOccurrences(of: ".", with: "٫").replacingOccurrences(of: "٫۰", with: "") }
+        if t >= 1_000_000_000 { return one(t / 1_000_000_000) + " میلیارد" }
+        if t >= 1_000_000 { return one(t / 1_000_000) + " م" }
+        if t >= 1_000 { return number(Int(t / 1_000)) + " ه" }
+        return number(Int(t))
+    }
+
     static func percent(_ v: Double) -> String { digits(String(Int(abs(v).rounded()))) + "٪" }
 
     static func greeting(_ date: Date = .now) -> String {

@@ -47,7 +47,7 @@ struct ProfileView: View {
 
                 SectionCard {
                     SectionHeader(title: "میان‌برها")
-                    Text("«Hey Siri, Ask Bank Assistant»، دکمه‌ی Action، Control Center و ویجت صفحه‌ی قفل هم دستیار را باز می‌کنند. وقتی دستیار روشن است وضعیتش در Dynamic Island دیده می‌شود.")
+                    Text("دستیار را با سیری، دکمه‌ی اکشن، کنترل سنتر و ویجت صفحه‌ی قفل هم می‌توانی باز کنی؛ جمله‌ی سیری: «Hey Siri, Ask Bank Assistant». وقتی دستیار روشن است، وضعیتش در داینامیک آیلند دیده می‌شود.")
                         .font(.fa(13)).foregroundStyle(Theme.muted)
                 }
 
