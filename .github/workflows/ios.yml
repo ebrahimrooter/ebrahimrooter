@@ -13,7 +13,8 @@ jobs:
         run: brew install xcodegen && cd ios && xcodegen generate
       - name: Build for the simulator (no signing)
         run: |
+          set -o pipefail
           cd ios
           xcodebuild -version
           xcodebuild -project BankAssistant.xcodeproj -target BankAssistant -sdk iphonesimulator -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO build | xcpretty || exit ${PIPESTATUS[0]}
+            CODE_SIGNING_ALLOWED=NO build | xcpretty

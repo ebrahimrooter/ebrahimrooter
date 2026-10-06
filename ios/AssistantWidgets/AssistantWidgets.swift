@@ -48,14 +48,14 @@ struct AssistantLiveActivity: Widget {
                     Text(context.state.line).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
             } compactLeading: {
-                Image(systemName: context.state.phase.symbol).foregroundStyle(tint(context.state.phase))
+                Image(systemName: context.state.phase.symbol).foregroundStyle(phaseTint(context.state.phase))
             } compactTrailing: {
-                Text(short(context.state.phase)).font(.caption2).foregroundStyle(tint(context.state.phase))
+                Text(short(context.state.phase)).font(.caption2).foregroundStyle(phaseTint(context.state.phase))
             } minimal: {
-                Image(systemName: context.state.phase.symbol).foregroundStyle(tint(context.state.phase))
+                Image(systemName: context.state.phase.symbol).foregroundStyle(phaseTint(context.state.phase))
             }
             .widgetURL(URL(string: "bankassistant://listen"))
-            .keylineTint(tint(context.state.phase))
+            .keylineTint(phaseTint(context.state.phase))
         }
     }
 
@@ -70,11 +70,11 @@ struct AssistantLiveActivity: Widget {
     }
 }
 
-func tint(_ p: AssistantPhase) -> Color {
+func phaseTint(_ p: AssistantPhase) -> Color {
     switch p {
-    case .listening: return Color(red: 0.36, green: 0.78, blue: 1)
-    case .processing: return Color(red: 0.7, green: 0.55, blue: 1)
-    case .speaking: return Color(red: 1, green: 0.62, blue: 0.7)
+    case .listening: return Color(red: 0.55, green: 0.88, blue: 0.56)
+    case .processing: return Color(red: 0.36, green: 0.74, blue: 0.43)
+    case .speaking: return Color(red: 0.75, green: 0.92, blue: 0.4)
     case .error: return .red
     case .idle: return .white
     }
@@ -85,8 +85,8 @@ struct PhaseBadge: View {
     var size: CGFloat
     var body: some View {
         ZStack {
-            Circle().fill(tint(phase).opacity(0.22))
-            Image(systemName: phase.symbol).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(tint(phase))
+            Circle().fill(phaseTint(phase).opacity(0.22))
+            Image(systemName: phase.symbol).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(phaseTint(phase))
         }
         .frame(width: size, height: size)
     }
