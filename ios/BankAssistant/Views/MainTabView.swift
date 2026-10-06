@@ -34,10 +34,6 @@ struct MainTabView: View {
 
             TabBar(tab: $tab, listening: engine.sessionActive) { showAssistant = true }
         }
-        .background(alignment: .topLeading) {
-            // source of the floating orb (Picture in Picture); must be in the window
-            PiPSourceView().frame(width: 2, height: 2).opacity(0.02).allowsHitTesting(false)
-        }
         .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showAssistant, onDismiss: { Task { await store.refresh() } }) {
             AssistantSheet()
@@ -133,13 +129,20 @@ struct TabBar: View {
     private var orb: some View {
         Button(action: onOrb) {
             ZStack {
-                Circle().fill(Theme.limeGradient).frame(width: 58, height: 58)
-                    .shadow(color: Theme.leaf.opacity(0.55), radius: listening ? 16 : 8, y: 4)
+                if listening {
+                    // the orb video, also the source of the floating PiP window
+                    PiPSourceView()
+                        .frame(width: 58, height: 58)
+                        .clipShape(Circle())
+                        .shadow(color: Theme.leaf.opacity(0.6), radius: 16, y: 4)
+                } else {
+                    Circle().fill(Theme.limeGradient).frame(width: 58, height: 58)
+                        .shadow(color: Theme.leaf.opacity(0.55), radius: 8, y: 4)
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                }
                 Circle().strokeBorder(.white, lineWidth: 3).frame(width: 58, height: 58)
-                Image(systemName: listening ? "waveform" : "mic.fill")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Theme.ink)
-                    .symbolEffect(.variableColor.iterative, isActive: listening)
             }
             .offset(y: -10)
             .frame(maxWidth: .infinity)

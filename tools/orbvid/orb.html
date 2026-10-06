@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@600;800&display=swap" rel="stylesheet">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style></head><body>
+<canvas id="c" width="480" height="480"></canvas>
+<script>
+const C = document.getElementById('c'), X = C.getContext('2d');
+const PAL = {
+  idle: ['rgba(91,189,109,.8)', '#8de08f', '#2a6b3c'],
+  listening: ['#8de08f', '#5bbd6d', '#2f8a4a'],
+  processing: ['#5bbd6d', '#40a0a6', '#2f8a4a'],
+  speaking: ['#c0eb66', '#8de08f', '#2f8a4a'],
+};
+const LABEL = { idle: 'آماده · ▶︎ برای صحبت', listening: 'در حال گوش دادن…', processing: 'در حال فکر کردن…', speaking: 'در حال پاسخ دادن…' };
+window.draw = function (phase, i, N) {
+  const t = i / N * Math.PI * 2, W = 480, cx = 240, cy = 205, r = 105;
+  // background
+  let g = X.createRadialGradient(360, 0, 10, 360, 0, 520);
+  g.addColorStop(0, '#275c34'); g.addColorStop(1, '#07140c');
+  X.fillStyle = g; X.fillRect(0, 0, W, W);
+  const lv = phase === 'listening' ? 0.35 + 0.25 * Math.sin(2 * t) ** 2
+    : phase === 'speaking' ? 0.3 + 0.4 * Math.abs(Math.sin(3 * t))
+    : phase === 'processing' ? 0.12 : 0.08;
+  const col = PAL[phase];
+  // glow
+  g = X.createRadialGradient(cx, cy, 0, cx, cy, r * 1.7);
+  g.addColorStop(0, col[0].replace(/^#(..)(..)(..)$/, (m, a, b, c) => `rgba(${parseInt(a,16)},${parseInt(b,16)},${parseInt(c,16)},.35)`));
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  X.fillStyle = g; X.beginPath(); X.arc(cx, cy, r * 1.7, 0, 7); X.fill();
+  const damp = phase === 'processing' ? 0.5 : 1;
+  for (let k = 0; k < 3; k++) {
+    const amp = r * (0.06 + 0.22 * lv) * damp, rad = r * (1 - 0.08 * k);
+    X.beginPath();
+    for (let s = 0; s <= Math.PI * 2 + 0.001; s += Math.PI / 120) {
+      const w = Math.sin(s * (3 + k) + t * (1 + k)) + Math.cos(s * 2 - t) * 0.5;
+      const rr = rad + w * amp, x = cx + Math.cos(s) * rr, y = cy + Math.sin(s) * rr;
+      s === 0 ? X.moveTo(x, y) : X.lineTo(x, y);
+    }
+    X.closePath();
+    X.strokeStyle = col[k]; X.globalAlpha = 0.95 - 0.2 * k; X.lineWidth = 5 - k; X.stroke(); X.globalAlpha = 1;
+  }
+  if (phase === 'processing') {
+    for (let d = 0; d < 8; d++) {
+      const a = t * 2 + d * Math.PI / 4;
+      X.fillStyle = `rgba(141,224,143,${0.25 + 0.09 * d})`;
+      X.beginPath(); X.arc(cx + Math.cos(a) * r * 0.55, cy + Math.sin(a) * r * 0.55, 6, 0, 7); X.fill();
+    }
+  }
+  X.direction = 'rtl'; X.textAlign = 'center';
+  X.fillStyle = '#ffffff'; X.font = '800 34px Vazirmatn';
+  X.fillText(LABEL[phase], cx, 400);
+  X.fillStyle = 'rgba(255,255,255,.55)'; X.font = '600 22px Vazirmatn';
+  X.fillText('دستیار حسابداری', cx, 440);
+  return C.toDataURL('image/png');
+};
+</script></body></html>
