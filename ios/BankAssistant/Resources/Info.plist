@@ -47,6 +47,18 @@
 			</array>
 		</dict>
 	</array>
+	<!-- English name for Siri: the display name is Persian, Siri does not speak Persian -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Bank Assistant</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Orb</string>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
