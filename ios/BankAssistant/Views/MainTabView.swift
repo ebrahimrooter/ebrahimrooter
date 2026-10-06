@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 enum AppTab: Hashable { case home, report, accounting, profile }
@@ -61,6 +62,27 @@ struct MainTabView: View {
         .task {
             await store.refresh()
             if tab == .accounting { openedBooks = true }
+            if Demo.enabled { await demoSheet() }
+        }
+    }
+}
+
+extension MainTabView {
+    /// Simulator screenshots: open a sheet / the floating orb with sample content.
+    @MainActor func demoSheet() async {
+        let reply = "فروش امروز ۱۲ میلیون و ۴۰۰ هزار تومان بوده؛ ۵ فاکتور. بیشترین خرید را علی رضایی داشته."
+        switch Demo.sheet {
+        case "assistant":
+            engine.showDemo(phase: .speaking, line: reply, heard: "فروش امروز چقدر بوده؟")
+        case "pip":
+            try? AVAudioSession.sharedInstance().setCategory(.playback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            engine.showDemo(phase: .speaking, line: reply, heard: "فروش امروز چقدر بوده؟")
+            try? await Task.sleep(for: .seconds(1))
+            showAssistant = false
+            try? await Task.sleep(for: .seconds(2.5))
+            OrbPiP.shared.toggle()
+        default: break
         }
     }
 }

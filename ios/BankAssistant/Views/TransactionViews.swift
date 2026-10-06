@@ -235,6 +235,11 @@ struct TransactionListView: View {
     }
 
     private func load() async {
+        if Demo.enabled {
+            let r = Demo.list(direction: filter.direction)
+            items = r.items; totals = (r.total_in, r.total_out); loading = false
+            return
+        }
         do {
             let r = try await APIClient.shared.transactions(from: filter.from ?? Self.daysAgo(90), to: filter.to, direction: filter.direction)
             items = r.items

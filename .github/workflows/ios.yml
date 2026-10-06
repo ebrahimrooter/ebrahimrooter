@@ -34,6 +34,14 @@ jobs:
           shot 2-home -demo
           shot 3-report -demo -tab report
           shot 4-profile -demo -tab profile
+          shot 5-assistant -demo -sheet assistant
+          shot 6-confirm -demo -sheet tx
+          shot 7-manual -demo -sheet manual
+          shot 8-list -demo -sheet list
+          shot 9-pip -demo -sheet pip
+          xcrun simctl launch "$UDID" com.apple.Preferences || true
+          sleep 5
+          xcrun simctl io "$UDID" screenshot shots/10-pip-over-settings.png || true
       - name: Keep the screenshots in the repo (ios/screenshots)
         if: github.event_name == 'push'
         run: |

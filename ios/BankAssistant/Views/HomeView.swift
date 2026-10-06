@@ -28,6 +28,16 @@ struct HomeView: View {
         .sheet(item: $selected) { tx in TransactionSheet(tx: tx).presentationDetents([.medium, .large]) }
         .sheet(item: $manual) { d in ManualEntrySheet(draft: d).presentationDetents([.medium, .large]) }
         .sheet(item: $list) { f in TransactionListView(filter: f) }
+        .task {
+            guard Demo.enabled else { return }
+            try? await Task.sleep(for: .seconds(1))
+            switch Demo.sheet {
+            case "tx": selected = store.home?.pending.first
+            case "manual": manual = ManualDraft(party: "علی رضایی")
+            case "list": list = ListFilter(direction: "")
+            default: break
+            }
+        }
     }
 
     // MARK: header

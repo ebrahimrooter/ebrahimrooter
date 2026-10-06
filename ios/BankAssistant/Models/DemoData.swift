@@ -16,6 +16,13 @@ enum Demo {
         }
     }
 
+    /// `-sheet assistant|tx|manual|list|pip`
+    static var sheet: String? {
+        let a = ProcessInfo.processInfo.arguments
+        guard let i = a.firstIndex(of: "-sheet"), i + 1 < a.count else { return nil }
+        return a[i + 1]
+    }
+
     static var home: HomeData {
         // swiftlint:disable:next force_try
         try! JSONDecoder().decode(HomeData.self, from: Data(json.utf8))

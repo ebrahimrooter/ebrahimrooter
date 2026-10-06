@@ -52,7 +52,7 @@ struct AssistantSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 22)
-        .onAppear { if !engine.sessionActive { engine.toggle() } }
+        .onAppear { if !engine.sessionActive && !Demo.enabled { engine.toggle() } }
         .sheet(isPresented: $showHistory) { HistoryView(turns: engine.turns) }
     }
 }

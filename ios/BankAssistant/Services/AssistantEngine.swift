@@ -100,6 +100,16 @@ final class AssistantEngine {
         }
     }
 
+    /// Sample state for previews and simulator screenshots (`-demo`); no audio.
+    func showDemo(phase p: AssistantPhase, line text: String, heard: String? = nil) {
+        guard Demo.enabled else { return }
+        sessionActive = true
+        phase = p
+        line = text
+        level = p == .speaking || p == .listening ? 0.55 : 0
+        if let heard { turns.append(Turn(heard: heard, reply: text)) }
+    }
+
     func stop(reason: String = "پایان") {
         capture.cancelUtterance()
         capture.stop()
