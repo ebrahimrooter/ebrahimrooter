@@ -93,6 +93,21 @@ function job_health() {
  * $withHealth = false when called from the ESP32 heartbeat: the device just
  * reported in, so "device went quiet" can't be true then.
  */
+/**
+ * Every morning: cheques due today and tomorrow (to collect and to pay), to
+ * the owner in Bale and as a phone notification. Nothing is sent on a quiet day.
+ */
+function job_cheque_owner_alert($company = '') {
+    $msg = acc_cheque_due_message(1);
+    if ($msg === '') {
+        return;
+    }
+    ba_notify('📅 ' . ($company !== '' ? $company . ' — ' : '') . $msg);
+    if (function_exists('wp_notify_all')) {
+        wp_notify_all(['title' => '📅 سررسید چک' . ($company !== '' ? ' — ' . $company : ''), 'body' => $msg, 'url' => '#/acc', 'tag' => 'cheques-' . date('Ymd')]);
+    }
+}
+
 function jobs_due($withHealth = true) {
     $now = time();
     $today = date('Y-m-d');
@@ -106,10 +121,17 @@ function jobs_due($withHealth = true) {
         if ($remind) {
             ba_kv_set('daemon:acc_cheque_sms', $today);
         }
-        foreach (array_keys(acc_companies()) as $cid) {   // every company (موسسه) has its own queue
+        $owner = (int)date('G') >= 8 && ba_kv_get('daemon:cheque_owner') !== $today;
+        if ($owner) {
+            ba_kv_set('daemon:cheque_owner', $today);
+        }
+        foreach (acc_companies() as $cid => $cname) {   // every company (موسسه) has its own queue
             acc_use_company($cid);
             if ($remind) {
                 acc_sms_cheque_reminders();
+            }
+            if ($owner) {
+                job_cheque_owner_alert($cid > 1 ? $cname : '');
             }
             acc_sms_process(30);
         }

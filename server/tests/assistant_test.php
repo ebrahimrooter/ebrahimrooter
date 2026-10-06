@@ -123,6 +123,31 @@ $a = $ask('خرید گازوئیل');
 check('the next sentence answers it', strpos($a['reply'], 'ثبت شد') !== false && strpos($ask('تراکنش بی جواب')['reply'], 'همه‌ی تراکنش‌ها') !== false, $a['reply']);
 check('speech needs the voice service (clear error)', http($A . 'assistant_speak', ['text' => 'سلام'], $D)[0] === 501);
 
+echo "cheques by voice\n";
+$a = $ask('یک چک ده میلیون تومانی از علی رضایی گرفتم شماره ۴۵۲۱۹۰ سررسید فردا بانک ملی');
+check('received cheque drafted with number, due date, bank', $a['state'] === 'confirm' && strpos($a['reply'], 'دریافتی از علی رضایی') !== false
+    && strpos($a['reply'], '10,000,000 تومان') !== false && strpos($a['reply'], 'شماره 452190') !== false && strpos($a['reply'], 'بانک ملی') !== false, $a['reply']);
+$a = $ask('آره');
+check('cheque booked', strpos($a['reply'], 'چک 452190 ثبت شد') !== false, $a['reply']);
+$chq = array_values(array_filter($acc('GET', '/cheques'), fn($c) => $c['number'] === '452190'))[0] ?? null;
+check('in the cheque list, in hand, due tomorrow', $chq && $chq['status'] === 'in_hand' && $chq['amount'] == 100000000);
+$a = $ask('به حسن کریمی چک دو میلیونی دادم شماره ۷۸۸۱۲');
+check('missing due date is asked', $a['state'] === 'confirm' && strpos($a['reply'], 'سررسید چک چه تاریخی است') !== false, $a['reply']);
+$a = $ask('پانزدهم اسفند');
+check('then the confirmation, payable', strpos($a['reply'], 'پرداختی به حسن کریمی') !== false && preg_match('~سررسید 14\d\d/12/15~u', $a['reply']), $a['reply']);
+$ask('بله');
+$a = $ask('چک‌های این هفته');
+check('due cheques announced', strpos($a['reply'], 'علی رضایی') !== false && strpos($a['reply'], 'چک دریافتی') !== false, $a['reply']);
+$a = $ask('خلاصه وضعیت');
+check('overview starts with cheques due tomorrow', strpos($a['reply'], 'سررسید چک') !== false && strpos($a['reply'], 'فردا: دریافتی از علی رضایی') !== false, $a['reply']);
+$a = $ask('چک ۴۵۲۱۹۰ وصول شد');
+check('cheque collection drafted', $a['state'] === 'confirm' && strpos($a['reply'], 'وصول به') !== false, $a['reply']);
+$a = $ask('آره');
+check('cheque collected', strpos($a['reply'], 'وصول شده') !== false, $a['reply']);
+// the owner's morning alert (Bale + push) uses the same text
+$msg = shell_exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "jobs.php"; acc_db(); echo acc_cheque_due_message(400);'));
+check('morning alert lists the open cheques', strpos($msg, 'سررسید چک') !== false && strpos($msg, 'پرداختی به حسن کریمی') !== false && strpos($msg, '452190') === false, $msg);
+
 echo "revoke\n";
 $dev = http($A . 'assistant_devices', null, ['X-App-Token: apppass123'])[1]['items'][0];
 http($A . 'assistant_revoke', ['id' => $dev['id']], ['X-App-Token: apppass123']);

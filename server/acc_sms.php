@@ -14,6 +14,40 @@
 
 require_once __DIR__ . '/acc_core.php';
 
+/**
+ * «امروز: چک دریافتی علی رضایی ۴۵,۰۰۰,۰۰۰ ریال (۴۵۲۱۹۰)…» for cheques due from
+ * today to $days days later, and overdue ones still open. '' when there are none.
+ */
+function acc_cheque_due_message($days = 1)
+{
+    $today = acc_today();
+    [$y, $m, $d] = array_map('intval', explode('/', $today));
+    [$gy, $gm, $gd] = ba_j2g($y, $m, $d);
+    $until = vsprintf('%04d/%02d/%02d', ba_g2j(...array_map('intval', explode('-', date('Y-m-d', mktime(0, 0, 0, $gm, $gd + $days, $gy))))));
+    $rows = acc_all("SELECT c.*, p.name pn FROM acc_cheques c LEFT JOIN acc_persons p ON p.id = c.person_id
+        WHERE c.due_date != '' AND c.due_date <= ? AND ((c.direction = 'received' AND c.status IN ('in_hand', 'deposited')) OR (c.direction = 'payable' AND c.status = 'issued'))
+        ORDER BY c.due_date, c.id", [$until]);
+    if (!$rows) {
+        return '';
+    }
+    $line = fn($c) => ($c['direction'] === 'received' ? 'دریافتی از ' : 'پرداختی به ') . $c['pn'] . ' ' . number_format((float)$c['amount']) . ' ریال (شماره ' . $c['number'] . ')';
+    $groups = ['late' => [], 'today' => [], 'soon' => []];
+    foreach ($rows as $c) {
+        $groups[$c['due_date'] < $today ? 'late' : ($c['due_date'] === $today ? 'today' : 'soon')][] = $line($c);
+    }
+    $out = [];
+    if ($groups['late']) {
+        $out[] = 'گذشته از سررسید: ' . implode('؛ ', $groups['late']);
+    }
+    if ($groups['today']) {
+        $out[] = 'امروز: ' . implode('؛ ', $groups['today']);
+    }
+    if ($groups['soon']) {
+        $out[] = ($days === 1 ? 'فردا' : 'تا ' . $days . ' روز دیگر') . ': ' . implode('؛ ', $groups['soon']);
+    }
+    return 'سررسید چک — ' . implode(' | ', $out);
+}
+
 function acc_sms_schema()
 {
     static $done = [];

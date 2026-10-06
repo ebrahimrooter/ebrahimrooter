@@ -200,6 +200,54 @@ function assistant_amount($t)
     return (int)round(($m[5] ?? '') === 'ریال' ? $v : $v * 10);
 }
 
+/**
+ * A Jalali date said in a sentence: «۱۴۰۵/۰۸/۱۵»، «۱۵ آبان»، «پانزدهم آبان ۱۴۰۵»،
+ * «فردا»، «ده روز دیگه»، «ماه بعد» / «یک ماه دیگه»، «آخر ماه». Returns [date, text matched] or null.
+ */
+function assistant_date($t)
+{
+    $months = ['فروردین' => 1, 'اردیبهشت' => 2, 'خرداد' => 3, 'تیر' => 4, 'مرداد' => 5, 'شهریور' => 6, 'مهر' => 7, 'آبان' => 8, 'آذر' => 9, 'دی' => 10, 'بهمن' => 11, 'اسفند' => 12];
+    $ordinals = ['اول' => 1, 'یکم' => 1, 'دوم' => 2, 'سوم' => 3, 'چهارم' => 4, 'پنجم' => 5, 'ششم' => 6, 'هفتم' => 7, 'هشتم' => 8, 'نهم' => 9, 'دهم' => 10,
+        'یازدهم' => 11, 'دوازدهم' => 12, 'سیزدهم' => 13, 'چهاردهم' => 14, 'پانزدهم' => 15, 'شانزدهم' => 16, 'هفدهم' => 17, 'هجدهم' => 18, 'نوزدهم' => 19,
+        'بیستم' => 20, 'بیست و یکم' => 21, 'بیست و دوم' => 22, 'بیست و سوم' => 23, 'بیست و چهارم' => 24, 'بیست و پنجم' => 25, 'بیست و ششم' => 26,
+        'بیست و هفتم' => 27, 'بیست و هشتم' => 28, 'بیست و نهم' => 29, 'سیام' => 30, 'سی ام' => 30, 'سی و یکم' => 31];
+    [$ty, $tm, $td] = array_map('intval', explode('/', acc_today()));
+    $plus = function ($days) use ($ty, $tm, $td) {
+        [$gy, $gm, $gd] = ba_j2g($ty, $tm, $td);
+        return vsprintf('%04d/%02d/%02d', ba_g2j(...array_map('intval', explode('-', date('Y-m-d', mktime(0, 0, 0, $gm, $gd + $days, $gy))))));
+    };
+    if (preg_match('~(1[34]\d\d)[/\-.](\d{1,2})[/\-.](\d{1,2})~u', $t, $m)) {
+        return [sprintf('%04d/%02d/%02d', $m[1], $m[2], $m[3]), $m[0]];
+    }
+    $mre = implode('|', array_keys($months));
+    $ore = implode('|', array_map(fn($k) => preg_quote($k, '/'), array_keys($ordinals)));
+    if (preg_match('/(\d{1,2}|' . $ore . ')\s*(?:ام|م)?\s*(' . $mre . ')(?:\s*(?:ماه)?\s*(1[34]\d\d))?/u', $t, $m)) {
+        $day = ctype_digit($m[1]) ? (int)$m[1] : $ordinals[$m[1]];
+        $mon = $months[$m[2]];
+        $year = !empty($m[3]) ? (int)$m[3] : ($mon < $tm || ($mon === $tm && $day < $td) ? $ty + 1 : $ty);   // a past day = next year
+        return [sprintf('%04d/%02d/%02d', $year, $mon, $day), $m[0]];
+    }
+    if (preg_match('/پس ?فردا/u', $t, $m)) {
+        return [$plus(2), $m[0]];
+    }
+    if (preg_match('/فردا/u', $t, $m)) {
+        return [$plus(1), $m[0]];
+    }
+    if (preg_match('/(\d+)\s*روز\s*(?:دیگه|دیگر|بعد)/u', $t, $m)) {
+        return [$plus((int)$m[1]), $m[0]];
+    }
+    if (preg_match('/(\d+)\s*ماه\s*(?:دیگه|دیگر|بعد)/u', $t, $m)) {
+        return [acc_jalali_add_months(acc_today(), (int)$m[1]), $m[0]];
+    }
+    if (preg_match('/(ماه\s*(?:بعد|دیگه|دیگر|آینده)|یه ماه دیگه|یک ماه دیگر)/u', $t, $m)) {
+        return [acc_jalali_add_months(acc_today(), 1), $m[0]];
+    }
+    if (preg_match('/آخر\s*(?:همین\s*)?ماه/u', $t, $m)) {
+        return [sprintf('%04d/%02d/%02d', $ty, $tm, $tm <= 6 ? 31 : ($tm <= 11 ? 30 : 29)), $m[0]];
+    }
+    return null;
+}
+
 /** Cash or bank account named (or implied) in a sentence. */
 function assistant_cash_account($t)
 {
@@ -242,6 +290,14 @@ function assistant_execute(array $d, array $device)
             $id = acc_insert('acc_persons', $f);
             acc_log($who, 'create_person', $f['name']);
             return ['reply' => $f['name'] . ' به اشخاص اضافه شد.', 'data' => ['person_id' => $id]];
+        case 'cheque':
+            $c = acc_cheque_record($d['body']);
+            acc_log($who, 'cheque', $c['number']);
+            return ['reply' => 'چک ' . $c['number'] . ' ثبت شد؛ سررسید ' . $c['due_date'] . '. روز قبل و روز سررسید یادآوری می‌کنم.', 'data' => ['cheque_id' => (int)$c['id']]];
+        case 'cheque_action':
+            $c = acc_cheque_act($d['body']['id'], $d['body']['action'], $d['body']);
+            acc_log($who, 'cheque_' . $d['body']['action'], $c['number']);
+            return ['reply' => 'وضعیت چک ' . $c['number'] . ': ' . (ACC_CHEQUE_STATUS[$c['status']] ?? $c['status']) . '.', 'data' => ['cheque_id' => (int)$c['id']]];
         case 'sms':
             $q = acc_sms_queue([$d['body']], $who, 'assistant');
             acc_sms_process(5);
@@ -249,6 +305,19 @@ function assistant_execute(array $d, array $device)
             return ['reply' => $q['queued'] ? ($st === 'sent' ? 'پیامک فرستاده شد.' : 'پیامک در صف ارسال است.') : 'شماره‌ی موبایل درست نیست.', 'data' => []];
     }
     return ['reply' => 'کاری برای ثبت نبود.', 'data' => []];
+}
+
+/** Asks for what is missing (due date, number), then the confirmation. */
+function assistant_cheque_draft(array $b, $ctxKey)
+{
+    if (empty($b['due_date']) || empty($b['number'])) {
+        ba_kv_set($ctxKey, ['exp' => time() + ASSISTANT_DRAFT_TTL, 'type' => 'cheque_fill', 'body' => $b]);
+        return ['reply' => empty($b['due_date']) ? 'سررسید چک چه تاریخی است؟' : 'شماره‌ی چک چند است؟', 'state' => 'confirm', 'data' => []];
+    }
+    ba_kv_set($ctxKey, ['exp' => time() + ASSISTANT_DRAFT_TTL, 'type' => 'cheque', 'body' => $b]);
+    return ['reply' => 'چک ' . ($b['direction'] === 'payable' ? 'پرداختی به ' : 'دریافتی از ') . $b['person'] . '، ' . assistant_rial($b['amount'])
+        . '، شماره ' . $b['number'] . '، سررسید ' . $b['due_date'] . ($b['bank_name'] !== '' ? '، بانک ' . $b['bank_name'] : '') . '. ثبت کنم؟',
+        'state' => 'confirm', 'data' => ['cheque' => $b]];
 }
 
 /**
@@ -278,6 +347,16 @@ function assistant_answer($text, array $device)
     if ($ctx) {
         $yes = preg_match('/^(آره|اره|بله|آری|باشه|ثبت کن|بفرست|تایید|درسته|اوکی|ok|yes)\b/u', $t);
         $no = preg_match('/^(نه|نخیر|لغو|کنسل|ولش کن|نمی ?خواد|بیخیال)\b/u', $t);
+        if ($ctx['type'] === 'cheque_fill' && !$no) {
+            ba_kv_set($ctxKey, null);
+            $b = $ctx['body'];
+            if (empty($b['due_date']) && ($dt = assistant_date($t))) {
+                $b['due_date'] = $dt[0];
+            } elseif (empty($b['number']) && preg_match('/(\d{3,})/', str_replace(' ', '', $t), $mm)) {
+                $b['number'] = $mm[1];
+            }
+            return assistant_cheque_draft($b, $ctxKey);
+        }
         if ($ctx['type'] === 'bank_tx') {
             ba_kv_set($ctxKey, null);
             $tx = ba_get_transaction($ctx['body']['id']);
@@ -311,6 +390,58 @@ function assistant_answer($text, array $device)
     }
 
     /* ---- writing actions (asked for confirmation) ---- */
+
+    // cheque actions: «چک ۴۵۲۱۹۰ وصول شد»، «چک ۴۵۲۱۹۰ برگشت خورد»، «چک ۷۸۸ پاس شد»
+    if (preg_match('/چک/u', $t) && preg_match('/(وصول|پاس|برگشت|برگشتی|نقد شد|خوابوندم|خواباندم|واگذار)/u', $t)
+        && preg_match('/(\d{3,})/', $t, $mm)) {
+        $c = acc_row("SELECT c.*, p.name pn FROM acc_cheques c LEFT JOIN acc_persons p ON p.id = c.person_id WHERE c.number = ? ORDER BY c.id DESC LIMIT 1", [$mm[1]]);
+        if (!$c) {
+            return ['reply' => 'چکی با شماره‌ی ' . $mm[1] . ' پیدا نکردم.', 'state' => 'error', 'data' => []];
+        }
+        $acc = assistant_cash_account($t . ' بانک');
+        if (preg_match('/برگشت/u', $t)) {
+            $action = 'return';
+        } elseif (preg_match('/(خوابوندم|خواباندم|واگذار)/u', $t)) {
+            $action = 'deposit';
+        } else {
+            $action = $c['direction'] === 'received' ? 'collect' : 'pay';
+        }
+        $label = ['return' => 'برگشت خورده', 'deposit' => 'واگذار به ' . $acc['name'], 'collect' => 'وصول به ' . $acc['name'], 'pay' => 'پاس از ' . $acc['name']][$action];
+        return $draft('cheque_action', ['id' => (int)$c['id'], 'action' => $action, 'account_id' => (int)$acc['id']],
+            'چک ' . $c['number'] . ' ' . ($c['direction'] === 'received' ? 'از ' : 'به ') . $c['pn'] . '، ' . assistant_rial($c['amount']) . ': ' . $label . '. ثبت کنم؟');
+    }
+
+    // new cheque: «یک چک ده میلیونی از علی رضایی گرفتم شماره ۴۵۲۱۹۰ سررسید ۱۵ آبان بانک ملی»
+    if (preg_match('/چک/u', $t) && preg_match('/(گرفتم|دریافت|داد\b|دادم|کشیدم|صادر|نوشتم|ثبت کن)/u', $t)
+        && !preg_match('/(چک ?های|چکای|سررسید چک|موعد چک)/u', $t)) {
+        $payable = (bool)preg_match('/(دادم|کشیدم|صادر|نوشتم)/u', $t);
+        $rest = $t;
+        $number = '';
+        if (preg_match('/(?:شماره|سریال)\s*(?:ی|ش)?\s*(\d[\d\s]{2,})/u', $rest, $mm)) {
+            $number = str_replace(' ', '', $mm[1]);
+            $rest = str_replace($mm[0], ' ', $rest);
+        }
+        $due = '';
+        if (preg_match('/(?:سررسید|تاریخ|موعد|برای)\s*(?:ش|اش)?\s*(.+)$/u', $rest, $mm) && ($dt = assistant_date($mm[1]))) {
+            [$due, $said] = $dt;
+            $rest = str_replace($said, ' ', $rest);
+        } elseif ($dt = assistant_date($rest)) {
+            [$due, $said] = $dt;
+            $rest = str_replace($said, ' ', $rest);
+        }
+        $bank = preg_match('/بانک\s+(\S+)/u', $rest, $mm) ? $mm[1] : '';
+        $person = assistant_find_name($rest, acc_all('SELECT id, name FROM acc_persons'));
+        $amount = assistant_amount(preg_replace('/(\S+?)ی(?=\s|$)/u', '$1', $rest));   // «ده میلیونی» -> «ده میلیون»
+        if (!$person) {
+            return ['reply' => 'چک ' . ($payable ? 'به' : 'از') . ' چه کسی؟ اسم طرف حساب را بگو.', 'state' => 'unknown', 'data' => []];
+        }
+        if ($amount <= 0) {
+            return ['reply' => 'مبلغ چک چقدر است؟ مثلاً «چک ده میلیونی از ' . $person['name'] . ' گرفتم».', 'state' => 'unknown', 'data' => []];
+        }
+        return assistant_cheque_draft(['direction' => $payable ? 'payable' : 'received', 'person_id' => (int)$person['id'], 'person' => $person['name'],
+            'amount' => $amount, 'number' => $number, 'due_date' => $due, 'bank_name' => $bank, 'date' => acc_today(),
+            'account_id' => $payable ? (int)(assistant_cash_account('بانک')['id'] ?? 0) : null], $ctxKey);
+    }
 
     // invoice: «برای علی رضایی فاکتور ثبت کن، دو عدد بذر گوجه»
     if (preg_match('/فاکتور/u', $t) && preg_match('/(ثبت|بزن|صادر|بنویس|درست کن)/u', $t)) {
@@ -419,7 +550,8 @@ function assistant_answer($text, array $device)
         [$recv, $pay] = acc_people_split();
         $low = (int)acc_val("SELECT COUNT(*) FROM acc_products WHERE kind != 'service' AND stock <= reorder_point");
         $pending = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
-        return $ok('فروش این ماه ' . assistant_rial($sales) . '. موجودی صندوق و بانک ' . assistant_rial($cash) . '. طلب از دیگران ' . assistant_rial($recv)
+        $chq = acc_cheque_due_message(1);
+        return $ok(($chq !== '' ? $chq . '. ' : '') . 'فروش این ماه ' . assistant_rial($sales) . '. موجودی صندوق و بانک ' . assistant_rial($cash) . '. طلب از دیگران ' . assistant_rial($recv)
             . ' و بدهی ' . assistant_rial($pay) . '.' . ($low ? ' ' . $low . ' کالا کم‌موجود است.' : '') . ($pending ? ' ' . $pending . ' تراکنش بانکی بی‌جواب داری.' : ''),
             ['sales_month' => $sales, 'cash' => $cash, 'receivables' => $recv, 'payables' => $pay, 'low_stock' => $low, 'pending' => $pending]);
     }
