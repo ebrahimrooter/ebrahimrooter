@@ -3,6 +3,8 @@ on:
   push:
     paths: ["ios/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: macos-15
@@ -32,14 +34,15 @@ jobs:
           shot 2-home -demo
           shot 3-report -demo -tab report
           shot 4-profile -demo -tab profile
-      - name: Small copies in the log (for viewing without downloading)
+      - name: Keep the screenshots in the repo (ios/screenshots)
+        if: github.event_name == 'push'
         run: |
-          for f in shots/*.png; do
-            sips -s format jpeg -s formatOptions 60 -Z 900 "$f" --out "${f%.png}.jpg" >/dev/null
-            echo "=====BEGIN $(basename "${f%.png}")"
-            base64 -i "${f%.png}.jpg" | fold -w 900
-            echo "=====END"
-          done
+          mkdir -p ios/screenshots
+          for f in shots/*.png; do sips -Z 1200 "$f" --out "ios/screenshots/$(basename "$f")" >/dev/null; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios/screenshots
+          git diff --cached --quiet || { git commit -m "iOS screenshots from the simulator [skip ci]" && git push; }
       - uses: actions/upload-artifact@v4
         with:
           name: iphone-screens
