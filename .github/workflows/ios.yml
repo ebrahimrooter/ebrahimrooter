@@ -42,6 +42,8 @@ jobs:
           xcrun simctl launch "$UDID" com.apple.Preferences || true
           sleep 5
           xcrun simctl io "$UDID" screenshot shots/10-pip-over-settings.png || true
+          echo "--- bundle"; ls ios/build/Debug-iphonesimulator/BankAssistant.app | grep -i -E "mp4|orb" || echo "no orb videos in the app"
+          echo "--- app log"; xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'subsystem == "ir.example.bankassistant" OR (process == "BankAssistant" AND (eventMessage CONTAINS[c] "picture" OR eventMessage CONTAINS[c] "pip"))' | tail -60 || true
       - name: Keep the screenshots in the repo (ios/screenshots)
         if: github.event_name == 'push'
         run: |

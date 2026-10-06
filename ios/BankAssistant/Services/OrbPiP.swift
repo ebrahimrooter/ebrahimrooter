@@ -3,6 +3,9 @@ import AVKit
 import Observation
 import SwiftUI
 import UIKit
+import os
+
+private let log = Logger(subsystem: "ir.example.bankassistant", category: "pip")
 
 /// The orb in a floating Picture-in-Picture window, on top of the Home Screen
 /// and other apps while a voice session runs. It is the standard video PiP
@@ -46,6 +49,7 @@ final class OrbPiP: NSObject {
         c.canStartPictureInPictureAutomaticallyFromInline = true // leaving the app mid-conversation opens it
         observations.append(c.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] c, _ in
             let p = c.isPictureInPicturePossible
+            log.info("pip possible: \(p)")
             DispatchQueue.main.async { self?.possible = p }
         })
         // ▶︎ / ❚❚ pressed in the PiP window
@@ -87,6 +91,7 @@ final class OrbPiP: NSObject {
 
     func toggle() {
         guard let c = controller else { return }
+        log.info("pip toggle: active \(c.isPictureInPictureActive) possible \(c.isPictureInPicturePossible) rate \(self.player.rate) items \(self.player.items().count)")
         if c.isPictureInPictureActive { c.stopPictureInPicture() } else { play(); c.startPictureInPicture() }
     }
 
@@ -103,13 +108,19 @@ final class OrbPiP: NSObject {
     }
 
     private func show(_ name: String) {
-        guard name != shown, let url = Bundle.main.url(forResource: "orb-" + name, withExtension: "mp4") else { return }
+        guard name != shown else { return }
+        guard let url = Bundle.main.url(forResource: "orb-" + name, withExtension: "mp4") else {
+            log.error("orb video missing: \(name, privacy: .public)")
+            return
+        }
         shown = name
         let wasPlaying = player.rate > 0
         ourChange = true
         looper?.disableLooping()
         player.removeAllItems()
-        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        let item = AVPlayerItem(url: url)
+        looper = AVPlayerLooper(player: player, templateItem: item)
+        log.info("orb video \(name, privacy: .public) loaded, looper status \(self.looper?.status.rawValue ?? -1)")
         if wasPlaying || active { player.play() }
         DispatchQueue.main.async { self.ourChange = false }
     }
@@ -136,6 +147,9 @@ final class OrbPiP: NSObject {
 extension OrbPiP: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { active = true }
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) { active = false }
+    func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        log.error("pip failed to start: \(error.localizedDescription, privacy: .public)")
+    }
 
     func pictureInPictureController(_ c: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completion: @escaping (Bool) -> Void) {
