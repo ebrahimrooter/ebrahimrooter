@@ -102,7 +102,10 @@ final class APIClient: @unchecked Sendable {
         c.queryItems = [URLQueryItem(name: "r", value: route)]
         var req = URLRequest(url: c.url!)
         req.httpMethod = "POST"
-        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue(token, forHTTPHeaderField: "X-Auth-Token")      // Apache may drop Authorization
+        }
         return req
     }
 

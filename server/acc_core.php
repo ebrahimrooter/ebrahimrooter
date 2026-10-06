@@ -263,6 +263,7 @@ function acc_seed(PDO $pdo)
         }
         $pdo->prepare("INSERT INTO acc_users (username, full_name, password_hash, role, created_at) VALUES ('admin', 'مدیر سیستم', ?, 'admin', ?)")
             ->execute([password_hash($pw, PASSWORD_DEFAULT), date('c')]);
+        ba_kv_set('acc_admin_default_pw', 1);   // until admin sets their own password, the current app password works
     }
 }
 
@@ -395,6 +396,19 @@ function acc_user_out(array $u)
 function acc_login($username, $password)
 {
     $u = acc_row('SELECT * FROM acc_users WHERE username = ?', [(string)$username]);
+    // admin has not chosen a password yet: the app password in config.php opens it, even
+    // if config.php was rebuilt after the database (the first password was generated then)
+    $app = (string)(ba_config()['app_token'] ?? '');
+    $default = ba_kv_get('acc_admin_default_pw');
+    if ($default === null) {   // databases from before this flag: admin never changed the password
+        $default = acc_val("SELECT 1 FROM acc_logs WHERE user = 'admin' AND action = 'change_password' LIMIT 1") ? 0 : 1;
+        ba_kv_set('acc_admin_default_pw', $default);
+    }
+    if ($u && $u['username'] === 'admin' && $default && $app !== '' && strpos($app, 'CHANGE-ME') !== 0
+        && hash_equals($app, (string)$password) && !password_verify((string)$password, $u['password_hash'])) {
+        acc_update('acc_users', $u['id'], ['password_hash' => password_hash($app, PASSWORD_DEFAULT)]);
+        $u = acc_row('SELECT * FROM acc_users WHERE id = ?', [$u['id']]);
+    }
     if (!$u || !$u['is_active'] || !password_verify((string)$password, $u['password_hash'])) {
         // slow down guessing a little
         usleep(300000);

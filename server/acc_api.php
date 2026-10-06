@@ -159,8 +159,7 @@ function acc_dispatch()
             array_shift($mm);
             $user = null;
             if ($perm !== null) {
-                $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
-                $token = preg_match('/^Bearer\s+(\S+)$/i', $auth, $t) ? $t[1] : (string)($_GET['token'] ?? '');
+                $token = ba_bearer_token();
                 $user = acc_session_user($token);
                 if (!$user) {
                     throw new AccError('توکن نامعتبر است', 401);
@@ -228,6 +227,9 @@ function r_change_password($u)
     }
     acc_update('acc_users', $u['id'], ['password_hash' => password_hash($b['new_password'], PASSWORD_DEFAULT)]);
     acc_q('DELETE FROM acc_sessions WHERE user_id = ?', [$u['id']]);
+    if ($u['username'] === 'admin') {
+        ba_kv_set('acc_admin_default_pw', 0);
+    }
     acc_log($u['username'], 'change_password');
     return ['ok' => true];
 }

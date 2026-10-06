@@ -1,6 +1,11 @@
 # /bank/ picks the phone app or the accounting panel; inside app/ and acc/ their own index.html
 DirectoryIndex index.html app/index.html
 
+# Apache does not hand the "Authorization: Bearer …" header to PHP by itself;
+# without this the accounting panel logs in and is thrown out at once.
+CGIPassAuth On
+SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+
 # Only the API and the app are reachable from the web.
 <FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant)\.php$">
   Require all denied

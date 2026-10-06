@@ -437,7 +437,7 @@ function accountingApp() {
 
     async req(path, opts = {}) {
       const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-      if (this.token) headers.Authorization = "Bearer " + this.token;
+      if (this.token) { headers.Authorization = "Bearer " + this.token; headers["X-Auth-Token"] = this.token; }
       headers["X-Company"] = String(this.companyId || 1);
       const res = await fetch(API(path), { ...opts, headers });
       if (res.status === 401) {
@@ -699,7 +699,7 @@ function accountingApp() {
       fd.append("file", file);
       const res = await fetch(API("/api/attachments?object_type=" + object_type + "&object_id=" + object_id), {
         method: "POST",
-        headers: { Authorization: "Bearer " + this.token },
+        headers: { Authorization: "Bearer " + this.token, "X-Auth-Token": this.token },
         body: fd
       });
       if (!res.ok) { alert("خطا در آپلود"); return; }
@@ -833,7 +833,7 @@ function accountingApp() {
       catch (e) { alert(e.message); }
     },
     async downloadBackup() {
-      const res = await fetch(API("/api/backup"), { headers: { Authorization: "Bearer " + this.token, "X-Company": String(this.companyId) } });
+      const res = await fetch(API("/api/backup"), { headers: { Authorization: "Bearer " + this.token, "X-Auth-Token": this.token, "X-Company": String(this.companyId) } });
       if (!res.ok) { alert("پشتیبان گرفته نشد"); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -849,7 +849,7 @@ function accountingApp() {
       const fd = new FormData();
       fd.append("file", f);
       try {
-        const res = await fetch(API("/api/restore"), { method: "POST", body: fd, headers: { Authorization: "Bearer " + this.token, "X-Company": String(this.companyId) } });
+        const res = await fetch(API("/api/restore"), { method: "POST", body: fd, headers: { Authorization: "Bearer " + this.token, "X-Auth-Token": this.token, "X-Company": String(this.companyId) } });
         const j = await res.json();
         if (!res.ok) throw new Error(j.detail || "خطا");
         alert("بازیابی شد. نسخه‌ی قبلی روی سرور با نام " + j.kept + " نگه داشته شد.");

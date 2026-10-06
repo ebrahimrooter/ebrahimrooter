@@ -91,12 +91,12 @@ function assistant_redeem($code, $name, $ip)
 function assistant_device()
 {
     assistant_schema();
-    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
-    if (!preg_match('/^Bearer\s+([0-9a-f]{64})$/i', $auth, $m)) {
+    $token = ba_bearer_token();
+    if (!preg_match('/^[0-9a-f]{64}$/i', $token)) {
         return null;
     }
     $q = ba_db()->prepare('SELECT * FROM assistant_devices WHERE token_hash = ? AND revoked = 0');
-    $q->execute([hash('sha256', strtolower($m[1]))]);
+    $q->execute([hash('sha256', strtolower($token))]);
     $d = $q->fetch();
     if ($d && (!$d['last_seen'] || strtotime($d['last_seen']) < time() - 60)) {
         ba_db()->prepare('UPDATE assistant_devices SET last_seen = ? WHERE id = ?')->execute([date('Y-m-d H:i:s'), $d['id']]);

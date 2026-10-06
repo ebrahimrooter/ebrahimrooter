@@ -741,6 +741,29 @@ function ba_csv_put($fh, array $row) {
     fputcsv($fh, $row, ',', '"', '');
 }
 
+/**
+ * The bearer token of the request, wherever the web server put it:
+ * Authorization header (Apache may hide it), the X-Auth-Token header the
+ * apps also send, or ?token= for download links.
+ */
+function ba_bearer_token() {
+    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if ($auth === '' && function_exists('getallheaders')) {
+        foreach ((array)getallheaders() as $k => $v) {
+            if (strcasecmp($k, 'Authorization') === 0) {
+                $auth = (string)$v;
+            }
+        }
+    }
+    if (preg_match('/^Bearer\s+(\S+)$/i', trim($auth), $m)) {
+        return $m[1];
+    }
+    if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
+        return trim((string)$_SERVER['HTTP_X_AUTH_TOKEN']);
+    }
+    return (string)($_GET['token'] ?? '');
+}
+
 function ba_kv_get($key, $default = null) {
     $q = ba_db()->prepare('SELECT v FROM kv WHERE k = ?');
     $q->execute([$key]);
