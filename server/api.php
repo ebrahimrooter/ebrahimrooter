@@ -267,6 +267,38 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                     $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];   // e.g. not enough stock
                 }
                 out(['ok' => true, 'heard' => $text] + $ans);
+            case 'assistant_home':
+                require_once __DIR__ . '/assistant_app.php';
+                out(['ok' => true] + aa_home($device));
+            case 'assistant_list':
+                require_once __DIR__ . '/assistant_app.php';
+                out(['ok' => true] + aa_list(valid_date($in['from'] ?? date('Y-m-d', strtotime('-30 days'))),
+                    valid_date($in['to'] ?? date('Y-m-d')), (string)($in['direction'] ?? '')));
+            case 'assistant_confirm':
+                require_once __DIR__ . '/assistant_app.php';
+                $id = (int)($in['id'] ?? 0);
+                if (!ba_get_transaction($id)) {
+                    fail('پیدا نشد', 404);
+                }
+                $desc = trim((string)($in['description'] ?? ''));
+                if ($desc === '') {
+                    fail('بابت چه بود؟ شرح خالی است.');
+                }
+                $tx = ba_confirm_tx($id, $desc, $in['party'] ?? '', 0);
+                ba_kv_set('bot:draft:' . $id, null);
+                out(['ok' => true, 'synced' => $tx['synced_now'] ?? null]);
+            case 'assistant_ignore':
+                $id = (int)($in['id'] ?? 0);
+                ba_db()->prepare("UPDATE transactions SET status = 'ignored' WHERE id = ? AND status = 'pending'")->execute([$id]);
+                ba_acc_link_tx($id);
+                out(['ok' => true]);
+            case 'assistant_manual':
+                require_once __DIR__ . '/assistant_app.php';
+                aa_manual($in);
+                out(['ok' => true]);
+            case 'assistant_acc_session':
+                require_once __DIR__ . '/assistant_app.php';
+                out(['ok' => true] + aa_acc_session($device));
             case 'assistant_transcribe':
                 if (!isset($_FILES['audio']) || !is_uploaded_file($_FILES['audio']['tmp_name'])) {
                     fail('فایل صدا نرسید');
@@ -286,7 +318,12 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                 readfile($file);
                 exit;
         }
+    } catch (InvalidArgumentException $e) {
+        fail($e->getMessage());
     } catch (RuntimeException $e) {
+        if (!in_array($route, ['assistant_transcribe', 'assistant_speak'], true)) {
+            fail($e->getMessage(), $e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 400);
+        }
         fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
     } catch (Throwable $e) {
         error_log('assistant: ' . $e);

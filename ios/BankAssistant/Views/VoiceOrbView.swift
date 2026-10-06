@@ -36,7 +36,7 @@ struct VoiceOrbView: View {
                     for i in 0..<8 {
                         let a = t * 3 + Double(i) * .pi / 4
                         let p = CGPoint(x: c.x + cos(a) * r * 0.55, y: c.y + sin(a) * r * 0.55)
-                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)), with: .color(.white.opacity(0.3 + 0.08 * Double(i))))
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)), with: .color(Color(red: 0.09, green: 0.3, blue: 0.17).opacity(0.3 + 0.08 * Double(i))))
                     }
                 }
             }
@@ -45,12 +45,14 @@ struct VoiceOrbView: View {
     }
 
     private var palette: [Color] {
+        let leaf = Color(red: 0.30, green: 0.70, blue: 0.40), lime = Color(red: 0.55, green: 0.88, blue: 0.56)
+        let forest = Color(red: 0.09, green: 0.30, blue: 0.17)
         switch phase {
-        case .listening: return [Color(red: 0.36, green: 0.78, blue: 1), Color(red: 0.55, green: 0.5, blue: 1), .white]
-        case .processing: return [Color(red: 0.7, green: 0.55, blue: 1), Color(red: 0.4, green: 0.6, blue: 1), .white]
-        case .speaking: return [Color(red: 1, green: 0.62, blue: 0.7), Color(red: 1, green: 0.75, blue: 0.4), .white]
-        case .error: return [Color(red: 1, green: 0.4, blue: 0.4), .orange, .white]
-        case .idle: return [Color.white.opacity(0.7), Color(red: 0.5, green: 0.6, blue: 1), .white]
+        case .listening: return [lime, leaf, forest]
+        case .processing: return [leaf, Color(red: 0.25, green: 0.6, blue: 0.65), forest]
+        case .speaking: return [Color(red: 0.75, green: 0.92, blue: 0.4), lime, forest]
+        case .error: return [Color(red: 1, green: 0.4, blue: 0.4), .orange, forest]
+        case .idle: return [leaf.opacity(0.8), lime, forest]
         }
     }
 }

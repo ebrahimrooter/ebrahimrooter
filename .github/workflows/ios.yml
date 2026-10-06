@@ -1,0 +1,19 @@
+name: iOS app build
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the Xcode project
+        run: brew install xcodegen && cd ios && xcodegen generate
+      - name: Build for the simulator (no signing)
+        run: |
+          cd ios
+          xcodebuild -version
+          xcodebuild -project BankAssistant.xcodeproj -target BankAssistant -sdk iphonesimulator -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO build | xcpretty || exit ${PIPESTATUS[0]}

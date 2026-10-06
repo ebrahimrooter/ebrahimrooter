@@ -19,6 +19,12 @@ struct RedeemReply: Decodable {
 
 private struct TextReply: Decodable { let ok: Bool; let text: String }
 private struct ErrorReply: Decodable { let ok: Bool; let error: String? }
+private struct OKReply: Decodable { let ok: Bool }
+
+extension Notification.Name {
+    /// The server refused the device token (revoked from the phone web app).
+    static let deviceUnpaired = Notification.Name("deviceUnpaired")
+}
 
 enum APIError: LocalizedError {
     case notPaired, unauthorized, server(String), offline(String)
@@ -88,6 +94,50 @@ final class APIClient: @unchecked Sendable {
         var req = request(base, route: "assistant_speak", token: try token())
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return try await send(req, body: try JSONSerialization.data(withJSONObject: ["text": text]))
+    }
+
+    // MARK: - books (server/assistant_app.php)
+
+    func home() async throws -> HomeData {
+        try await call("assistant_home", [:])
+    }
+
+    /// Dates are Gregorian yyyy-mm-dd; direction "in" / "out" / "" (both).
+    func transactions(from: String? = nil, to: String? = nil, direction: String = "") async throws -> TxList {
+        var b: [String: String] = ["direction": direction]
+        if let from { b["from"] = from }
+        if let to { b["to"] = to }
+        return try await call("assistant_list", b)
+    }
+
+    /// «بابت چی بود؟» for a bank transaction; posts it to the books.
+    func confirm(id: Int, description: String, party: String) async throws {
+        let _: OKReply = try await call("assistant_confirm", ["id": String(id), "description": description, "party": party])
+    }
+
+    func ignore(id: Int) async throws {
+        let _: OKReply = try await call("assistant_ignore", ["id": String(id)])
+    }
+
+    /// A hand-made entry (cash etc.); amount in toman.
+    func manual(incoming: Bool, amountToman: String, description: String, party: String) async throws {
+        let _: OKReply = try await call("assistant_manual", ["direction": incoming ? "in" : "out", "amount_toman": amountToman,
+                                                             "description": description, "party": party])
+    }
+
+    /// Short-lived session of the accounting panel for the in-app panel (kept in memory only).
+    func panelSession() async throws -> PanelSession {
+        try await call("assistant_acc_session", [:])
+    }
+
+    private func call<T: Decodable>(_ route: String, _ body: [String: String]) async throws -> T {
+        do {
+            return try await json(nil, route: route, body: body, token: try token())
+        } catch APIError.unauthorized {
+            unpair()
+            NotificationCenter.default.post(name: .deviceUnpaired, object: nil)
+            throw APIError.unauthorized
+        }
     }
 
     // MARK: - plumbing

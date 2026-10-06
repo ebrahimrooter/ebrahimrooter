@@ -148,10 +148,32 @@ check('cheque collected', strpos($a['reply'], 'وصول شده') !== false, $a['
 $msg = shell_exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "jobs.php"; acc_db(); echo acc_cheque_due_message(400);'));
 check('morning alert lists the open cheques', strpos($msg, 'سررسید چک') !== false && strpos($msg, 'پرداختی به حسن کریمی') !== false && strpos($msg, '452190') === false, $msg);
 
+echo "iPhone app data\n";
+$sms = http($A . 'ingest', ['sender' => '+98700717', 'text' => "بانک ملت\nواریز:2,500,000\nحساب:1234\nمانده:12,500,000\n" . date('H:i')], ['X-Device-Token: d'])[1];
+$h = http($A . 'assistant_home', [], $D);
+check('home needs the device token', http($A . 'assistant_home', [])[0] === 401);
+$pend = array_values(array_filter($h[1]['pending'] ?? [], fn($t) => $t['amount'] === 2500000));
+check('home: pending deposit from the bank SMS', $h[0] === 200 && count($pend) === 1 && $pend[0]['direction'] === 'in' && strpos($pend[0]['sms_text'], 'واریز') !== false, json_encode($sms) . json_encode($h[1]));
+check('home: six months, this month counted', count($h[1]['months']) === 6 && $h[1]['month']['in'] >= 2500000 && $h[1]['months'][5]['label'] === $h[1]['month']['label'], json_encode($h[1]['months']));
+check('home: wallets and balance', is_int($h[1]['balance']) && count($h[1]['wallets']) >= 1, json_encode($h[1]['wallets']));
+check('confirm needs a description', http($A . 'assistant_confirm', ['id' => $pend[0]['id'] ?? 0, 'description' => ''], $D)[0] === 400);
+[$c, $r2] = http($A . 'assistant_confirm', ['id' => $pend[0]['id'] ?? 0, 'description' => 'فروش نقدی', 'party' => 'علی رضایی'], $D);
+$h = http($A . 'assistant_home', [], $D)[1];
+check('confirmed from the app', $c === 200 && !array_filter($h['pending'], fn($t) => $t['amount'] === 2500000)
+    && $h['recent'][0]['party'] === 'علی رضایی' && $h['recent'][0]['status'] === 'confirmed', json_encode($r2) . json_encode($h['recent'][0] ?? null));
+[$c] = http($A . 'assistant_manual', ['direction' => 'out', 'amount_toman' => '۱۲۰۰۰۰', 'description' => 'خرید لوازم'], $D);
+$l = http($A . 'assistant_list', ['direction' => 'out'], $D)[1];
+check('manual withdrawal listed', $c === 200 && $l['items'][0]['amount'] === 1200000 && $l['items'][0]['description'] === 'خرید لوازم' && $l['total_out'] >= 1200000, json_encode($l['items'][0] ?? null));
+check('manual: bad amount refused', http($A . 'assistant_manual', ['direction' => 'in', 'amount_toman' => '0', 'description' => 'x'], $D)[0] === 400);
+$s = http($A . 'assistant_acc_session', [], $D)[1];
+$me = http($ACC . '/me', null, ['Authorization: Bearer ' . ($s['token'] ?? '')]);
+check('panel session for the in-app panel', $me[0] === 200 && $me[1]['role'] === 'admin', json_encode($me));
+
 echo "revoke\n";
 $dev = http($A . 'assistant_devices', null, ['X-App-Token: apppass123'])[1]['items'][0];
 http($A . 'assistant_revoke', ['id' => $dev['id']], ['X-App-Token: apppass123']);
 check('revoked device is locked out', http($A . 'assistant_ask', ['text' => 'فروش امروز'], $D)[0] === 401);
+check('revoked device: no data', http($A . 'assistant_home', [], $D)[0] === 401);
 
 proc_terminate($srv);
 exec('rm -rf ' . escapeshellarg($tmp));
