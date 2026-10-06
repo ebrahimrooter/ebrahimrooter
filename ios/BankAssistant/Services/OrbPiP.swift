@@ -35,14 +35,31 @@ final class OrbPiP: NSObject {
 
     static var supported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
 
+    @ObservationIgnored private var prepared = false
+
     func setup() {
-        guard controller == nil, Self.supported else { return }
+        // the orb video also plays inline (tab bar) where PiP is not available
+        if !prepared {
+            prepared = true
+            preparePlayer()
+        }
+        guard controller == nil, Self.supported else {
+            if !Self.supported { log.info("pip not supported on this device") }
+            return
+        }
+        makeController()
+    }
+
+    private func preparePlayer() {
         player.isMuted = true
         player.allowsExternalPlayback = false
         player.preventsDisplaySleepDuringVideoPlayback = false
         playerLayer.player = player
         playerLayer.videoGravity = .resizeAspectFill
         show("idle")
+    }
+
+    private func makeController() {
         guard let c = AVPictureInPictureController(playerLayer: playerLayer) else { return }
         c.delegate = self
         c.requiresLinearPlayback = true                          // no ±15 s buttons
@@ -63,7 +80,6 @@ final class OrbPiP: NSObject {
     func sessionStarted() {
         closeWork?.cancel()
         setup()
-        guard controller != nil else { return }
         sync()
         play()
         if follow == nil {
