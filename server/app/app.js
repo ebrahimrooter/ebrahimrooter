@@ -1704,15 +1704,13 @@
     }).catch(function (e) { toast(e.message); });
   }
 
-  function periodOf(a) {
-    if (/دیروز/.test(a)) return [-1, -1, 'دیروز'];
-    if (/هفته/.test(a)) return [-6, 0, 'این هفته'];
-    if (/ماه/.test(a)) return [-29, 0, 'این ماه'];
-    if (/سال/.test(a)) return [-364, 0, 'امسال'];
-    return [0, 0, 'امروز'];
-  }
-
-  /** «موجودیم چقدره؟»، «امروز چقدر واریز شد؟»، «آخرین برداشت»، «این ماه چقدر خرج کردم؟» */
+  /**
+   * گفتگو با دستیار حسابداری (همان دستیار اپ آیفون، روی سرور): هر سؤال یا فرمان
+   * — «خلاصه وضعیت»، «فروش امروز»، «سود این ماه»، «موجودی انبار»، «حساب علی رضایی»،
+   * «برای علی رضایی فاکتور ثبت کن، دو عدد …»، «از علی پنج میلیون نقد گرفتم»، «دو میلیون اجاره دادم» —
+   * جواب را می‌گوید و دوباره گوش می‌دهد؛ کارهای ثبتی بعد از «آره» انجام می‌شوند.
+   * دو بار سکوت یا «خداحافظ» = پایان.
+   */
   function orbAsk() {
     orbBuild();
     var my = ++orb.session;
@@ -1720,48 +1718,59 @@
     var alive = function () { return orb.session === my; };
     document.getElementById('orbStage').classList.add('open');
     var speak = function (text, sub) { orbSay(text, sub || ''); orbMode('speaking'); return Voice.speak(text).then(function () { orbMode(''); }); };
-    var done = function () { setTimeout(function () { if (alive()) orbCloseStage(); }, 2500); };
-    if (!Voice.canListen()) { speak('تراکنش بی‌جوابی نیست.').then(done); return; }
-    speak('بگو چی می‌خوای بدونی؟', 'مثلاً: موجودی، واریزهای امروز، آخرین برداشت').then(function () {
+    var done = function (ms) { setTimeout(function () { if (alive()) orbCloseStage(); }, ms || 2500); };
+    if (!Voice.canListen()) {
+      orbSay('تشخیص گفتار روی این مرورگر در دسترس نیست', 'صدای سرور را نصب کن (voice/install.sh) یا از اپ آیفون استفاده کن');
+      return done(4000);
+    }
+    var silent = 0;
+    var turn = function (prompt, hint) {
       if (!alive()) return;
-      orbSay('بگو چی می‌خوای بدونی؟', 'دارم گوش می‌دم…');
+      orbSay(prompt, hint || 'دارم گوش می‌دم…');
       orbMode('listening');
-      return Voice.listen(7000).then(function (ans) {
+      return Voice.listen(8000).then(function (ans) {
         orbMode('');
         if (!alive()) return;
-        var a = norm(ans);
-        if (!a) return speak('چیزی نشنیدم.').then(done);
-        orbSay(ans, '');
-        if (/(موجودی|مانده|چقدر پول|حساب(ها)?م)/.test(a)) {
-          return api('report', { query: '&from=' + isoDay(0) + '&to=' + isoDay(0) }).then(function (r) {
-            var total = r.wallets.reduce(function (s, w) { return s + +w.balance; }, 0);
-            return speak('موجودی کل ' + spokenToman(total) + (total < 0 ? ' منفی' : '') + '. ' + r.wallets.map(function (w) { return w.name + ' ' + spokenToman(w.balance); }).join('، '));
-          }).then(done);
+        if (!norm(ans)) {
+          if (++silent >= 2) return speak('خداحافظ.').then(function () { done(800); });
+          return turn('چیزی نشنیدم؛ بگو…');
         }
-        if (/(بی ?جواب|سوال|نپرسیده)/.test(a)) {
-          return api('pending').then(function (d) { return speak(d.items.length ? d.items.length + ' تراکنش بی‌جواب داری.' : 'همه‌ی تراکنش‌ها جواب گرفته‌اند.'); }).then(done);
-        }
-        var p = periodOf(a);
-        return api('list', { query: '&from=' + isoDay(/(آخرین|اخرین)/.test(a) ? -365 : p[0]) + '&to=' + isoDay(p[1]) }).then(function (d) {
-          var live = d.items.filter(function (t) { return t.status !== 'ignored'; });
-          var dir = /(واریز|درآمد|دریافت|اومد|آمد)/.test(a) ? 'in' : /(برداشت|خرج|هزینه|پرداخت|رفت)/.test(a) ? 'out' : '';
-          if (/(آخرین|اخرین)/.test(a)) {
-            var last = live.filter(function (t) { return !dir || t.direction === dir; }).sort(function (x, y) { return x.occurred_at < y.occurred_at ? 1 : -1; })[0];
-            return speak(last ? (last.direction === 'in' ? 'آخرین واریز ' : 'آخرین برداشت ') + spokenToman(last.amount) + (last.description ? ' بابت ' + last.description : '') + '، ' + when(last).replace(/[۰-۹]/g, function (c) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(c); }) : 'تراکنشی پیدا نکردم.');
-          }
-          var part = function (k) {
-            var xs = live.filter(function (t) { return t.direction === k; });
-            var s = xs.reduce(function (m, t) { return m + +t.amount; }, 0);
-            return xs.length + (k === 'in' ? ' واریز' : ' برداشت') + (xs.length ? ' جمعاً ' + spokenToman(s) : '');
-          };
-          return speak(p[2] + ' ' + (dir ? part(dir) : part('in') + ' و ' + part('out')) + '.');
-        }).then(done);
+        silent = 0;
+        if (/^(خداحافظ|تمام|بسه|کافیه|تموم)/.test(norm(ans))) return speak('خداحافظ.').then(function () { done(800); });
+        orbSay('«' + ans + '»', 'در حال پردازش…');
+        orbMode('thinking');
+        return api('assistant_web', { body: { text: ans } }).then(function (r) {
+          if (!alive()) return;
+          if (r.data && r.data.number) toast('ثبت شد: ' + r.data.number);
+          return speak(r.reply).then(function () {
+            return turn(r.state === 'confirm' ? 'بگو «آره» یا «نه»' : 'سؤال دیگر؟', r.state === 'confirm' ? 'دارم گوش می‌دم…' : 'یا بگو «خداحافظ»');
+          });
+        });
       });
-    }).catch(function (e) {
-      if (!alive()) return;
-      orbSay('صدا روی این گوشی کار نکرد', e && e.message || '');
-      done();
-    });
+    };
+    speak('بگو چی می‌خوای؟', 'مثلاً: خلاصه وضعیت، فروش امروز، موجودی انبار، فاکتور ثبت کن').then(function () { return turn('بگو…'); })
+      .catch(function (e) {
+        if (!alive()) return;
+        orbSay('خطا', e && e.message || '');
+        done(3000);
+      });
+  }
+
+  /* ------------------- حسابداری کامل داخل اپ (همان پنل، نسخه‌ی موبایل) ------------------- *
+   * پنل حسابداری در یک قاب ثابت باز می‌شود و با رمز همین اپ خودکار وارد می‌شود؛ بین
+   * تب‌ها جابه‌جا شوی، قاب و صفحه‌ای که در آن بودی سر جایش می‌ماند. */
+  function viewAccounting() {
+    var f = document.getElementById('accFrame');
+    if (!f) {
+      f = document.createElement('iframe');
+      f.id = 'accFrame';
+      f.className = 'accframe';
+      f.title = 'حسابداری';
+      f.src = '../acc/?embed=1';
+      document.body.appendChild(f);
+    }
+    document.body.classList.add('acc-mode');
+    app.innerHTML = '';
   }
 
   /* ------------------------------- router ------------------------------ */
@@ -1775,6 +1784,7 @@
       return;
     }
     lastHash = location.hash || '#/';
+    if (!/^#\/acc/.test(location.hash)) document.body.classList.remove('acc-mode');
     run.active = false;
     if (Voice.stop) Voice.stop();
     var h = location.hash.replace(/^#\/?/, '');
@@ -1796,6 +1806,7 @@
     else if (tab === 'orb') p = openOrbFor(+parts[1]);
     else if (tab === 'reconcile') p = viewReconcile();
     else if (tab === 'settings') p = viewSettings();
+    else if (tab === 'acc') p = viewAccounting();
     else p = viewMoney();
     Promise.resolve(p).catch(function (e) { app.innerHTML = '<div class="card">خطا: ' + esc(e.message) + '</div>'; });
     window.scrollTo(0, 0);

@@ -30,7 +30,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   check('home shows the orb', await page.isVisible('#homeOrb .orb'));
   check('orb drawn by thinking-orbs (canvas)', await page.isVisible('#homeOrb .orb canvas'));
   const tabs = await page.$$eval('#tabbar a', as => as.map(a => a.textContent.trim()));
-  check('only two tabs', tabs.length === 2, JSON.stringify(tabs));
+  check('three tabs: deposits/withdrawals, accounting, settings', tabs.length === 3, JSON.stringify(tabs));
   const rows = await page.$$eval('.txlist .item', xs => xs.map(x => x.textContent));
   check('both transactions listed', rows.length === 2, JSON.stringify(rows));
   check('pending marked', rows.some(r => r.includes('بی‌جواب')));
@@ -77,6 +77,34 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('#orbClose');
   await page.waitForTimeout(500);
   check('back on the same page', await page.evaluate(() => location.hash === '#/settings'));
+  // the whole accounting panel inside the app, signed in with the app password
+  await page.goto('http://127.0.0.1:8834/app/#/');
+  await page.waitForTimeout(1200);
+  await page.click('#tabbar a[data-tab="acc"]');
+  await page.waitForTimeout(3500);
+  const fr = page.frameLocator('#accFrame');
+  const accIn = await page.frames().find(f => f.url().includes('/acc/')).evaluate(() => document.body._x_dataStack[0].isLoggedIn);
+  check('accounting tab: panel open and signed in without a second login', accIn);
+  await page.screenshot({ path: OUT + '/app-acc.png' });
+  await fr.locator('.m-menu').click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: OUT + '/app-acc-menu.png' });
+  await fr.locator('aside nav a', { hasText: 'فروش' }).first().click();
+  await page.waitForTimeout(800);
+  const accPage = await page.frames().find(f => f.url().includes('/acc/')).evaluate(() => ({ p: document.body._x_dataStack[0].currentPage, menu: document.body.classList.contains('menu-open') }));
+  check('phone menu opens a page and closes', accPage.p === 'sales' && !accPage.menu, JSON.stringify(accPage));
+  await page.screenshot({ path: OUT + '/app-acc-sales.png' });
+  await fr.locator('button', { hasText: 'فاکتور فروش جدید' }).first().click();
+  await page.waitForTimeout(600);
+  check('invoice form fits the phone', await page.frames().find(f => f.url().includes('/acc/')).evaluate(() => {
+    const m = [...document.querySelectorAll('.fixed.inset-0 > div')].find(d => d.offsetParent);
+    return !!m && m.getBoundingClientRect().width <= innerWidth;
+  }));
+  await page.screenshot({ path: OUT + '/app-acc-invoice.png' });
+  await page.frames().find(f => f.url().includes('/acc/')).evaluate(() => { document.body._x_dataStack[0].showInvoiceModal = false; });
+  await page.click('#tabbar a[data-tab="home"]');
+  await page.waitForTimeout(800);
+  check('back to deposits/withdrawals', await page.isVisible('#homeOrb'));
   // cold start from the notification (app was closed): just the orb, nothing of the app
   const cold = page;
   await cold.goto('about:blank');

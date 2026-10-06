@@ -19,6 +19,7 @@ function acc_routes()
     // [method, path regex, permission ('' any user, 'admin' admins only), handler]
     return [
         ['POST', '#^/login$#', null, 'r_login'],
+        ['POST', '#^/login/app$#', null, 'r_login_app'],
         ['GET', '#^/health$#', null, fn() => ['ok' => true]],
         ['GET', '#^/me$#', '', fn($u) => acc_user_out($u)],
         ['PUT', '#^/me/password$#', '', 'r_change_password'],
@@ -214,6 +215,29 @@ function r_login()
 {
     $b = acc_body();
     return acc_login($b['username'] ?? '', $b['password'] ?? '');
+}
+
+/**
+ * The phone app (which holds the app password, the owner's key to everything)
+ * opens the accounting panel inside it without a second login: as admin.
+ */
+function r_login_app()
+{
+    $app = (string)(ba_config()['app_token'] ?? '');
+    $given = (string)($_SERVER['HTTP_X_APP_TOKEN'] ?? '');
+    if ($app === '' || strpos($app, 'CHANGE-ME') === 0 || !hash_equals($app, $given)) {
+        usleep(300000);
+        throw new AccError('رمز اپ نادرست است', 401);
+    }
+    $u = acc_row("SELECT * FROM acc_users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1");
+    if (!$u) {
+        throw new AccError('کاربر مدیر فعالی نیست', 403);
+    }
+    $token = bin2hex(random_bytes(24));
+    acc_q('DELETE FROM acc_sessions WHERE expires_at < ?', [time()]);
+    acc_insert('acc_sessions', ['token_hash' => hash('sha256', $token), 'user_id' => $u['id'], 'expires_at' => time() + 12 * 3600]);
+    acc_log($u['username'], 'login', 'from the phone app');
+    return ['token' => $token, 'access_token' => $token, 'user' => acc_user_out($u)];
 }
 
 function r_change_password($u)

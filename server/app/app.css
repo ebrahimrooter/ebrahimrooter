@@ -245,3 +245,9 @@ body.siri-mode .stage.listening::after { animation-duration: 1.6s; opacity: 1; }
 /* دکمه‌ی شناور کردن orb (تصویر در تصویر) کنار دکمه‌ی بستن */
 .stage .pipbtn { inset-inline-start: auto; inset-inline-end: 14px; font-size: 16px; }
 .stage .pipbtn[hidden] { display: none; }
+
+/* تب حسابداری: پنل کامل در یک قاب تمام‌صفحه بالای نوار تب‌ها */
+.accframe { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: calc(62px + var(--safe-bottom)); width: 100%; height: calc(100% - 62px - var(--safe-bottom)); border: 0; background: #f8fafc; z-index: 5; }
+body.acc-mode .accframe { display: block; }
+body.acc-mode #app { display: none; }
+body.siri-mode .accframe { visibility: hidden; }

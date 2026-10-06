@@ -173,10 +173,89 @@ function assistant_rial($v)
     return number_format(round(abs((float)$v) / 10)) . ' تومان';
 }
 
+
 /**
- * One turn of the conversation. $device holds the pending invoice draft, so a
- * following «آره» / «نه» confirms or drops it.
- * Returns ['reply' => text, 'state' => answered|confirm|unknown, 'data' => [...]].
+ * An amount said in a sentence, in rial. People say toman: «پنج میلیون»،
+ * «۵۰۰ هزار تومان»، «۲.۵ میلیون»، «۱۲۰۰۰۰ تومان»، «۱۰۰۰۰۰ ریال».
+ */
+function assistant_amount($t)
+{
+    $words = ['یک' => 1, 'یه' => 1, 'دو' => 2, 'سه' => 3, 'چهار' => 4, 'پنج' => 5, 'شش' => 6, 'شیش' => 6, 'هفت' => 7, 'هشت' => 8, 'نه' => 9, 'ده' => 10,
+        'یازده' => 11, 'دوازده' => 12, 'پانزده' => 15, 'پونزده' => 15, 'بیست' => 20, 'سی' => 30, 'چهل' => 40, 'پنجاه' => 50, 'شصت' => 60, 'هفتاد' => 70,
+        'هشتاد' => 80, 'نود' => 90, 'صد' => 100, 'دویست' => 200, 'سیصد' => 300, 'چهارصد' => 400, 'پانصد' => 500, 'پونصد' => 500, 'ششصد' => 600,
+        'هفتصد' => 700, 'هشتصد' => 800, 'نهصد' => 900];
+    // «بیست و پنج میلیون» -> «25 میلیون»
+    $t = preg_replace_callback('/((?:(?:' . implode('|', array_keys($words)) . ')(?:\s+و\s+)?)+)(?=\s*(?:میلیارد|میلیون|هزار|تومان|تومن|ریال))/u', function ($m) use ($words) {
+        $n = 0;
+        foreach (preg_split('/\s+(?:و\s+)?/u', trim($m[1])) as $w) {
+            $n += $words[$w] ?? 0;
+        }
+        return $n ? $n . ' ' : $m[0];
+    }, $t);
+    if (!preg_match('/(\d+(?:\.\d+)?)\s*(میلیارد|میلیون|هزار)?(?:\s*و\s*(\d+)\s*(هزار))?\s*(تومان|تومن|ریال)?/u', $t, $m) || (float)$m[1] <= 0) {
+        return 0;
+    }
+    $mult = ['میلیارد' => 1e9, 'میلیون' => 1e6, 'هزار' => 1e3][$m[2] ?? ''] ?? 1;
+    $v = (float)$m[1] * $mult + (!empty($m[3]) ? (float)$m[3] * 1e3 : 0);
+    return (int)round(($m[5] ?? '') === 'ریال' ? $v : $v * 10);
+}
+
+/** Cash or bank account named (or implied) in a sentence. */
+function assistant_cash_account($t)
+{
+    $rows = acc_all('SELECT id, name, kind FROM acc_cash_accounts ORDER BY id');
+    if (!$rows) {
+        return null;
+    }
+    if ($named = assistant_find_name($t, $rows)) {
+        return $named;
+    }
+    $kind = preg_match('/(نقد|صندوق|دستی)/u', $t) ? 'cash' : (preg_match('/(بانک|کارت|حساب|واریز|انتقال|پوز|کارتخوان)/u', $t) ? 'bank' : null);
+    foreach ($rows as $r) {
+        if ($kind && $r['kind'] === $kind) {
+            return $r;
+        }
+    }
+    return $rows[0];
+}
+
+/** Runs a confirmed draft. */
+function assistant_execute(array $d, array $device)
+{
+    $who = 'assistant:' . $device['name'];
+    switch ($d['type']) {
+        case 'invoice':
+            $inv = acc_invoice_save(null, $d['body']);
+            acc_log($who, 'create_invoice', $inv['number']);
+            if (function_exists('acc_sms_after_invoice')) {
+                acc_sms_after_invoice($inv);
+            }
+            return ['reply' => 'فاکتور ' . $inv['number'] . ' ثبت شد. جمع ' . assistant_rial($inv['total']) . '.',
+                'data' => ['invoice_id' => (int)$inv['id'], 'number' => $inv['number'], 'total' => (float)$inv['total']]];
+        case 'treasury':
+            $t = acc_treasury_record($d['body']);
+            acc_log($who, 'treasury', $t['number']);
+            return ['reply' => 'ثبت شد (' . $t['number'] . ').', 'data' => ['number' => $t['number']]];
+        case 'person':
+            $f = acc_person_fields($d['body']);
+            $f['code'] = (['supplier' => 'S', 'employee' => 'E', 'investor' => 'I', 'marketer' => 'M', 'other' => 'O'][$f['type']] ?? 'C') . sprintf('%03d', acc_next('person'));
+            $id = acc_insert('acc_persons', $f);
+            acc_log($who, 'create_person', $f['name']);
+            return ['reply' => $f['name'] . ' به اشخاص اضافه شد.', 'data' => ['person_id' => $id]];
+        case 'sms':
+            $q = acc_sms_queue([$d['body']], $who, 'assistant');
+            acc_sms_process(5);
+            $st = acc_val('SELECT status FROM acc_sms_log ORDER BY id DESC LIMIT 1');
+            return ['reply' => $q['queued'] ? ($st === 'sent' ? 'پیامک فرستاده شد.' : 'پیامک در صف ارسال است.') : 'شماره‌ی موبایل درست نیست.', 'data' => []];
+    }
+    return ['reply' => 'کاری برای ثبت نبود.', 'data' => []];
+}
+
+/**
+ * One turn of the conversation. Writing actions (invoice, receipt, payment,
+ * expense, new person, SMS) are drafted first and run only after «آره»;
+ * a bank transaction asked about takes the next sentence as its answer.
+ * Returns ['reply' => text, 'state' => answered|confirm|unknown|error, 'data' => [...]].
  */
 function assistant_answer($text, array $device)
 {
@@ -184,30 +263,56 @@ function assistant_answer($text, array $device)
     acc_use_company(1);
     acc_db();
     $t = assistant_number_words(ba_norm_text($text));
-    $draftKey = 'assistant_draft:' . $device['id'];
-    $draft = ba_kv_get($draftKey);
-    if ($draft && $draft['exp'] < time()) {
-        ba_kv_set($draftKey, null);
-        $draft = null;
+    $ctxKey = 'assistant_ctx:' . $device['id'];
+    $ctx = ba_kv_get($ctxKey);
+    if ($ctx && $ctx['exp'] < time()) {
+        $ctx = null;
     }
+    $ok = fn($reply, $data = []) => ['reply' => $reply, 'state' => 'answered', 'data' => $data];
+    $draft = function ($type, $body, $question, $data = []) use ($ctxKey) {
+        ba_kv_set($ctxKey, ['exp' => time() + ASSISTANT_DRAFT_TTL, 'type' => $type, 'body' => $body]);
+        return ['reply' => $question, 'state' => 'confirm', 'data' => $data];
+    };
 
-    // a pending invoice: yes / no
-    if ($draft && preg_match('/^(آره|اره|بله|آری|باشه|ثبت کن|تایید|اوکی|ok|yes)\b/u', $t)) {
-        ba_kv_set($draftKey, null);
-        $inv = acc_invoice_save(null, $draft['body']);
-        acc_log('assistant:' . $device['name'], 'create_invoice', $inv['number']);
-        if (function_exists('acc_sms_after_invoice')) {
-            acc_sms_after_invoice($inv);
+    /* ---- the answer to a question the assistant asked ---- */
+    if ($ctx) {
+        $yes = preg_match('/^(آره|اره|بله|آری|باشه|ثبت کن|بفرست|تایید|درسته|اوکی|ok|yes)\b/u', $t);
+        $no = preg_match('/^(نه|نخیر|لغو|کنسل|ولش کن|نمی ?خواد|بیخیال)\b/u', $t);
+        if ($ctx['type'] === 'bank_tx') {
+            ba_kv_set($ctxKey, null);
+            $tx = ba_get_transaction($ctx['body']['id']);
+            if ($tx && $tx['status'] === 'pending' && !$no) {
+                if (preg_match('/(نادیده|حساب نکن|تکراری)/u', $t)) {
+                    ba_db()->prepare("UPDATE transactions SET status = 'ignored' WHERE id = ?")->execute([$tx['id']]);
+                    ba_acc_link_tx($tx['id']);
+                    return $ok('نادیده گرفتم.');
+                }
+                $g = ba_interpret($text, $tx['direction']);
+                try {
+                    ba_confirm_tx($tx['id'], $g['description'], $g['party'], $g['category_id']);
+                } catch (InvalidArgumentException $e) {
+                    return ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];
+                }
+                $left = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
+                return $ok('ثبت شد' . ($g['party'] !== '' ? '، ' . ($tx['direction'] === 'in' ? 'از ' : 'به ') . $g['party'] : '') . '.' . ($left ? ' ' . $left . ' تراکنش دیگر مانده.' : ''));
+            }
+            if ($no) {
+                return $ok('باشه، بعداً.');
+            }
+        } elseif ($yes) {
+            ba_kv_set($ctxKey, null);
+            $r = assistant_execute($ctx, $device);
+            return $ok($r['reply'], $r['data']);
+        } elseif ($no) {
+            ba_kv_set($ctxKey, null);
+            return $ok('باشه، ثبت نشد.');
         }
-        return ['reply' => 'فاکتور ' . $inv['number'] . ' ثبت شد. جمع ' . assistant_rial($inv['total']) . '.', 'state' => 'answered',
-            'data' => ['invoice_id' => (int)$inv['id'], 'number' => $inv['number'], 'total' => (float)$inv['total']]];
-    }
-    if ($draft && preg_match('/^(نه|نخیر|لغو|کنسل|ولش کن|نمی ?خواد)\b/u', $t)) {
-        ba_kv_set($draftKey, null);
-        return ['reply' => 'باشه، فاکتور ثبت نشد.', 'state' => 'answered', 'data' => []];
+        ba_kv_set($ctxKey, null);   // something else was asked: the draft is dropped
     }
 
-    // invoice for someone: «برای علی رضایی فاکتور ثبت کن، دو عدد بذر گوجه»
+    /* ---- writing actions (asked for confirmation) ---- */
+
+    // invoice: «برای علی رضایی فاکتور ثبت کن، دو عدد بذر گوجه»
     if (preg_match('/فاکتور/u', $t) && preg_match('/(ثبت|بزن|صادر|بنویس|درست کن)/u', $t)) {
         $kind = preg_match('/خرید/u', $t) ? 'purchase' : 'sale';
         $person = assistant_find_name($t, acc_all('SELECT id, name FROM acc_persons'));
@@ -221,8 +326,7 @@ function assistant_answer($text, array $device)
             if (preg_match('/(\d+(?:\.\d+)?)\s*(?:عدد|تا|کیسه|کیلو|بسته|جعبه|کارتن|متر|شاخه)?\s*' . $n . '/u', $t, $m)
                 || preg_match('/' . $n . '\s*(\d+(?:\.\d+)?)\s*(?:عدد|تا)?/u', $t, $m)) {
                 $qty = (float)$m[1];
-                $price = (float)($kind === 'sale' ? $p['sale_price'] : $p['buy_price']);
-                $items[] = ['product_id' => (int)$p['id'], 'qty' => $qty, 'price' => $price];
+                $items[] = ['product_id' => (int)$p['id'], 'qty' => $qty, 'price' => (float)($kind === 'sale' ? $p['sale_price'] : $p['buy_price'])];
                 $lines[] = rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') . ' ' . ($p['unit'] ?: 'عدد') . ' ' . $p['name'];
                 $t = str_replace($m[0], ' ', $t);
             }
@@ -233,13 +337,112 @@ function assistant_answer($text, array $device)
         $body = ['kind' => $kind, 'person_id' => (int)$person['id'], 'date' => acc_today(), 'items' => $items];
         $totals = acc_invoice_totals($kind, acc_invoice_lines($items), $body);
         acc_check_stock(acc_invoice_lines($items), $kind);
-        ba_kv_set($draftKey, ['exp' => time() + ASSISTANT_DRAFT_TTL, 'body' => $body]);
-        return ['reply' => 'فاکتور ' . ($kind === 'sale' ? 'فروش' : 'خرید') . ' برای ' . $person['name'] . ': ' . implode('، ', $lines)
-            . '. جمع با مالیات ' . assistant_rial($totals['total']) . '. ثبت کنم؟', 'state' => 'confirm',
-            'data' => ['person' => $person['name'], 'items' => $lines, 'total' => $totals['total']]];
+        return $draft('invoice', $body, 'فاکتور ' . ($kind === 'sale' ? 'فروش' : 'خرید') . ' برای ' . $person['name'] . ': ' . implode('، ', $lines)
+            . '. جمع با مالیات ' . assistant_rial($totals['total']) . '. ثبت کنم؟', ['person' => $person['name'], 'items' => $lines, 'total' => $totals['total']]);
     }
 
-    // sales report of a period
+    // new person: «مشتری جدید به اسم حسن کریمی با شماره 09121234567 اضافه کن»
+    if (preg_match('/(اضافه کن|تعریف کن|بساز|ثبت کن)/u', $t) && preg_match('/(مشتری|تامین ?کننده|فروشنده|شخص|طرف حساب|کارمند|بازاریاب)/u', $t)
+        && preg_match('/(?:به اسم|به نام|اسمش)\s+(.+?)(?:\s+(?:با|شماره|موبایل|تلفن|اضافه|تعریف|بساز|ثبت|را|رو)\b|$)/u', $t, $m)) {
+        $name = trim($m[1]);
+        $type = preg_match('/(تامین ?کننده|فروشنده)/u', $t) ? 'supplier' : (preg_match('/کارمند/u', $t) ? 'employee' : (preg_match('/بازاریاب/u', $t) ? 'marketer' : 'customer'));
+        $mobile = preg_match('/(09\d{9})/', str_replace(' ', '', $t), $mm) ? $mm[1] : '';
+        if (acc_val('SELECT 1 FROM acc_persons WHERE name = ?', [$name])) {
+            return ['reply' => $name . ' از قبل در اشخاص هست.', 'state' => 'error', 'data' => []];
+        }
+        return $draft('person', ['name' => $name, 'type' => $type, 'mobile' => $mobile],
+            ACC_PERSON_TYPES[$type] . ' جدید: ' . $name . ($mobile ? '، موبایل ' . $mobile : '') . '. اضافه کنم؟');
+    }
+
+    // SMS: «به علی رضایی پیامک یادآوری بدهی بفرست»
+    if (preg_match('/(پیامک|اس ?ام ?اس)/u', $t) && preg_match('/(بفرست|بزن|ارسال)/u', $t)) {
+        $p = assistant_find_name($t, acc_all('SELECT * FROM acc_persons'));
+        if (!$p) {
+            return ['reply' => 'پیامک برای چه کسی؟', 'state' => 'unknown', 'data' => []];
+        }
+        if (!acc_sms_mobile($p['mobile'])) {
+            return ['reply' => 'برای ' . $p['name'] . ' شماره‌ی موبایل ثبت نشده.', 'state' => 'error', 'data' => []];
+        }
+        $msg = (float)$p['balance'] > 0
+            ? acc_sms_render('{name} عزیز، مانده‌ی بدهی شما {balance} ریال است. لطفاً برای تسویه اقدام فرمایید. {company}', $p)
+            : acc_sms_render('{name} عزیز، سلام. {company}', $p);
+        return $draft('sms', ['mobile' => $p['mobile'], 'text' => $msg, 'person_id' => (int)$p['id']], 'پیامک به ' . $p['name'] . ': «' . $msg . '». بفرستم؟');
+    }
+
+    // receipt / payment / expense: «از علی رضایی ۵ میلیون نقد گرفتم»، «به پخش البرز ۳ میلیون از بانک دادم»، «۲ میلیون اجاره دادم»
+    $in = preg_match('/(گرفتم|دریافت کردم|دریافت شد|واریز کرد|پرداخت کرد|داد\b|ریخت|رسید)/u', $t) && !preg_match('/(دادم|پرداخت کردم|ریختم)/u', $t);
+    $out = preg_match('/(دادم|پرداخت کردم|پرداختم|ریختم|خرج کردم|هزینه کردم|واریز کردم)/u', $t);
+    if (($in || $out) && ($amount = assistant_amount($t)) > 0) {
+        $acc = assistant_cash_account($t);
+        if (!$acc) {
+            return ['reply' => 'هنوز صندوق یا بانکی تعریف نشده.', 'state' => 'error', 'data' => []];
+        }
+        $person = assistant_find_name($t, acc_all('SELECT id, name FROM acc_persons'));
+        $body = ['kind' => $in ? 'receive' : 'pay', 'account_id' => (int)$acc['id'], 'amount' => $amount, 'date' => acc_today(), 'description' => trim($text)];
+        $what = '';
+        if ($person) {
+            $body['person_id'] = (int)$person['id'];
+            $what = ($in ? 'دریافت از ' : 'پرداخت به ') . $person['name'];
+        } else {
+            // no person: an expense / income type by its name («اجاره»، «حقوق»…), else general expense / other income
+            $types = acc_all("SELECT id, name, code FROM acc_coa WHERE level = 'moein' AND parent_code IN ('51', '41') AND code NOT IN ('5101', '5103', '5105', '4101', '4102', '4104')");
+            $type = assistant_find_name($t, $types);
+            if (!$type) {   // «اجاره» is enough for «اجاره مغازه»
+                foreach ($types as $ty) {
+                    foreach (preg_split('/\s+/u', ba_norm_text($ty['name'])) as $w) {
+                        if (mb_strlen($w) >= 3 && mb_strpos(" $t ", " $w") !== false && !in_array($w, ['هزینه', 'هزینه‌های', 'درآمد', 'سایر'], true)) {
+                            $type = $ty;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            if ($type && $type['code'] !== '5101') {
+                $body['counter_account_id'] = (int)$type['id'];
+                $what = ($in ? 'درآمد ' : 'هزینه‌ی ') . $type['name'];
+            } else {
+                $body['counter_code'] = $in ? '4103' : '5102';
+                $what = $in ? 'درآمد متفرقه' : 'هزینه‌ی عمومی';
+            }
+        }
+        return $draft('treasury', $body, $what . '، ' . assistant_rial($amount) . ($in ? ' به ' : ' از ') . $acc['name'] . '. ثبت کنم؟',
+            ['amount' => $amount, 'account' => $acc['name']]);
+    }
+
+    /* ---- questions ---- */
+
+    // overview
+    if (preg_match('/(خلاصه|وضعیت|اوضاع|گزارش کلی|داشبورد)/u', $t)) {
+        [$from, $to] = assistant_period('ماه');
+        $sales = (float)acc_val("SELECT COALESCE(SUM(CASE kind WHEN 'sale' THEN subtotal - discount ELSE -(subtotal - discount) END), 0) FROM acc_invoices WHERE kind IN ('sale', 'sale_return') AND date BETWEEN ? AND ?", [$from, $to]);
+        $cash = (float)acc_val('SELECT COALESCE(SUM(balance), 0) FROM acc_cash_accounts');
+        [$recv, $pay] = acc_people_split();
+        $low = (int)acc_val("SELECT COUNT(*) FROM acc_products WHERE kind != 'service' AND stock <= reorder_point");
+        $pending = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
+        return $ok('فروش این ماه ' . assistant_rial($sales) . '. موجودی صندوق و بانک ' . assistant_rial($cash) . '. طلب از دیگران ' . assistant_rial($recv)
+            . ' و بدهی ' . assistant_rial($pay) . '.' . ($low ? ' ' . $low . ' کالا کم‌موجود است.' : '') . ($pending ? ' ' . $pending . ' تراکنش بانکی بی‌جواب داری.' : ''),
+            ['sales_month' => $sales, 'cash' => $cash, 'receivables' => $recv, 'payables' => $pay, 'low_stock' => $low, 'pending' => $pending]);
+    }
+
+    // profit
+    if (preg_match('/(سود|زیان|درآمد خالص)/u', $t)) {
+        [$from, $to, $label] = assistant_period($t);
+        $_GET['from'] = $from;
+        $_GET['to'] = $to;
+        $pl = r_profit_loss();
+        return $ok(($pl['profit'] >= 0 ? 'سود ' : 'زیان ') . $label . ': ' . assistant_rial($pl['profit']) . '. درآمدها ' . assistant_rial($pl['income']) . ' و هزینه‌ها با بهای تمام‌شده ' . assistant_rial($pl['expense']) . '.',
+            ['from' => $from, 'to' => $to, 'profit' => $pl['profit']]);
+    }
+
+    // purchases of a period
+    if (preg_match('/(خرید|خریدیم|خریدم)/u', $t) && !preg_match('/فروش/u', $t)) {
+        [$from, $to, $label] = assistant_period($t);
+        $s = acc_row("SELECT COUNT(CASE WHEN kind = 'purchase' THEN 1 END) n, COALESCE(SUM(CASE kind WHEN 'purchase' THEN subtotal - discount ELSE -(subtotal - discount) END), 0) net
+            FROM acc_invoices WHERE kind IN ('purchase', 'purchase_return') AND date BETWEEN ? AND ?", [$from, $to]);
+        return $ok('خرید ' . $label . ': ' . assistant_rial($s['net']) . ' در ' . (int)$s['n'] . ' فاکتور، بدون مالیات.', ['net' => (float)$s['net'], 'count' => (int)$s['n']]);
+    }
+
+    // sales of a period (+ best sellers / best customers)
     if (preg_match('/(فروش|فروختیم|فروختم)/u', $t)) {
         [$from, $to, $label] = assistant_period($t);
         $s = acc_row("SELECT COUNT(CASE WHEN kind = 'sale' THEN 1 END) n,
@@ -247,37 +450,81 @@ function assistant_answer($text, array $device)
             FROM acc_invoices WHERE kind IN ('sale', 'sale_return') AND date BETWEEN ? AND ?", [$from, $to]);
         $reply = 'فروش ' . $label . ': ' . assistant_rial($s['net']) . ' در ' . (int)$s['n'] . ' فاکتور، بدون مالیات.';
         $top = [];
-        if (preg_match('/(گزارش|کالا|بیشتر|پرفروش)/u', $t) && (int)$s['n'] > 0) {
+        if (preg_match('/(مشتری|خریدار)/u', $t)) {
+            $top = acc_all("SELECT p.name, SUM(i.subtotal - i.discount) amount FROM acc_invoices i JOIN acc_persons p ON p.id = i.person_id
+                WHERE i.kind = 'sale' AND i.date BETWEEN ? AND ? GROUP BY p.id ORDER BY amount DESC LIMIT 3", [$from, $to]);
+            $reply .= $top ? ' بهترین مشتری‌ها: ' . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['amount']), $top)) . '.' : '';
+        } elseif (preg_match('/(گزارش|کالا|بیشتر|پرفروش)/u', $t) && (int)$s['n'] > 0) {
             $top = acc_all("SELECT p.name, SUM(it.qty * it.price) amount FROM acc_invoice_items it JOIN acc_invoices i ON i.id = it.invoice_id
                 JOIN acc_products p ON p.id = it.product_id WHERE i.kind = 'sale' AND i.date BETWEEN ? AND ? GROUP BY p.id ORDER BY amount DESC LIMIT 3", [$from, $to]);
-            if ($top) {
-                $reply .= ' پرفروش‌ترین‌ها: ' . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['amount']), $top)) . '.';
-            }
+            $reply .= $top ? ' پرفروش‌ترین‌ها: ' . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['amount']), $top)) . '.' : '';
         }
-        return ['reply' => $reply, 'state' => 'answered', 'data' => ['from' => $from, 'to' => $to, 'net' => (float)$s['net'], 'count' => (int)$s['n'], 'top' => $top]];
+        return $ok($reply, ['from' => $from, 'to' => $to, 'net' => (float)$s['net'], 'count' => (int)$s['n'], 'top' => $top]);
+    }
+
+    // cheques
+    if (preg_match('/چک/u', $t)) {
+        $days = preg_match('/(امروز)/u', $t) ? 0 : (preg_match('/ماه/u', $t) ? 30 : 7);
+        $until = acc_jalali_fmt(...ba_g2j(...array_map('intval', explode('-', date('Y-m-d', strtotime("+$days days"))))));
+        $rec = acc_all("SELECT c.number, c.amount, c.due_date, p.name FROM acc_cheques c LEFT JOIN acc_persons p ON p.id = c.person_id
+            WHERE direction = 'received' AND status IN ('in_hand', 'deposited') AND due_date <= ? ORDER BY due_date", [$until]);
+        $pay = acc_all("SELECT c.number, c.amount, c.due_date, p.name FROM acc_cheques c LEFT JOIN acc_persons p ON p.id = c.person_id
+            WHERE direction = 'payable' AND status = 'issued' AND due_date <= ? ORDER BY due_date", [$until]);
+        $f = fn($rows) => implode('، ', array_map(fn($c) => $c['name'] . ' ' . assistant_rial($c['amount']) . ' تاریخ ' . $c['due_date'], array_slice($rows, 0, 3)));
+        $label = $days === 0 ? 'امروز' : ($days === 30 ? 'تا یک ماه دیگر' : 'تا یک هفته دیگر');
+        return $ok(!$rec && !$pay ? 'چکی ' . $label . ' سررسید نمی‌شود.' : 'چک‌های ' . $label . ': ' . ($rec ? count($rec) . ' چک دریافتی جمعاً ' . assistant_rial(array_sum(array_column($rec, 'amount'))) . ' (' . $f($rec) . ')' : 'چک دریافتی نیست')
+            . '؛ ' . ($pay ? count($pay) . ' چک پرداختی جمعاً ' . assistant_rial(array_sum(array_column($pay, 'amount'))) . ' (' . $f($pay) . ')' : 'چک پرداختی نیست') . '.',
+            ['received' => $rec, 'payable' => $pay]);
+    }
+
+    // unpaid / due invoices
+    if (preg_match('/(سررسید|تسویه نشده|پرداخت نشده|نسیه|مانده فاکتور|عقب افتاده)/u', $t)) {
+        $rows = r_report_due_invoices();
+        $sales = array_filter($rows, fn($r) => $r['kind'] === 'sale');
+        $late = array_filter($sales, fn($r) => $r['overdue']);
+        return $ok(count($sales) . ' فاکتور فروش تسویه‌نشده جمعاً ' . assistant_rial(array_sum(array_column($sales, 'remaining'))) . '؛ ' . count($late) . ' تا از سررسید گذشته'
+            . ($late ? ': ' . implode('، ', array_map(fn($r) => $r['person_name'] . ' ' . assistant_rial($r['remaining']), array_slice(array_values($late), 0, 3))) : '') . '.',
+            ['open' => count($sales), 'overdue' => count($late)]);
+    }
+
+    // VAT
+    if (preg_match('/(مالیات|ارزش افزوده|مودیان)/u', $t)) {
+        $r = r_tax_report();
+        return $ok('مالیات ارزش افزوده‌ی فروش ' . assistant_rial($r['vat_sale']) . '، خرید ' . assistant_rial($r['vat_purchase']) . '، قابل پرداخت ' . assistant_rial($r['vat_payable']) . '.'
+            . ($r['ready'] ? ' ' . $r['ready'] . ' صورتحساب آماده‌ی ارسال به سامانه مؤدیان است.' : ''), $r);
+    }
+
+    // loans
+    if (preg_match('/(وام|قسط|اقساط)/u', $t)) {
+        $next = acc_all("SELECT i.due_date, i.principal + i.interest amount, l.direction FROM acc_loan_installments i JOIN acc_loans l ON l.id = i.loan_id WHERE i.paid = 0 ORDER BY i.due_date LIMIT 3");
+        return $ok($next ? 'اقساط بعدی: ' . implode('، ', array_map(fn($r) => assistant_rial($r['amount']) . ' تاریخ ' . $r['due_date'] . ($r['direction'] === 'given' ? ' (دریافتی)' : ''), $next)) . '.' : 'قسط پرداخت‌نشده‌ای نیست.', ['next' => $next]);
+    }
+
+    // last invoices
+    if (preg_match('/(آخرین|اخرین)\s*فاکتور/u', $t)) {
+        $rows = acc_all("SELECT i.number, i.total, i.date, p.name FROM acc_invoices i LEFT JOIN acc_persons p ON p.id = i.person_id WHERE i.kind = 'sale' ORDER BY i.id DESC LIMIT 3");
+        return $ok($rows ? 'آخرین فاکتورهای فروش: ' . implode('، ', array_map(fn($r) => $r['number'] . ' ' . $r['name'] . ' ' . assistant_rial($r['total']), $rows)) . '.' : 'هنوز فاکتور فروشی نیست.', ['invoices' => $rows]);
     }
 
     // stock: one product or the whole warehouse
-    if (preg_match('/(موجودی|انبار|چند تا داریم|چقدر داریم)/u', $t) && !preg_match('/(بانک|حساب|صندوق|پول)/u', $t)) {
+    if (preg_match('/(موجودی|انبار|چند تا داریم|چقدر داریم|کم ?موجود)/u', $t) && !preg_match('/(بانک|حساب|صندوق|پول)/u', $t)) {
         $p = assistant_find_name($t, acc_all("SELECT id, name, stock, unit, reorder_point FROM acc_products WHERE kind != 'service'"));
         if ($p) {
-            return ['reply' => 'موجودی ' . $p['name'] . ': ' . rtrim(rtrim(number_format((float)$p['stock'], 2, '.', ''), '0'), '.') . ' ' . ($p['unit'] ?: 'عدد')
-                . ((float)$p['stock'] <= (float)$p['reorder_point'] ? '؛ به نقطه‌ی سفارش رسیده.' : '.'), 'state' => 'answered',
-                'data' => ['product' => $p['name'], 'stock' => (float)$p['stock']]];
+            return $ok('موجودی ' . $p['name'] . ': ' . rtrim(rtrim(number_format((float)$p['stock'], 2, '.', ''), '0'), '.') . ' ' . ($p['unit'] ?: 'عدد')
+                . ((float)$p['stock'] <= (float)$p['reorder_point'] ? '؛ به نقطه‌ی سفارش رسیده.' : '.'), ['product' => $p['name'], 'stock' => (float)$p['stock']]);
         }
         $value = (float)acc_val("SELECT COALESCE(SUM(stock * CASE WHEN avg_cost > 0 THEN avg_cost ELSE buy_price END), 0) FROM acc_products WHERE kind != 'service'");
         $low = acc_all("SELECT name FROM acc_products WHERE kind != 'service' AND stock <= reorder_point ORDER BY stock LIMIT 5");
-        return ['reply' => 'ارزش موجودی انبار ' . assistant_rial($value) . '.' . ($low ? ' کم‌موجودها: ' . implode('، ', array_column($low, 'name')) . '.' : ' همه‌ی کالاها موجودی کافی دارند.'),
-            'state' => 'answered', 'data' => ['value' => $value, 'low' => array_column($low, 'name')]];
+        return $ok('ارزش موجودی انبار ' . assistant_rial($value) . '.' . ($low ? ' کم‌موجودها: ' . implode('، ', array_column($low, 'name')) . '.' : ' همه‌ی کالاها موجودی کافی دارند.'),
+            ['value' => $value, 'low' => array_column($low, 'name')]);
     }
 
     // money in the accounts
     if (preg_match('/(بانک|صندوق|نقدینگی|پول|موجودی حساب)/u', $t)) {
         $rows = acc_all('SELECT name, balance FROM acc_cash_accounts ORDER BY id');
         $sum = array_sum(array_column($rows, 'balance'));
-        return ['reply' => 'موجودی همه‌ی حساب‌ها ' . assistant_rial($sum) . ($sum < 0 ? ' منفی' : '') . '. '
-            . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['balance']), $rows)) . '.', 'state' => 'answered',
-            'data' => ['total' => $sum, 'accounts' => $rows]];
+        return $ok('موجودی همه‌ی حساب‌ها ' . assistant_rial($sum) . ($sum < 0 ? ' منفی' : '') . '. '
+            . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['balance']), $rows)) . '.', ['total' => $sum, 'accounts' => $rows]);
     }
 
     // what someone owes / is owed
@@ -285,22 +532,29 @@ function assistant_answer($text, array $device)
         $p = assistant_find_name($t, acc_all('SELECT id, name, balance FROM acc_persons'));
         if ($p) {
             $b = (float)$p['balance'];
-            return ['reply' => abs($b) < 1 ? 'حساب ' . $p['name'] . ' صاف است.' : ($b > 0 ? $p['name'] . ' ' . assistant_rial($b) . ' به ما بدهکار است.' : 'ما ' . assistant_rial($b) . ' به ' . $p['name'] . ' بدهکاریم.'),
-                'state' => 'answered', 'data' => ['person' => $p['name'], 'balance' => $b]];
+            return $ok(abs($b) < 1 ? 'حساب ' . $p['name'] . ' صاف است.' : ($b > 0 ? $p['name'] . ' ' . assistant_rial($b) . ' به ما بدهکار است.' : 'ما ' . assistant_rial($b) . ' به ' . $p['name'] . ' بدهکاریم.'),
+                ['person' => $p['name'], 'balance' => $b]);
         }
         [$recv, $pay] = acc_people_split();
         $top = acc_all('SELECT name, balance FROM acc_persons WHERE balance > 0 ORDER BY balance DESC LIMIT 3');
-        return ['reply' => 'طلب ما از دیگران ' . assistant_rial($recv) . ' و بدهی ما ' . assistant_rial($pay) . '.'
+        return $ok('طلب ما از دیگران ' . assistant_rial($recv) . ' و بدهی ما ' . assistant_rial($pay) . '.'
             . ($top ? ' بیشترین بدهکارها: ' . implode('، ', array_map(fn($r) => $r['name'] . ' ' . assistant_rial($r['balance']), $top)) . '.' : ''),
-            'state' => 'answered', 'data' => ['receivables' => $recv, 'payables' => $pay]];
+            ['receivables' => $recv, 'payables' => $pay]);
     }
 
-    // bank SMS still waiting for an answer
+    // bank SMS still waiting for an answer: ask about the oldest one, the next sentence answers it
     if (preg_match('/(بی ?جواب|تراکنش|واریز|برداشت)/u', $t)) {
+        $tx = ba_db()->query("SELECT * FROM transactions WHERE status = 'pending' ORDER BY occurred_at, id LIMIT 1")->fetch();
+        if (!$tx) {
+            return $ok('همه‌ی تراکنش‌های بانک جواب گرفته‌اند.', ['pending' => 0]);
+        }
         $n = (int)ba_db()->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'")->fetchColumn();
-        return ['reply' => $n ? $n . ' تراکنش بانکی بی‌جواب داری.' : 'همه‌ی تراکنش‌های بانک جواب گرفته‌اند.', 'state' => 'answered', 'data' => ['pending' => $n]];
+        ba_kv_set($ctxKey, ['exp' => time() + ASSISTANT_DRAFT_TTL, 'type' => 'bank_tx', 'body' => ['id' => (int)$tx['id']]]);
+        return ['reply' => $n . ' تراکنش بی‌جواب داری. ' . ($tx['direction'] === 'in' ? 'واریز ' : 'برداشت ') . assistant_rial($tx['amount'])
+            . ($tx['bank_date'] ? ' تاریخ ' . $tx['bank_date'] : '') . '. بابت چی بود؟', 'state' => 'confirm', 'data' => ['pending' => $n, 'id' => (int)$tx['id']]];
     }
 
-    return ['reply' => 'متوجه نشدم. می‌توانی بپرسی: «فروش امروز چقدر بوده؟»، «موجودی انبار را بگو»، «گزارش فروش این ماه»، «حساب علی رضایی» یا «برای علی رضایی فاکتور ثبت کن، دو عدد بذر گوجه».',
+    return ['reply' => 'متوجه نشدم. مثلاً بپرس: «خلاصه وضعیت»، «فروش امروز»، «سود این ماه»، «موجودی انبار»، «حساب علی رضایی»، «چک‌های این هفته»، «فاکتورهای سررسید»، '
+        . 'یا بگو: «برای علی رضایی فاکتور ثبت کن، دو عدد بذر گوجه»، «از علی رضایی پنج میلیون نقد گرفتم»، «دو میلیون اجاره دادم»، «به علی رضایی پیامک یادآوری بفرست».',
         'state' => 'unknown', 'data' => []];
 }

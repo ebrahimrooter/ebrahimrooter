@@ -17,6 +17,8 @@ const API = (path) => {
 function accountingApp() {
   return {
     isLoggedIn: false,
+    menuOpen: false,
+    embedded: (() => { try { return window.self !== window.top || /[?&]embed/.test(location.search); } catch (e) { return true; } })(),
     token: localStorage.getItem("acc_token") || "",
     currentPage: "dashboard",
     loginForm: { username: "admin", password: "" },
@@ -455,6 +457,17 @@ function accountingApp() {
     },
 
     async init() {
+      // inside the phone app (same site): sign in with its app password, no second login
+      if (!this.token) {
+        let app = "";
+        try { app = localStorage.getItem("ba_token") || ""; } catch (e) {}
+        if (app) {
+          try {
+            const res = await fetch(API("/api/login/app"), { method: "POST", headers: { "X-App-Token": app } });
+            if (res.ok) { const d = await res.json(); this.token = d.token; localStorage.setItem("acc_token", d.token); }
+          } catch (e) {}
+        }
+      }
       if (this.token) {
         try {
           const me = await this.req("/api/me");

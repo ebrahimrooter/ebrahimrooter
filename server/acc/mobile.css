@@ -1,0 +1,51 @@
+/* Phone layout of the accounting panel (also when it opens inside the phone app).
+ * The desktop layout is untouched; below 900px: the menu slides in from the
+ * right, grids fold, tables scroll sideways, dialogs take the screen. */
+.m-menu, .m-overlay { display: none; }
+
+@media (max-width: 900px) {
+  body { -webkit-text-size-adjust: 100%; }
+  input, select, textarea { font-size: 16px !important; }          /* no zoom on iPhone */
+
+  .m-menu { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin-inline-end: 8px;
+    border: 0; border-radius: 12px; background: #f1f5f9; color: #0f172a; flex: none; }
+  header { padding: 10px 12px !important; gap: 6px; padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important; }
+  header .m-title { flex: 1; min-width: 0; }
+  header .m-title h2 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .text-left, header .w-9 { display: none; }                  /* user name / avatar */
+  header select { max-width: 40vw; }
+
+  aside { position: fixed; top: 0; bottom: 0; right: 0; z-index: 70; width: 82vw !important; max-width: 300px;
+    transform: translateX(105%); transition: transform .25s ease; box-shadow: -10px 0 40px rgba(0,0,0,.35);
+    padding-top: env(safe-area-inset-top, 0px); }
+  body.menu-open aside { transform: translateX(0); }
+  .m-overlay { position: fixed; inset: 0; z-index: 65; background: rgba(15,23,42,.45); }
+  body.menu-open .m-overlay { display: block; }
+
+  main { padding: 12px !important; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important; }
+  main .grid-cols-4, main .md\:grid-cols-4, main .lg\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  main .grid-cols-3, main .md\:grid-cols-3, main .lg\:grid-cols-3,
+  main .lg\:grid-cols-2, main .md\:grid-cols-2 { grid-template-columns: minmax(0, 1fr) !important; }
+  main .lg\:col-span-2, main .md\:col-span-2, main .md\:col-span-3 { grid-column: auto !important; }
+  main .grid-cols-12 > * { grid-column: span 12 / span 12 !important; }
+
+  /* rows of buttons / filters wrap instead of squeezing words */
+  main .flex.justify-between, main .flex.items-center.gap-2, main .flex.gap-2, main .flex.gap-3, main .flex.flex-wrap { flex-wrap: wrap; row-gap: 8px; }
+  main button, main a.px-4 { white-space: nowrap; }
+  main .flex.justify-between > h3, main .flex.justify-between > h2 { width: 100%; }
+
+  /* tables: sideways scroll instead of squeezed columns */
+  main .rounded-xl.border, main .rounded-xl.overflow-hidden, main .overflow-hidden { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  main table { min-width: 620px; }
+  main .text-2xl { font-size: 1.25rem; }
+  main .p-6 { padding: 14px; }
+
+  /* dialogs */
+  .fixed.inset-0 > div { max-width: 100% !important; max-height: 92vh; overflow-y: auto; border-radius: 18px; }
+  .fixed.inset-0 { padding: 8px !important; align-items: flex-end !important; }
+  .fixed.inset-0 .grid-cols-2, .fixed.inset-0 .grid-cols-3 { grid-template-columns: minmax(0, 1fr) !important; }
+  .fixed.inset-0 .grid-cols-12 > * { grid-column: span 12 / span 12 !important; }
+}
+
+/* inside the phone app: its own tab bar is below, no logout button needed */
+body.embedded aside .border-t button[\@click="logout"] { display: none; }

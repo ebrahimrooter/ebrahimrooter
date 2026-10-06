@@ -758,6 +758,25 @@ case 'assistant_pair':
         'link' => 'bankassistant://pair?code=' . $code . '&server=' . rawurlencode($api),
         'universal_link' => preg_replace('~api\.php$~', '', $api) . 'assistant/?a=pair&code=' . $code . '&server=' . rawurlencode($api)]);
 
+case 'assistant_web':
+    // The phone web app's orb: the same accounting assistant, with the app password.
+    require_post();
+    require_once __DIR__ . '/assistant.php';
+    $text = trim((string)($in['text'] ?? ''));
+    if ($text === '' || mb_strlen($text) > 500) {
+        fail('متن خالی یا خیلی بلند است');
+    }
+    try {
+        $ans = assistant_answer($text, ['id' => 0, 'name' => 'web']);
+    } catch (Throwable $e) {
+        if (!($e instanceof AccError)) {
+            error_log('assistant: ' . $e);
+            fail('خطا: ' . $e->getMessage(), 500);
+        }
+        $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];
+    }
+    out(['ok' => true, 'heard' => $text] + $ans);
+
 case 'assistant_devices':
     require_once __DIR__ . '/assistant.php';
     out(['ok' => true, 'items' => assistant_devices()]);

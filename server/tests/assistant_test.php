@@ -37,6 +37,15 @@ function http($url, $body = null, array $headers = [])
     return [$code, json_decode($out, true) ?? $out];
 }
 $A = "http://127.0.0.1:$port/api.php?r=";
+function person_bal($acc, $name)
+{
+    foreach ($acc('GET', '/persons') as $p) {
+        if ($p['name'] === $name) {
+            return $p['balance'];
+        }
+    }
+    return null;
+}
 $ACC = "http://127.0.0.1:$port/acc/api.php?p=";
 $tok = http($ACC . '/login', ['username' => 'admin', 'password' => 'apppass123'])[1]['token'];
 $acc = fn($m, $p, $b = null) => http($ACC . $p, $b, ["Authorization: Bearer $tok"])[1];
@@ -79,6 +88,39 @@ $ask('برای علی رضایی فاکتور ثبت کن، یک عدد بذر �
 $a = $ask('نه');
 check('«نه» drops the draft', strpos($a['reply'], 'ثبت نشد') !== false && $acc('GET', '/products')[0]['stock'] == 5);
 check('unknown sentence: help', $ask('هوا چطوره')['state'] === 'unknown');
+
+echo "more of the accounting by voice\n";
+$acc('POST', '/expense-types', ['name' => 'اجاره مغازه']);
+$cash0 = array_sum(array_column($acc('GET', '/accounts'), 'balance'));
+$a = $ask('از علی رضایی پنج میلیون تومان نقد گرفتم');
+check('receipt drafted (person, amount in toman, cash box)', $a['state'] === 'confirm' && strpos($a['reply'], 'دریافت از علی رضایی') !== false && strpos($a['reply'], '5,000,000 تومان') !== false, $a['reply']);
+$ask('آره');
+check('receipt booked: customer and cash', [person_bal($acc, 'علی رضایی'), array_sum(array_column($acc('GET', '/accounts'), 'balance'))] == [330000 + 495000 - 50000000, $cash0 + 50000000]);
+$a = $ask('دو میلیون و پانصد هزار تومان اجاره از بانک دادم');
+check('expense by its type name', strpos($a['reply'], 'هزینه‌ی اجاره مغازه') !== false && strpos($a['reply'], '2,500,000') !== false, $a['reply']);
+$ask('بله');
+$a = $ask('سود این ماه چقدره');
+check('profit', strpos($a['reply'], 'زیان این ماه') !== false || strpos($a['reply'], 'سود این ماه') !== false, $a['reply']);
+$a = $ask('خلاصه وضعیت');
+check('overview', strpos($a['reply'], 'فروش این ماه') !== false && strpos($a['reply'], 'موجودی صندوق و بانک') !== false, $a['reply']);
+$a = $ask('مشتری جدید به اسم حسن کریمی با شماره 09121234567 اضافه کن');
+check('new person drafted', $a['state'] === 'confirm' && strpos($a['reply'], 'حسن کریمی') !== false && strpos($a['reply'], '09121234567') !== false, $a['reply']);
+$ask('آره');
+check('person added', in_array('حسن کریمی', array_column($acc('GET', '/persons'), 'name'), true));
+$a = $ask('به حسن کریمی پیامک بفرست');
+check('SMS drafted with the text', $a['state'] === 'confirm' && strpos($a['reply'], 'پیامک به حسن کریمی') !== false, $a['reply']);
+$ask('نه');
+check('cheques this week', strpos($ask('چک‌های این هفته')['reply'], 'چک') !== false);
+check('unpaid invoices', strpos($ask('فاکتورهای سررسید گذشته')['reply'], 'فاکتور فروش تسویه‌نشده') !== false);
+check('VAT', strpos($ask('مالیات ارزش افزوده چقدره')['reply'], 'قابل پرداخت') !== false);
+check('purchases', strpos($ask('خرید این ماه')['reply'], 'خرید این ماه') !== false);
+check('best customers', strpos($ask('بهترین مشتری‌های فروش این ماه')['reply'], 'بهترین مشتری‌ها: علی رضایی') !== false);
+// a bank SMS waiting for an answer, answered by voice
+exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "lib.php"; ba_db()->exec("INSERT INTO transactions (source, direction, amount, bank_date, occurred_at, status, wallet_id) VALUES (\'manual\', \'out\', 1200000, \'' . trim(shell_exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "lib.php"; [$y,$m,$d] = ba_today_jalali(); printf("%04d/%02d/%02d", $y, $m, $d);'))) . '\', datetime(\'now\'), \'pending\', 1)");'));
+$a = $ask('تراکنش‌های بی‌جواب');
+check('assistant asks about the bank transaction', $a['state'] === 'confirm' && strpos($a['reply'], 'برداشت 120,000 تومان') !== false && strpos($a['reply'], 'بابت چی بود') !== false, $a['reply']);
+$a = $ask('خرید گازوئیل');
+check('the next sentence answers it', strpos($a['reply'], 'ثبت شد') !== false && strpos($ask('تراکنش بی جواب')['reply'], 'همه‌ی تراکنش‌ها') !== false, $a['reply']);
 check('speech needs the voice service (clear error)', http($A . 'assistant_speak', ['text' => 'سلام'], $D)[0] === 501);
 
 echo "revoke\n";
