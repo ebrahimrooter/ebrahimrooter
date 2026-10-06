@@ -8,7 +8,7 @@ struct MainTabView: View {
     var onUnpair: () -> Void
     @Environment(AssistantEngine.self) private var engine
     @Environment(FinanceStore.self) private var store
-    @State private var tab: AppTab = .home
+    @State private var tab: AppTab = Demo.startTab
     @State private var showAssistant = false
     @State private var openedBooks = false
 
@@ -45,7 +45,10 @@ struct MainTabView: View {
         .onChange(of: engine.sessionActive) { _, active in
             if active { showAssistant = true }
         }
-        .task { await store.refresh() }
+        .task {
+            await store.refresh()
+            if tab == .accounting { openedBooks = true }
+        }
     }
 }
 

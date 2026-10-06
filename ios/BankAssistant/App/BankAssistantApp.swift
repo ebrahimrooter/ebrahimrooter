@@ -43,14 +43,14 @@ struct BankAssistantApp: App {
 struct RootView: View {
     @Environment(FinanceStore.self) private var store
     @Binding var pairing: DeepLink?
-    @State private var paired = APIClient.shared.isPaired
+    @State private var paired = APIClient.shared.isPaired || Demo.enabled
     @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
         Group {
             if paired && pairing == nil {
                 MainTabView(onUnpair: unpair)
-            } else if !onboarded && pairing == nil {
+            } else if (!onboarded || ProcessInfo.processInfo.arguments.contains("-onboarding")) && pairing == nil {
                 OnboardingView { withAnimation { onboarded = true } }
             } else {
                 PairingView(link: pairing) {

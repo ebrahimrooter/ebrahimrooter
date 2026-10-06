@@ -124,6 +124,7 @@ struct ReportView: View {
 
     private func loadItems() async {
         guard let m = current else { return }
+        if Demo.enabled { items = Demo.list(direction: incoming ? "in" : "out").items; return }
         if let r = try? await APIClient.shared.transactions(from: m.from, to: m.to, direction: incoming ? "in" : "out") {
             items = r.items
         }

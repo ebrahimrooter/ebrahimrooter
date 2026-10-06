@@ -18,6 +18,7 @@ final class FinanceStore {
     private let api = APIClient.shared
 
     func refresh() async {
+        if Demo.enabled { home = Demo.home; return }
         guard api.isPaired else { return }
         loading = true
         defer { loading = false }

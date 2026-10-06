@@ -18,3 +18,21 @@ jobs:
           xcodebuild -version
           xcodebuild -project BankAssistant.xcodeproj -target BankAssistant -sdk iphonesimulator -configuration Debug \
             CODE_SIGNING_ALLOWED=NO build | xcpretty
+      - name: Simulator screenshots (sample data)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print([x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone 16')][0])")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$UDID" ios/build/Debug-iphonesimulator/BankAssistant.app
+          BID=ir.example.bankassistant
+          mkdir -p shots
+          shot() { name=$1; shift; xcrun simctl terminate "$UDID" $BID || true; xcrun simctl launch "$UDID" $BID "$@"; sleep 8; xcrun simctl io "$UDID" screenshot "shots/$name.png"; }
+          shot 1-onboarding -onboarding
+          shot 2-home -demo
+          shot 3-report -demo -tab report
+          shot 4-profile -demo -tab profile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iphone-screens
+          path: shots
