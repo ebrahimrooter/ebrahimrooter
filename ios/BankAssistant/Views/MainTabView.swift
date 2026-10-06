@@ -33,6 +33,10 @@ struct MainTabView: View {
 
             TabBar(tab: $tab, listening: engine.sessionActive) { showAssistant = true }
         }
+        .background(alignment: .topLeading) {
+            // source of the floating orb (Picture in Picture); must be in the window
+            PiPSourceView().frame(width: 2, height: 2).opacity(0.02).allowsHitTesting(false)
+        }
         .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showAssistant, onDismiss: { Task { await store.refresh() } }) {
             AssistantSheet()
@@ -43,7 +47,16 @@ struct MainTabView: View {
         }
         .onChange(of: tab) { _, t in if t == .accounting { openedBooks = true } }
         .onChange(of: engine.sessionActive) { _, active in
-            if active { showAssistant = true }
+            if active {
+                showAssistant = true
+                OrbPiP.shared.sessionStarted()
+            } else {
+                OrbPiP.shared.sessionEnded()
+            }
+        }
+        .onAppear {
+            OrbPiP.shared.setup()
+            OrbPiP.shared.onRestore = { showAssistant = true }
         }
         .task {
             await store.refresh()

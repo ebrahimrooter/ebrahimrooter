@@ -6,6 +6,7 @@ import SwiftUI
 struct AssistantSheet: View {
     @Environment(AssistantEngine.self) private var engine
     @State private var showHistory = false
+    private var pip: OrbPiP { OrbPiP.shared }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -16,6 +17,13 @@ struct AssistantSheet: View {
                 Spacer()
                 Text(engine.phase.title).font(.fa(15, .semibold)).foregroundStyle(.primary.opacity(0.85))
                 Spacer()
+                if OrbPiP.supported {
+                    Button { pip.toggle() } label: { Image(systemName: pip.active ? "pip.exit" : "pip.enter") }
+                        .buttonStyle(CircleButton())
+                        .disabled(!pip.possible && !pip.active)
+                        .opacity(pip.possible || pip.active ? 1 : 0.35)
+                        .accessibilityLabel(pip.active ? "بستن پنجره‌ی شناور" : "orb شناور روی صفحه")
+                }
                 Button { showHistory = true } label: { Image(systemName: "text.bubble") }
                     .buttonStyle(CircleButton())
                     .accessibilityLabel("گفتگو")
@@ -34,6 +42,9 @@ struct AssistantSheet: View {
             if engine.micDenied {
                 Button("باز کردن تنظیمات میکروفون") { Permissions.openSettings() }
                     .font(.fa(13, .semibold))
+            } else if engine.sessionActive && OrbPiP.supported && !pip.active {
+                Label("با دکمه‌ی پنجره‌ی شناور یا رفتن به صفحه‌ی اصلی، orb روی صفحه می‌ماند.", systemImage: "pip")
+                    .font(.fa(12)).foregroundStyle(.secondary)
             } else if !engine.sessionActive {
                 Text("مثلاً: «فروش امروز چقدر بوده؟» · «از علی پنج میلیون نقد گرفتم» · «چک‌های این هفته»")
                     .font(.fa(12)).foregroundStyle(.secondary).multilineTextAlignment(.center)

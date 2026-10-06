@@ -9,16 +9,17 @@ struct VoiceOrbView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 60, paused: false)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in draw(&ctx, size: size, t: t) }
+            Canvas { ctx, size in Self.draw(&ctx, size: size, t: t, level: level, phase: phase) }
         }
         .accessibilityLabel(phase.title)
     }
 
-    private func draw(_ ctx: inout GraphicsContext, size: CGSize, t: Double) {
+    /// Also used for the Picture-in-Picture frames (OrbPiP).
+    static func draw(_ ctx: inout GraphicsContext, size: CGSize, t: Double, level: Float, phase: AssistantPhase) {
         let c = CGPoint(x: size.width / 2, y: size.height / 2)
         let r: CGFloat = min(size.width, size.height) * 0.30
         let lv = CGFloat(level)
-        let colors = palette
+        let colors = palette(phase)
         let forest = Color(red: 0.09, green: 0.3, blue: 0.17)
         // soft glow
         let glowRect = CGRect(x: c.x - r * 1.6, y: c.y - r * 1.6, width: r * 3.2, height: r * 3.2)
@@ -44,7 +45,7 @@ struct VoiceOrbView: View {
         }
     }
 
-    private func ring(center c: CGPoint, radius: CGFloat, amp: CGFloat, k: Double, t: Double) -> Path {
+    private static func ring(center c: CGPoint, radius: CGFloat, amp: CGFloat, k: Double, t: Double) -> Path {
         var path = Path()
         var s = 0.0
         var first = true
@@ -60,7 +61,7 @@ struct VoiceOrbView: View {
         return path
     }
 
-    private var palette: [Color] {
+    private static func palette(_ phase: AssistantPhase) -> [Color] {
         let leaf = Color(red: 0.30, green: 0.70, blue: 0.40), lime = Color(red: 0.55, green: 0.88, blue: 0.56)
         let forest = Color(red: 0.09, green: 0.30, blue: 0.17)
         switch phase {
