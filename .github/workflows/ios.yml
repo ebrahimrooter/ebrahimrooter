@@ -32,6 +32,14 @@ jobs:
           shot 2-home -demo
           shot 3-report -demo -tab report
           shot 4-profile -demo -tab profile
+      - name: Small copies in the log (for viewing without downloading)
+        run: |
+          for f in shots/*.png; do
+            sips -s format jpeg -s formatOptions 60 -Z 900 "$f" --out "${f%.png}.jpg" >/dev/null
+            echo "=====BEGIN $(basename "${f%.png}")"
+            base64 -i "${f%.png}.jpg" | fold -w 900
+            echo "=====END"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: iphone-screens
