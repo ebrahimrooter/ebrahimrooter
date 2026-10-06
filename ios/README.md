@@ -69,9 +69,20 @@ ios/
     Services/AssistantEngine.swift    ماشین حالت: Idle/Listening/Processing/Speaking/Error
     Services/LiveActivityController.swift
     Services/Permissions.swift        اجازه‌ی میکروفون
-    Views/AssistantView.swift         پنجره‌ی شناور تیره، قابل جابه‌جایی، تاریخچه، تنظیمات
-    Views/VoiceOrbView.swift          انیمیشن صوتی (Canvas)
+    Models/Finance.swift              مدل‌های JSON (تراکنش، حساب، ماه‌ها) و عدد/پول فارسی
+    Services/FinanceStore.swift       داده‌ی صفحه‌ها (یک درخواست برای خانه)
+    Services/Dictation.swift          گفتن «بابت چی بود؟» با صدا
+    Theme/Theme.swift                 رنگ‌ها و اجزای طرح سبز (کارت لیمویی، دکمه‌ی فلش، آواتار، ردیف تراکنش)
+    Views/OnboardingView.swift        صفحه‌ی اول: کارت کج سبز، «رد شدن / شروع کنیم»
     Views/PairingView.swift           اتصال با کد یک‌بارمصرف
+    Views/MainTabView.swift           نوار پایین قرصی + orb دستیار وسط
+    Views/HomeView.swift              موجودی کل، چهار دکمه، کارت «بابت چی بود؟»، طرف‌حساب‌ها، تراکنش‌های اخیر
+    Views/ReportView.swift            گزارش: واریز/برداشت، نمودار شش‌ماهه، کارت حسابداری کامل
+    Views/TransactionViews.swift      جزئیات و ثبت تراکنش، ثبت دستی، فهرست با جستجو
+    Views/AccountingView.swift        پنل کامل حسابداری داخل اپ (WKWebView بدون ذخیره روی دیسک)
+    Views/ProfileView.swift           حساب‌ها، اتصال، میان‌برها، قطع اتصال
+    Views/AssistantView.swift         دستیار صوتی در یک‌سوم پایین صفحه (sheet شیشه‌ای) + تاریخچه
+    Views/VoiceOrbView.swift          انیمیشن صوتی (Canvas)
     Intents/AppShortcuts.swift        Siri / Spotlight / Action button
     Resources/Info.plist, BankAssistant.entitlements, PrivacyInfo.xcprivacy
   Shared/                             مشترک اپ و ویجت
@@ -101,6 +112,12 @@ server/
 | `assistant_ask` | Bearer | `text` | `heard`, `reply`, `state` (`answered` / `confirm` / `unknown` / `error`), `data` |
 | `assistant_transcribe` | Bearer | multipart: `audio` (WAV/m4a، حداکثر ۵MB) | `text` |
 | `assistant_speak` | Bearer | `text` | `audio/mpeg` |
+| `assistant_home` | Bearer | — | `balance`, `wallets[]`, `month` (این ماه + درصد تغییر), `months[]` (۶ ماه شمسی با from/to), `pending[]`, `recent[]`, `parties[]`, `sms_device`, `cheque_alert`, `company` |
+| `assistant_list` | Bearer | `from`, `to` (میلادی), `direction` (`in`/`out`/خالی) | `items[]`, `total_in`, `total_out` |
+| `assistant_confirm` | Bearer | `id`, `description`, `party` | تراکنش بانکی در دفاتر ثبت می‌شود |
+| `assistant_ignore` | Bearer | `id` | — |
+| `assistant_manual` | Bearer | `direction`, `amount_toman`, `description`, `party` | ثبت دستی (نقدی) |
+| `assistant_acc_session` | Bearer | — | `token` جلسه‌ی ۱۲ ساعته‌ی پنل حسابداری (فقط در حافظه‌ی WebView) |
 
 نمونه:
 ```
@@ -175,6 +192,10 @@ open BankAssistant.xcodeproj
 روی سرور (یک بار): صدای محلی باید نصب باشد (`voice/install.sh`، همان که در deploy-vps.sh اجرا می‌شود) و برای Universal Link گزینه‌ی `--ios-app-id`.
 
 اتصال: PWA روی همان گوشی ← تنظیمات ← «اپ دستیار آیفون» ← «اتصال اپ آیفون» ← «وصل کردن اپ روی همین گوشی».
+
+**بدون XcodeGen:** در Xcode یک پروژه‌ی iOS App (SwiftUI) به اسم BankAssistant بساز، پوشه‌های `BankAssistant/` و `Shared/` را داخلش بکش (Copy items if needed خاموش، Create groups)، Info.plist و entitlements را در Build Settings معرفی کن (`INFOPLIST_FILE`، `CODE_SIGN_ENTITLEMENTS`)، حداقل iOS را 17 بگذار. برای Live Activity یک Widget Extension به اسم AssistantWidgets اضافه کن و `AssistantWidgets/` و `Shared/` را به آن بده. با XcodeGen همه‌ی این‌ها خودکار است.
+
+**بیلد خودکار:** هر تغییر در `ios/` روی GitHub Actions (مک، Xcode 16) بیلد می‌شود (`.github/workflows/ios.yml`)؛ اگر کد کامپایل نشود، آن‌جا قرمز می‌شود.
 
 ## ۱۰. تست روی دستگاه واقعی (`N`)
 
