@@ -24,7 +24,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -89,8 +91,12 @@ class OrbService : Service() {
 
     private lateinit var orb: OrbView
     private lateinit var orbParams: WindowManager.LayoutParams
-    private lateinit var bubble: TextView
-    private lateinit var bubbleParams: WindowManager.LayoutParams
+    // the black card (reference design): turning line sphere, title, what it says
+    private lateinit var card: LinearLayout
+    private lateinit var cardParams: WindowManager.LayoutParams
+    private lateinit var cardOrb: OrbView
+    private lateinit var cardTitle: TextView
+    private lateinit var cardText: TextView
     private var trash: View? = null
     private var demo = false
 
@@ -136,7 +142,7 @@ class OrbService : Service() {
         recorder.cancel()
         speaker.stop()
         runCatching { wm.removeView(orb) }
-        runCatching { wm.removeView(bubble) }
+        runCatching { wm.removeView(card) }
         trash?.let { runCatching { wm.removeView(it) } }
         super.onDestroy()
     }
@@ -160,26 +166,47 @@ class OrbService : Service() {
         orb.contentDescription = "دستیار حسابداری"
         wm.addView(orb, orbParams)
 
-        bubble = TextView(this).apply {
+        cardOrb = OrbView(this, disc = false)
+        cardTitle = TextView(this).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            textDirection = View.TEXT_DIRECTION_RTL
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            maxLines = 5
+            textDirection = View.TEXT_DIRECTION_RTL
+        }
+        cardText = TextView(this).apply {
+            setTextColor(Color.argb(190, 255, 255, 255))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER
+            textDirection = View.TEXT_DIRECTION_RTL
+            setLineSpacing(0f, 1.25f)
+            maxLines = 6
+        }
+        card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(28), dp(24), dp(26))
             background = GradientDrawable().apply {
-                cornerRadius = dp(22).toFloat()
-                setColor(Color.argb(230, 10, 26, 16))
-                setStroke(dp(1), Color.argb(70, 141, 224, 143))
+                cornerRadius = dp(40).toFloat()
+                setColor(Color.BLACK)
+                setStroke(dp(1), Color.argb(40, 255, 255, 255))
             }
+            elevation = dp(16).toFloat()
+            addView(cardOrb, LinearLayout.LayoutParams(dp(150), dp(150)).apply { bottomMargin = dp(22) })
+            addView(cardTitle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(cardText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             visibility = View.GONE
             setOnClickListener { onTap() }
         }
-        bubbleParams = WindowManager.LayoutParams(
-            (screen.widthPixels * 0.78).toInt(), WindowManager.LayoutParams.WRAP_CONTENT, overlayType(),
+        cardParams = WindowManager.LayoutParams(
+            minOf(screen.widthPixels - dp(32), dp(420)), WindowManager.LayoutParams.WRAP_CONTENT, overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
-        wm.addView(bubble, bubbleParams)
+            PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dp(36)
+            windowAnimations = android.R.style.Animation_Toast
+        }
+        wm.addView(card, cardParams)
 
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
         var dragging = false; var downAt = 0L
@@ -243,30 +270,29 @@ class OrbService : Service() {
         prefs.orbX = target; prefs.orbY = orbParams.y
     }
 
-    private fun placeBubble() {
-        if (bubble.visibility != View.VISIBLE) return
-        val screen = resources.displayMetrics
-        val bw = bubbleParams.width
-        bubbleParams.x = (orbParams.x + orbSize / 2 - bw / 2).coerceIn(dp(8), screen.widthPixels - bw - dp(8))
-        val bh = if (bubble.height > 0) bubble.height else dp(70)
-        val above = orbParams.y - bh - dp(10)
-        bubbleParams.y = if (above > dp(40)) above else orbParams.y + orbSize + dp(10)
-        runCatching { wm.updateViewLayout(bubble, bubbleParams) }
-    }
+    private fun placeBubble() {}   // the card sits at the bottom of the screen
 
+    private var cardTitleText = "دستیار حسابداری"
+
+    /** Shows the card with [text] under the current title; null hides it. */
     private fun say(text: String?) {
         if (text.isNullOrBlank()) {
-            bubble.visibility = View.GONE
+            if (card.visibility == View.VISIBLE) {
+                card.animate().alpha(0f).translationY(dp(24).toFloat()).setDuration(220).withEndAction {
+                    card.visibility = View.GONE
+                    card.translationY = 0f
+                }.start()
+            }
             return
         }
-        bubble.text = text
-        if (bubble.visibility != View.VISIBLE) {
-            bubble.visibility = View.VISIBLE
-            bubble.alpha = 0f
-            bubble.animate().alpha(1f).setDuration(180).start()
+        cardTitle.text = cardTitleText
+        cardText.text = text
+        if (card.visibility != View.VISIBLE) {
+            card.visibility = View.VISIBLE
+            card.alpha = 0f
+            card.translationY = dp(30).toFloat()
+            card.animate().alpha(1f).translationY(0f).setInterpolator(OvershootInterpolator(0.8f)).setDuration(320).start()
         }
-        bubble.post { placeBubble() }
-        placeBubble()
     }
 
     private fun showTrash(show: Boolean) {
@@ -338,8 +364,8 @@ class OrbService : Service() {
                     heard = next
                     next = null
                 } else {
-                    set(Phase.LISTENING, "بگو…")
-                    val levelJob = scope.launch { while (isActive) { orb.level = recorder.level; delay(50) } }
+                    set(Phase.LISTENING, "بگو؛ مثلاً «فروش امروز چقدر بود؟»")
+                    val levelJob = scope.launch { while (isActive) { orb.level = recorder.level; cardOrb.level = recorder.level; delay(50) } }
                     val wav = try { withContext(Dispatchers.IO) { recorder.record() } } finally { levelJob.cancel() }
                     if (wav == null) {
                         silent++
@@ -354,12 +380,12 @@ class OrbService : Service() {
                     if (isGoodbye(heard)) { endSession("خداحافظ"); return }
                     say("«$heard»")
                 }
-                set(Phase.PROCESSING, if (first != null && heard == first) "…" else "«$heard»")
+                set(Phase.PROCESSING, if (first != null && heard == first) "دارم تراکنش‌های بانک را نگاه می‌کنم؛ چند لحظه صبر کن." else "«$heard»\nچند لحظه صبر کن…")
                 val r = withContext(Dispatchers.IO) { api.ask(heard) }
                 set(Phase.SPEAKING, r.reply)
                 val audio = runCatching { withContext(Dispatchers.IO) { api.speak(r.reply) } }.getOrNull()
                 if (audio != null) {
-                    val levelJob = scope.launch { while (isActive) { orb.level = speaker.level; delay(50) } }
+                    val levelJob = scope.launch { while (isActive) { orb.level = speaker.level; cardOrb.level = speaker.level; delay(50) } }
                     try { speaker.play(audio) } finally { levelJob.cancel() }
                 } else {
                     delay((r.reply.length * 70L).coerceIn(1500, 6000))
@@ -385,12 +411,19 @@ class OrbService : Service() {
         recorder.cancel()
         speaker.stop()
         orb.level = 0f
+        cardOrb.level = 0f
         set(Phase.IDLE, message)
-        if (message != null) bubble.postDelayed({ if (session?.isActive != true) say(null) }, 2500)
+        card.postDelayed({ if (session?.isActive != true) say(null) }, if (message != null) 2500 else 300)
     }
 
     private fun set(p: Phase, text: String?) {
         orb.phase = p
+        cardOrb.phase = p
+        cardTitleText = when (p) {
+            Phase.IDLE -> "دستیار حسابداری"
+            Phase.SPEAKING -> "پاسخ"
+            else -> p.title
+        }
         say(text)
         updateNotification(if (p == Phase.IDLE) "روی orb بزن و بپرس" else p.title)
     }
@@ -440,9 +473,7 @@ class OrbService : Service() {
     private fun showDemo() {
         // sample state for emulator screenshots (adb … --ez demo true)
         orb.attention = true
-        orb.phase = Phase.SPEAKING
-        orb.level = 0.5f
-        say("واریز ۲٬۷۵۰٬۰۰۰ تومان به بانک ملت — بابت چی بود؟")
+        set(Phase.PROCESSING, "دارم تراکنش‌های بانک را نگاه می‌کنم؛ چند لحظه صبر کن.")
     }
 
     // ---------------------------------------------------------------- notifications

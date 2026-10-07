@@ -4,97 +4,103 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.view.View
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
 enum class Phase(val title: String) {
-    IDLE("آماده"), LISTENING("دارم گوش می‌دم…"), PROCESSING("در حال فکر کردن…"), SPEAKING("در حال پاسخ…"), ERROR("خطا")
+    IDLE("آماده"), LISTENING("دارم گوش می‌دم…"), PROCESSING("در حال آماده کردن جواب…"), SPEAKING("پاسخ"), ERROR("خطا")
 }
 
-/** The green orb (same drawing as the iPhone app / web app): wobbling rings on a dark glass disc. */
-class OrbView(context: Context) : View(context) {
+/**
+ * The orb: a white sphere made of dashed vertical lines turning on black
+ * (like the reference design). It turns faster while thinking, breathes with
+ * the voice while listening / speaking. [disc] draws the black circle behind
+ * it (the small floating orb); without it the sphere sits on the card.
+ */
+class OrbView(context: Context, private val disc: Boolean = true) : View(context) {
     var phase = Phase.IDLE
         set(v) { field = v; invalidate() }
     /** 0…1 voice level */
     var level = 0f
-    var attention = false            // pulse ring: a bank transaction waits
+    /** a bank transaction waits: a soft green ring pulses */
+    var attention = false
 
     private val start = System.nanoTime()
-    private val disc = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.argb(70, 255, 255, 255) }
-    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.argb(60, 255, 255, 255) }
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; color = Color.WHITE }
     private val pulse = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val path = Path()
     private var smooth = 0f
-
-    private fun palette(): IntArray = when (phase) {
-        Phase.LISTENING -> intArrayOf(0xFF8DE08F.toInt(), 0xFF5BBD6D.toInt(), 0xFFC0EB66.toInt())
-        Phase.PROCESSING -> intArrayOf(0xFF5BBD6D.toInt(), 0xFF40A0A6.toInt(), 0xFF8DE08F.toInt())
-        Phase.SPEAKING -> intArrayOf(0xFFC0EB66.toInt(), 0xFF8DE08F.toInt(), 0xFF5BBD6D.toInt())
-        Phase.ERROR -> intArrayOf(0xFFFF6B6B.toInt(), 0xFFFFA94D.toInt(), 0xFF8DE08F.toInt())
-        Phase.IDLE -> intArrayOf(0xCC5BBD6D.toInt(), 0xFF8DE08F.toInt(), 0xFF2F8A4A.toInt())
-    }
+    private var angle = 0.0
+    private var lastT = 0.0
 
     override fun onDraw(canvas: Canvas) {
         val t = (System.nanoTime() - start) / 1e9
+        val dt = (t - lastT).coerceIn(0.0, 0.1)
+        lastT = t
         val w = width.toFloat(); val h = height.toFloat()
         val cx = w / 2; val cy = h / 2
-        val R = min(w, h) / 2 * 0.86f
-        smooth += (level - smooth) * 0.25f
-        // dark glass disc
-        disc.shader = RadialGradient(cx, cy - R * 0.6f, R * 1.6f, intArrayOf(0xF2275C34.toInt(), 0xF207140C.toInt()), null, Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, R, disc)
-        rim.strokeWidth = R * 0.04f
-        canvas.drawCircle(cx, cy, R, rim)
+        val half = min(w, h) / 2
+        if (disc) {
+            canvas.drawCircle(cx, cy, half * 0.96f, bg)
+            rim.strokeWidth = half * 0.03f
+            canvas.drawCircle(cx, cy, half * 0.96f, rim)
+        }
         if (attention) {
-            val k = ((t * 1.2) % 1.0).toFloat()
-            pulse.strokeWidth = R * 0.08f
-            pulse.color = Color.argb(((1 - k) * 200).toInt(), 141, 224, 143)
-            canvas.drawCircle(cx, cy, R * (0.92f + 0.12f * k), pulse)
+            val k = ((t * 1.1) % 1.0).toFloat()
+            pulse.strokeWidth = half * 0.07f
+            pulse.color = Color.argb(((1 - k) * 220).toInt(), 141, 224, 143)
+            canvas.drawCircle(cx, cy, half * (0.80f + 0.16f * k), pulse)
         }
-        val colors = palette()
-        val r = R * 0.52f
-        glow.shader = RadialGradient(cx, cy, r * 1.5f, intArrayOf((colors[0] and 0x00FFFFFF) or 0x55000000, 0), null, Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, r * 1.5f, glow)
-        val lv = when (phase) {
-            Phase.IDLE -> 0.08f + if (attention) 0.15f else 0f
-            Phase.PROCESSING -> 0.12f
-            else -> 0.15f + smooth * 0.9f
+        smooth += (level - smooth) * 0.25f
+        val speed = when (phase) {
+            Phase.PROCESSING -> 2.4
+            Phase.LISTENING, Phase.SPEAKING -> 0.9 + smooth * 1.5
+            else -> 0.45
         }
-        val damp = if (phase == Phase.PROCESSING) 0.5f else 1f
-        for (k in 0 until 3) {
-            val amp = r * (0.06f + 0.22f * lv) * damp
-            val rad = r * (1 - 0.08f * k)
-            path.reset()
-            var s = 0.0
-            var first = true
-            while (s <= Math.PI * 2 + 0.001) {
-                val wv = sin(s * (3 + k) + t * (1.4 + 0.5 * k)) + cos(s * 2 - t * 0.9) * 0.5
-                val rr = rad + (wv * amp).toFloat()
-                val x = cx + (cos(s) * rr).toFloat(); val y = cy + (sin(s) * rr).toFloat()
-                if (first) { path.moveTo(x, y); first = false } else path.lineTo(x, y)
-                s += Math.PI / 60
+        angle += speed * dt
+        val breathe = when (phase) {
+            Phase.LISTENING, Phase.SPEAKING -> 1f + 0.10f * smooth + 0.02f * sin(t * 3).toFloat()
+            Phase.PROCESSING -> 1f + 0.03f * sin(t * 5).toFloat()
+            else -> 1f + 0.015f * sin(t * 1.5).toFloat()
+        }
+        val r = half * (if (disc) 0.56f else 0.92f) * breathe
+        // slight tilt, like a globe seen from a bit above
+        val tilt = 0.32
+        val ct = cos(tilt); val st = sin(tilt)
+        val meridians = if (disc) 22 else 34
+        val steps = if (disc) 16 else 26
+        line.strokeWidth = r * (if (disc) 0.07f else 0.045f)
+        for (i in 0 until meridians) {
+            val phi = angle + i * 2 * PI / meridians
+            for (j in 0 until steps) {
+                // a short dash along the meridian from theta0 to theta1
+                val th0 = PI * (j + 0.18) / steps
+                val th1 = PI * (j + 0.82) / steps
+                val p0 = project(th0, phi, ct, st)
+                val p1 = project(th1, phi, ct, st)
+                val z = (p0[2] + p1[2]) / 2
+                if (z < -0.05) continue                     // back side hidden
+                val shade = ((z + 0.05) / 1.05).coerceIn(0.0, 1.0)
+                val wave = if (phase == Phase.PROCESSING) 0.75 + 0.25 * sin(t * 6 - j * 0.6) else 1.0
+                line.alpha = (255 * (0.15 + 0.85 * shade * shade) * wave).toInt().coerceIn(0, 255)
+                canvas.drawLine(cx + (p0[0] * r).toFloat(), cy + (p0[1] * r).toFloat(), cx + (p1[0] * r).toFloat(), cy + (p1[1] * r).toFloat(), line)
             }
-            path.close()
-            ring.color = colors[k]
-            ring.alpha = (255 * (0.95f - 0.2f * k)).toInt()
-            ring.strokeWidth = r * (0.075f - 0.015f * k)
-            canvas.drawPath(path, ring)
         }
-        if (phase == Phase.PROCESSING) {
-            for (d in 0 until 8) {
-                val a = t * 3 + d * Math.PI / 4
-                dot.color = Color.argb((80 + 20 * d).coerceAtMost(255), 141, 224, 143)
-                canvas.drawCircle(cx + (cos(a) * r * 0.55).toFloat(), cy + (sin(a) * r * 0.55).toFloat(), r * 0.06f, dot)
-            }
-        }
-        if (phase == Phase.IDLE && !attention) postInvalidateDelayed(60) else postInvalidateOnAnimation()
+        if (phase == Phase.IDLE && !attention) postInvalidateDelayed(40) else postInvalidateOnAnimation()
+    }
+
+    /** Point of the unit sphere (theta from the north pole, phi around) → screen x, y and depth z. */
+    private fun project(theta: Double, phi: Double, ct: Double, st: Double): DoubleArray {
+        val x = sin(theta) * sin(phi)
+        val y = -cos(theta)
+        val z = sin(theta) * cos(phi)
+        // tilt around the x axis
+        val y2 = y * ct - z * st
+        val z2 = y * st + z * ct
+        return doubleArrayOf(x, y2, z2)
     }
 }
