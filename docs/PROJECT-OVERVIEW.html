@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دستیار بانک و حسابداری — دیتاشیت و نقشه راه</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#122019;--muted:#5b6b64;--line:#dfe7e2;--card:#fff;--bg:#f4f7f5;--g1:#1f8f45;--g2:#5bbd6d;--lime:#8de08f;--deep:#07140c;--forest:#17381f;--warn:#9a6200;--red:#c0392b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.85 Vazirmatn,Tahoma,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:0 22px 60px}
+header.hero{background:radial-gradient(700px 380px at 85% -10%,#275c34,transparent 70%),var(--deep);color:#fff;padding:54px 0 46px;margin-bottom:28px}
+header.hero h1{font-size:34px;margin:0 0 6px;font-weight:800}
+header.hero p{margin:0;color:rgba(255,255,255,.72);font-size:16px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.pills span{background:rgba(141,224,143,.14);border:1px solid rgba(141,224,143,.4);color:var(--lime);border-radius:99px;padding:3px 12px;font-size:13px}
+h2{font-size:23px;margin:42px 0 12px;padding-top:6px;border-top:2px solid var(--line)}
+h2 small{font-size:13px;color:var(--muted);font-weight:500;margin-inline-start:8px}
+h3{font-size:17px;margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.grid .card{margin:0}
+.card h4{margin:0 0 6px;font-size:16px}
+.muted{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin:10px 0}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+th{background:#eef4f0;font-weight:700}
+tr:last-child td{border-bottom:0}
+code,.ltr{direction:ltr;unicode-bidi:isolate;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:#eef3f0;border-radius:6px;padding:1px 6px}
+pre{direction:ltr;text-align:left;background:#0d1a12;color:#d8f5d9;border-radius:14px;padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.6}
+.ok{color:var(--g1);font-weight:700}.wn{color:var(--warn);font-weight:700}.no{color:var(--red);font-weight:700}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps>li{counter-increment:s;position:relative;padding:12px 56px 12px 14px;background:#fff;border:1px solid var(--line);border-radius:16px;margin:10px 0}
+.steps>li::before{content:counter(s,persian);position:absolute;right:12px;top:12px;width:32px;height:32px;border-radius:50%;background:var(--forest);color:var(--lime);display:grid;place-items:center;font-weight:800}
+.steps>li b.t{display:block;font-size:16px;margin-bottom:2px}
+.phase{display:inline-block;font-size:12px;font-weight:700;border-radius:99px;padding:1px 10px;margin-inline-start:6px}
+.p-done{background:#e3f5e4;color:var(--g1)}.p-test{background:#fff3d6;color:var(--warn)}.p-next{background:#eef0ff;color:#3949ab}
+svg text{font-family:Vazirmatn,Tahoma,sans-serif}
+.diagram{background:#fff;border:1px solid var(--line);border-radius:20px;padding:10px;margin:12px 0}
+.toc{columns:2;column-gap:28px}
+.toc a{color:var(--g1);text-decoration:none}
+.foot{margin-top:50px;color:var(--muted);font-size:13px;text-align:center}
+@media print{body{background:#fff}.card,table,.steps>li,.diagram{break-inside:avoid}h2{break-after:avoid}header.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <h1>دستیار بانک و حسابداری</h1>
+  <p>از پیامک بانک روی سیم‌کارت تا دفتر حسابداری، ربات بله، اپ آیفون، اپ اندروید و دستیار صوتی فارسی — همه روی سرور خودت</p>
+  <div class="pills"><span>دیتاشیت فنی</span><span>نقشه‌ی اتصال</span><span>نقشه‌ی راه نصب</span><span>نقشه‌ی راه آینده</span></div>
+</div></header>
+<div class="wrap">
+
+<div class="card toc">
+  <div><a href="#sum">۱. خلاصه‌ی پروژه</a></div>
+  <div><a href="#map">۲. نقشه‌ی کلی اتصال</a></div>
+  <div><a href="#flow">۳. مسیر یک پیامک بانک، قدم‌به‌قدم</a></div>
+  <div><a href="#hw">۴. دیتاشیت سخت‌افزار (ESP32 + SIM800)</a></div>
+  <div><a href="#sw">۵. دیتاشیت نرم‌افزار و سرور</a></div>
+  <div><a href="#api">۶. API و امنیت</a></div>
+  <div><a href="#apps">۷. اپ‌ها و پنل</a></div>
+  <div><a href="#road">۸. نقشه‌ی راه نصب (از صفر تا کار)</a></div>
+  <div><a href="#next">۹. نقشه‌ی راه آینده و وضعیت</a></div>
+  <div><a href="#files">۱۰. ساختار فایل‌ها</a></div>
+</div>
+
+<h2 id="sum">۱. خلاصه‌ی پروژه</h2>
+<p>سیستم پیامک‌های بانک را از روی سیم‌کارت می‌گیرد، واریز و برداشت را تشخیص می‌دهد، از تو می‌پرسد «بابت چی بود؟» (در بله، اپ یا با صدا) و جوابت را در یک <b>حسابداری کامل دوطرفه</b> ثبت می‌کند. همه‌چیز روی سرور خودت است؛ صدای فارسی (تبدیل صدا به متن و متن به صدا) هم محلی روی همان سرور اجرا می‌شود.</p>
+<div class="grid">
+  <div class="card"><h4>📡 دستگاه پیامک</h4>ESP32 + SIM800L؛ پیامک بانک را با اینترنت سیم‌کارت یا وای‌فای به سرور می‌فرستد و هر ۱۰ دقیقه گزارش سلامت می‌دهد.</div>
+  <div class="card"><h4>🖥 سرور</h4>PHP 8 + SQLite روی VPS (Ubuntu) یا هاست اشتراکی یا کامپیوتر خانه؛ تشخیص پیامک، دفاتر، ربات، کارهای زمان‌بندی‌شده.</div>
+  <div class="card"><h4>🤖 ربات بله</h4>خبر واریز/برداشت، پرسیدن «بابت چی بود؟» با متن یا ویس، گزارش‌ها، اعلام صبحگاهی چک‌ها.</div>
+  <div class="card"><h4>📒 حسابداری</h4>۲۹ جدول: فاکتور، انبار، اشخاص، خزانه، چک، وام، مالیات و مؤدیان، پیامک، چند شرکت، کاربران و دسترسی.</div>
+  <div class="card"><h4>📱 اپ آیفون</h4>SwiftUI؛ طرح سبز، گزارش، پنل حسابداری داخل اپ، دستیار صوتی orb، PiP، Dynamic Island، سیری.</div>
+  <div class="card"><h4>🤳 اپ اندروید</h4>Kotlin؛ وب‌اپ داخل اپ + <b>orb شناور روی صفحه‌ی اصلی</b> با کارت پایین صفحه؛ خودش تراکنش تازه را می‌پرسد.</div>
+  <div class="card"><h4>🌐 وب‌اپ و پنل</h4>وب‌اپ گوشی (PWA با نوتیف و orb) و پنل حسابداری روی کامپیوتر؛ داخل هر دو اپ هم هست.</div>
+  <div class="card"><h4>🎙 صدای فارسی محلی</h4>faster-whisper (صدا به متن) و Piper (متن به صدا)؛ برای بله، اپ‌ها و orb.</div>
+</div>
+
+<h2 id="map">۲. نقشه‌ی کلی اتصال <small>همه‌ی بخش‌ها و راه ارتباطشان</small></h2>
+<div class="diagram">
+<svg viewBox="0 0 1000 640" width="100%" role="img" aria-label="نقشه‌ی اتصال بخش‌ها">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f8f45"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7a8a83"/></marker>
+  </defs>
+  <!-- bank + sim -->
+  <rect x="20" y="40" width="170" height="70" rx="16" fill="#fff3d6" stroke="#e0c27a"/>
+  <text x="105" y="70" text-anchor="middle" font-size="16" font-weight="700">🏦 بانک</text>
+  <text x="105" y="94" text-anchor="middle" font-size="12" fill="#5b6b64">پیامک واریز / برداشت / رمز پویا</text>
+  <rect x="20" y="160" width="170" height="120" rx="16" fill="#eef4f0" stroke="#9cc7a7"/>
+  <text x="105" y="190" text-anchor="middle" font-size="16" font-weight="700">📡 ESP32 + SIM800L</text>
+  <text x="105" y="214" text-anchor="middle" font-size="12" fill="#5b6b64">سیم‌کارت گیرنده‌ی پیامک</text>
+  <text x="105" y="234" text-anchor="middle" font-size="12" fill="#5b6b64">خواندن پیامک با AT+CMGL</text>
+  <text x="105" y="254" text-anchor="middle" font-size="12" fill="#5b6b64">heartbeat هر ۱۰ دقیقه</text>
+  <line x1="105" y1="110" x2="105" y2="158" stroke="#7a8a83" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="165" y="140" text-anchor="middle" font-size="11" fill="#7a8a83">شبکه‌ی موبایل</text>
+  <!-- alt sources -->
+  <rect x="20" y="330" width="170" height="70" rx="16" fill="#fff" stroke="#dfe7e2" stroke-dasharray="5 4"/>
+  <text x="105" y="358" text-anchor="middle" font-size="13" font-weight="700">راه بدون سخت‌افزار</text>
+  <text x="105" y="380" text-anchor="middle" font-size="11.5" fill="#5b6b64">Shortcut آیفون / SMS Forwarder</text>
+  <!-- server -->
+  <rect x="300" y="120" width="400" height="330" rx="22" fill="#07140c"/>
+  <text x="500" y="152" text-anchor="middle" font-size="18" font-weight="800" fill="#fff">🖥 سرور (VPS / هاست / کامپیوتر)</text>
+  <text x="500" y="174" text-anchor="middle" font-size="12" fill="#8de08f">Apache یا php -S · PHP 8 · SQLite · HTTPS</text>
+  <rect x="320" y="190" width="170" height="54" rx="12" fill="#17381f"/><text x="405" y="214" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">api.php ← ingest</text><text x="405" y="234" text-anchor="middle" font-size="11" fill="#bfe8c1">تشخیص بانک، مبلغ، مانده</text>
+  <rect x="510" y="190" width="170" height="54" rx="12" fill="#17381f"/><text x="595" y="214" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">bank.sqlite</text><text x="595" y="234" text-anchor="middle" font-size="11" fill="#bfe8c1">تراکنش‌ها، اشخاص، دفاتر</text>
+  <rect x="320" y="256" width="170" height="54" rx="12" fill="#17381f"/><text x="405" y="280" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">حسابداری (acc)</text><text x="405" y="300" text-anchor="middle" font-size="11" fill="#bfe8c1">سند دوطرفه خودکار</text>
+  <rect x="510" y="256" width="170" height="54" rx="12" fill="#17381f"/><text x="595" y="280" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">دستیار (assistant)</text><text x="595" y="300" text-anchor="middle" font-size="11" fill="#bfe8c1">فهم فرمان فارسی</text>
+  <rect x="320" y="322" width="170" height="54" rx="12" fill="#17381f"/><text x="405" y="346" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">jobs / cron</text><text x="405" y="366" text-anchor="middle" font-size="11" fill="#bfe8c1">گزارش، یادآوری، سلامت، چک</text>
+  <rect x="510" y="322" width="170" height="54" rx="12" fill="#17381f"/><text x="595" y="346" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">صدای محلی</text><text x="595" y="366" text-anchor="middle" font-size="11" fill="#bfe8c1">Whisper · Piper (:8765)</text>
+  <rect x="320" y="388" width="360" height="46" rx="12" fill="#17381f"/><text x="500" y="416" text-anchor="middle" font-size="12.5" fill="#fff">Web Push (VAPID) · بله (polling/webhook) · Moadian · پنل پیامک</text>
+  <!-- arrows to server -->
+  <line x1="190" y1="220" x2="318" y2="217" stroke="#1f8f45" stroke-width="2.5" marker-end="url(#ar)"/>
+  <text x="254" y="207" text-anchor="middle" font-size="11" fill="#1f8f45">HTTPS POST</text><text x="254" y="242" text-anchor="middle" font-size="10.5" fill="#1f8f45">Device-Token</text>
+  <line x1="190" y1="365" x2="318" y2="230" stroke="#7a8a83" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ag)"/>
+  <!-- bale -->
+  <rect x="800" y="40" width="180" height="90" rx="16" fill="#e8f1ff" stroke="#9db8e8"/>
+  <text x="890" y="72" text-anchor="middle" font-size="16" font-weight="700">💬 ربات بله</text>
+  <text x="890" y="96" text-anchor="middle" font-size="11.5" fill="#5b6b64">«بابت چی بود؟» · ویس · گزارش</text>
+  <text x="890" y="114" text-anchor="middle" font-size="11.5" fill="#5b6b64">موعد چک‌ها هر صبح</text>
+  <line x1="700" y1="170" x2="798" y2="100" stroke="#1f8f45" stroke-width="2.5" marker-start="url(#ar)" marker-end="url(#ar)"/>
+  <!-- apps -->
+  <rect x="800" y="160" width="180" height="78" rx="16" fill="#fff" stroke="#9cc7a7"/>
+  <text x="890" y="190" text-anchor="middle" font-size="15" font-weight="700">📱 اپ آیفون</text>
+  <text x="890" y="212" text-anchor="middle" font-size="11" fill="#5b6b64">توکن دستگاه در Keychain</text>
+  <text x="890" y="228" text-anchor="middle" font-size="11" fill="#5b6b64">orb · PiP · Dynamic Island</text>
+  <rect x="800" y="252" width="180" height="78" rx="16" fill="#fff" stroke="#9cc7a7"/>
+  <text x="890" y="282" text-anchor="middle" font-size="15" font-weight="700">🤳 اپ اندروید</text>
+  <text x="890" y="304" text-anchor="middle" font-size="11" fill="#5b6b64">وب‌اپ + orb شناور</text>
+  <text x="890" y="320" text-anchor="middle" font-size="11" fill="#5b6b64">هر ۳۰ ثانیه تراکنش تازه</text>
+  <rect x="800" y="344" width="180" height="70" rx="16" fill="#fff" stroke="#9cc7a7"/>
+  <text x="890" y="374" text-anchor="middle" font-size="15" font-weight="700">🌐 وب‌اپ گوشی</text>
+  <text x="890" y="396" text-anchor="middle" font-size="11" fill="#5b6b64">نوتیف ← orb مثل سیری</text>
+  <rect x="800" y="428" width="180" height="70" rx="16" fill="#fff" stroke="#9cc7a7"/>
+  <text x="890" y="458" text-anchor="middle" font-size="15" font-weight="700">💻 پنل حسابداری</text>
+  <text x="890" y="480" text-anchor="middle" font-size="11" fill="#5b6b64">کامپیوتر · داخل اپ‌ها</text>
+  <line x1="700" y1="230" x2="798" y2="199" stroke="#1f8f45" stroke-width="2" marker-start="url(#ar)" marker-end="url(#ar)"/>
+  <line x1="700" y1="280" x2="798" y2="291" stroke="#1f8f45" stroke-width="2" marker-start="url(#ar)" marker-end="url(#ar)"/>
+  <line x1="700" y1="350" x2="798" y2="379" stroke="#1f8f45" stroke-width="2" marker-start="url(#ar)" marker-end="url(#ar)"/>
+  <line x1="700" y1="420" x2="798" y2="463" stroke="#1f8f45" stroke-width="2" marker-start="url(#ar)" marker-end="url(#ar)"/>
+  <text x="890" y="530" text-anchor="middle" font-size="11" fill="#1f8f45">همه با HTTPS و رمز اپ یا توکن دستگاه</text>
+  <!-- you -->
+  <rect x="300" y="500" width="400" height="110" rx="20" fill="#e3f5e4" stroke="#5bbd6d"/>
+  <text x="500" y="532" text-anchor="middle" font-size="16" font-weight="800">👤 تو</text>
+  <text x="500" y="558" text-anchor="middle" font-size="12.5" fill="#22432b">جواب «بابت چی بود؟» با تایپ، دکمه یا صدا</text>
+  <text x="500" y="580" text-anchor="middle" font-size="12.5" fill="#22432b">پرسیدن «فروش امروز؟»، «سود این ماه؟»، ثبت فاکتور و چک با صدا</text>
+  <line x1="700" y1="560" x2="860" y2="545" stroke="#7a8a83" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ag)"/>
+  <line x1="890" y1="132" x2="975" y2="132" stroke="none"/>
+</svg>
+</div>
+
+<h2 id="flow">۳. مسیر یک پیامک بانک، قدم‌به‌قدم</h2>
+<ol class="steps">
+  <li><b class="t">بانک پیامک می‌فرستد</b>«بانک ملت · برداشت: ۲,۵۰۰,۰۰۰ · مانده: … · ۱۴۰۵/۰۷/۱۰-۱۴:۴۷» روی سیم‌کارت داخل SIM800 می‌نشیند.</li>
+  <li><b class="t">ESP32 می‌خواند</b>هر چند ثانیه <code>AT+CMGL</code>؛ متن UCS2 را به فارسی برمی‌گرداند؛ فقط فرستنده‌ی مجاز (مثلاً <code>Bank Mellat</code>).</li>
+  <li><b class="t">به سرور می‌فرستد</b><code>POST api.php?r=ingest</code> با هدر <code>X-Device-Token</code> (با اینترنت سیم‌کارت در <code>gprs_forwarder</code> یا وای‌فای در <code>sms_forwarder</code>). اگر سرور در دسترس نبود، پیامک روی سیم می‌ماند و بعداً می‌رود.</li>
+  <li><b class="t">سرور تشخیص می‌دهد</b>نوع (واریز/برداشت/رمز پویا)، مبلغ (ریال)، مانده، تاریخ؛ تکراری را حذف می‌کند (کلید یکتا)؛ تراکنش «منتظر توضیح» می‌سازد. رمز پویا جدا و با PIN نگه داشته و زود پاک می‌شود.</li>
+  <li><b class="t">خبر می‌دهد</b>ربات بله: «🔴 برداشت … بابت چی بود؟» · نوتیف وب‌اپ (orb مثل سیری) · orb شناور اندروید خودش با صدا می‌پرسد.</li>
+  <li><b class="t">جواب می‌دهی</b>تایپ، دکمه، ویس بله یا گفتن به orb؛ صدا روی سرور به متن تبدیل می‌شود؛ دسته و طرف حساب را از جمله حدس می‌زند و تأیید می‌گیرد.</li>
+  <li><b class="t">ثبت در حسابداری</b>سند دوطرفه خودکار (بانک ↔ درآمد/هزینه یا حساب شخص)؛ مانده‌ی اشخاص و گزارش‌ها به‌روز می‌شوند.</li>
+  <li><b class="t">پایش و گزارش</b>مغایرت‌گیری با مانده‌ی بانک، گزارش هفتگی، یادآوری بی‌جواب‌ها، هشدار قطع دستگاه پیامک (۳۰ دقیقه)، اعلام صبحگاهی چک‌ها.</li>
+</ol>
+
+<h2 id="hw">۴. دیتاشیت سخت‌افزار <small>ESP32 + SIM800L</small></h2>
+<table>
+<tr><th>قطعه</th><th>مشخصات</th><th>نکته</th></tr>
+<tr><td>ESP32 DevKit (WROOM-32)</td><td>Arduino IDE 2 · برد «ESP32 Dev Module» · Serial 115200</td><td>درایور CP210x یا CH340</td></tr>
+<tr><td>SIM800L (2G)</td><td>تغذیه ۳٫۴ تا ۴٫۴ ولت (پیشنهاد ۴٫۰) · جریان لحظه‌ای تا ۲ آمپر · UART 9600</td><td>اگر 2G نیست: <b>A7670E</b> (4G)، کد بدون تغییر</td></tr>
+<tr><td>LM2596 (کاهنده)</td><td>ورودی آداپتور ۵ تا ۱۲ ولت، حداقل ۲ آمپر ← خروجی ۴٫۰ ولت</td><td>با مولتی‌متر قبل از اتصال تنظیم شود</td></tr>
+<tr><td>خازن</td><td>۱۰۰۰µF / ۱۶V کنار VCC/GND ماژول</td><td>جلوگیری از ری‌استارت</td></tr>
+<tr><td>مقسم ولتاژ</td><td>۱k (سری) + ۲k (به GND) روی خط RXD</td><td>نسخه‌ی EVB با پین 5V لازم ندارد</td></tr>
+<tr><td>آنتن + سیم‌کارت</td><td>PIN سیم‌کارت خاموش</td><td>همان شماره‌ی پیامک بانک</td></tr>
+</table>
+<div class="grid">
+<div class="card"><h4>سیم‌کشی</h4>
+<table><tr><th>SIM800L</th><th>ESP32</th></tr>
+<tr><td>TXD</td><td>GPIO16</td></tr><tr><td>RXD</td><td>GPIO17 (از مقسم)</td></tr><tr><td>GND</td><td>GND (مشترک با LM2596)</td></tr><tr><td>VCC</td><td>OUT+ LM2596 (۴ ولت) — نه پین ESP32</td></tr></table></div>
+<div class="card"><h4>چراغ شبکه‌ی ماژول</h4>
+<table><tr><th>چشمک</th><th>معنی</th></tr>
+<tr><td>هر ۱ ثانیه</td><td>دنبال شبکه</td></tr><tr><td>هر ۳ ثانیه</td><td class="ok">در شبکه ثبت شد</td></tr><tr><td>چند بار و خاموش</td><td class="no">تغذیه ضعیف</td></tr><tr><td>خاموش</td><td>برق نمی‌رسد</td></tr></table></div>
+<div class="card"><h4>فرمورها (پوشه‌ی firmware)</h4>
+<b>sim800_test</b>: آزمایش ماژول، بدون اینترنت.<br>
+<b>gprs_forwarder</b> ⭐: با اینترنت سیم‌کارت (APN مثل <code>mcinet</code>) به سرور.<br>
+<b>sms_forwarder</b>: با وای‌فای به سرور.<br>
+<b>bale_direct</b>: بدون سرور، مستقیم به بله.</div>
+<div class="card"><h4>گزارش سلامت (heartbeat)</h4>هر ۱۰ دقیقه: آنتن (CSQ ۰ تا ۳۱)، ثبت در شبکه، تعداد پیامک روی سیم، وای‌فای، زمان روشن بودن، نسخه. بیش از ۳۰ دقیقه بی‌خبری یا ۲۵ پیامک مانده ← هشدار در بله و نوتیف.</div>
+</div>
+
+<h2 id="sw">۵. دیتاشیت نرم‌افزار و سرور</h2>
+<table>
+<tr><th>بخش</th><th>فناوری</th><th>جزئیات</th></tr>
+<tr><td>سرور</td><td>PHP 8.x (pdo_sqlite, curl, mbstring, openssl, sodium)</td><td>Apache + mod_php روی Ubuntu 22.04/24.04 · یا هاست اشتراکی · یا <code>php -S</code> روی ویندوز</td></tr>
+<tr><td>پایگاه داده</td><td>SQLite</td><td><code>data/bank.sqlite</code> (بانک + شرکت ۱) · <code>data/acc_company_N.sqlite</code> برای شرکت‌های بعدی · ۱۲ جدول بانک + ۲۹ جدول حسابداری</td></tr>
+<tr><td>صدای محلی</td><td>Python · faster-whisper (large-v3-turbo) · Piper (فارسی)</td><td>سرویس <code>bank-voice</code> روی 127.0.0.1:8765 · ۴ گیگ رم پیشنهادی</td></tr>
+<tr><td>ربات بله</td><td>Bot API بله</td><td>webhook یا polling (سرویس <code>bank-bot</code>) · فقط chat id صاحب</td></tr>
+<tr><td>نوتیف وب</td><td>Web Push (VAPID، بدون کتابخانه)</td><td>iOS 16.4+ از صفحه‌ی اصلی، اندروید/کروم</td></tr>
+<tr><td>کارهای زمان‌بندی</td><td>cron یا <code>cron.php daemon</code></td><td>گزارش هفتگی · یادآوری بی‌جواب · سلامت دستگاه · اعلام چک‌ها (ساعت ۸ صبح)</td></tr>
+<tr><td>سامانه مؤدیان</td><td>امضا و ارسال صورتحساب</td><td>شناسه حافظه، کلید خصوصی، گواهی در تنظیمات</td></tr>
+<tr><td>پیامک خروجی</td><td>پنل پیامک (چند سرویس‌دهنده)</td><td>تک، گروهی، الگو، یادآوری بدهی</td></tr>
+<tr><td>اپ آیفون</td><td>SwiftUI · iOS 17+ · XcodeGen</td><td>AVKit PiP · ActivityKit · App Intents · Keychain</td></tr>
+<tr><td>اپ اندروید</td><td>Kotlin · minSdk 26 / target 35 · Gradle 8.14</td><td>WebView + JS bridge · Overlay (SYSTEM_ALERT_WINDOW) · Foreground Service · EncryptedSharedPreferences</td></tr>
+</table>
+<h3>تنظیمات اصلی (<code>server/config.php</code>)</h3>
+<table>
+<tr><th>کلید</th><th>کار</th></tr>
+<tr><td><code>app_token</code></td><td>رمز اپ و پنل (رمز اول مدیر حسابداری)</td></tr>
+<tr><td><code>device_token</code></td><td>رمز دستگاه ESP32 (همان در فرمور)</td></tr>
+<tr><td><code>allowed_senders</code></td><td>فرستنده‌های مجاز (از تنظیمات اپ هم انتخاب می‌شود)</td></tr>
+<tr><td><code>otp_pin</code> · <code>otp_to_bale</code></td><td>قفل دوم رمزهای پویا</td></tr>
+<tr><td><code>app_url</code> · <code>api_url</code></td><td>آدرس‌های عمومی</td></tr>
+<tr><td><code>bale_bot_token</code> · <code>bale_chat_id</code></td><td>اتصال ربات بله</td></tr>
+<tr><td><code>voice_url</code> · <code>voice_token</code></td><td>سرویس صدای محلی</td></tr>
+<tr><td><code>bale_voice_reply</code></td><td>جواب صوتی ربات</td></tr>
+<tr><td><code>accounting_webhook</code></td><td>اتصال به نرم‌افزار دیگر (اختیاری)</td></tr>
+</table>
+
+<h2 id="api">۶. API و امنیت</h2>
+<table>
+<tr><th>گروه</th><th>احراز هویت</th><th>مسیرها (<code>api.php?r=…</code>)</th></tr>
+<tr><td>دستگاه پیامک</td><td><code>X-Device-Token</code></td><td><code>ingest</code> · <code>heartbeat</code></td></tr>
+<tr><td>ربات بله</td><td>توکن ربات + chat id</td><td><code>bale</code> (webhook)</td></tr>
+<tr><td>وب‌اپ</td><td><code>X-App-Token</code> (رمز اپ)</td><td>pending · list · confirm · ignore · manual · report · people · wallets · categories · reconcile · otp · push_* · settings · export · assistant_web · assistant_pair …</td></tr>
+<tr><td>اپ آیفون / orb اندروید</td><td><code>Bearer</code> توکن دستگاه (کد یک‌بارمصرف)</td><td>assistant_redeem · ask · transcribe · speak · home · list · pending · confirm · ignore · manual · acc_session</td></tr>
+<tr><td>پنل حسابداری</td><td>نشست ۱۲ ساعته</td><td><code>acc/api.php?p=/…</code> — ۱۰۱ مسیر REST با دسترسی نقش‌ها</td></tr>
+</table>
+<div class="grid">
+<div class="card"><h4>🔐 امنیت</h4>همه‌ی ارتباط‌ها HTTPS · رمزها و توکن‌ها فقط به‌صورت hash ذخیره · کد اتصال ۵ دقیقه و یک‌بار · ۱۰ تلاش غلط = قفل ۱۵ دقیقه · لغو هر گوشی از تنظیمات · پایگاه داده و config از وب بسته (<code>.htaccess</code> و router).</div>
+<div class="card"><h4>📱 روی گوشی</h4>آیفون: توکن در Keychain، پنل در WebView بدون ذخیره روی دیسک · اندروید: توکن با Android Keystore رمز می‌شود، رمز اپ به بخش native داده نمی‌شود.</div>
+<div class="card"><h4>🧾 رمز پویا</h4>جدا از تراکنش‌ها، با PIN دوم، ۵ تلاش غلط = قفل، پاک شدن خودکار، متن پیامک‌های غیربانکی حداکثر یک روز.</div>
+</div>
+
+<h2 id="apps">۷. اپ‌ها و پنل</h2>
+<table>
+<tr><th></th><th>اپ آیفون</th><th>اپ اندروید</th><th>وب‌اپ گوشی</th><th>پنل حسابداری</th></tr>
+<tr><td>نصب</td><td>Xcode (حساب Apple)</td><td>APK مستقیم</td><td>مرورگر + صفحه‌ی اصلی</td><td>مرورگر کامپیوتر</td></tr>
+<tr><td>واریز/برداشت و «بابت چی بود؟»</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td></tr>
+<tr><td>حسابداری کامل</td><td class="ok">✔ (داخل اپ)</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td></tr>
+<tr><td>دستیار صوتی orb</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td><td>—</td></tr>
+<tr><td>orb روی صفحه‌ی اصلی</td><td class="wn">PiP (فقط هنگام صحبت)</td><td class="ok">✔ همیشه</td><td>—</td><td>—</td></tr>
+<tr><td>نوتیف تراکنش</td><td class="wn">از وب‌اپ / بله</td><td class="ok">✔ خودش</td><td class="ok">✔ Web Push</td><td>—</td></tr>
+<tr><td>سیری / دستیار گوشی</td><td class="ok">«Hey Siri, Ask Orb»</td><td>—</td><td>میان‌بر سیری</td><td>—</td></tr>
+</table>
+
+<h2 id="road">۸. نقشه‌ی راه نصب <small>از ESP32 تا بله و اپ‌ها</small></h2>
+<ol class="steps">
+  <li><b class="t">سرور <span class="phase p-done">آماده</span></b>VPS اوبونتو (۴ گیگ رم، ۲۵ گیگ دیسک) + دامنه (یا <code>IP.sslip.io</code>):<pre>sudo bash deploy-vps.sh --domain 185-221-237-61.sslip.io</pre>رمز اپ، <code>DEVICE_TOKEN</code> و آدرس‌ها در پایان چاپ می‌شوند. بدون VPS: هاست اشتراکی (install.php) یا <code>start-windows.bat</code>.</li>
+  <li><b class="t">ربات بله <span class="phase p-done">آماده</span></b>در بله به <code>@botfather</code> ← ربات بساز ← توکن را در <code>bale_bot_token</code> بگذار ← <code>php cron.php bale-setup</code> ← به ربات <code>/start</code> بده ← chat id را در <code>bale_chat_id</code> بگذار ← دوباره <code>bale-setup</code>.</li>
+  <li><b class="t">آزمایش ماژول <span class="phase p-done">آماده</span></b>LM2596 روی ۴٫۰ ولت · سیم‌کشی جدول بخش ۴ · <code>sim800_test</code> را آپلود کن · در Serial Monitor باید ثبت در شبکه و پیامک‌ها را فارسی ببینی.</li>
+  <li><b class="t">اتصال ESP32 به سرور <span class="phase p-done">آماده</span></b><code>gprs_forwarder.ino</code>: <code>SERVER_URL</code>، <code>DEVICE_TOKEN</code>، <code>ALLOWED_SENDER</code> و APN را بنویس و آپلود کن. یک پیامک آزمایشی ← باید در بله «بابت چی بود؟» بیاید و در تنظیمات اپ «دستگاه پیامک: فعال» دیده شود.</li>
+  <li><b class="t">فرستنده‌ی بانک <span class="phase p-done">آماده</span></b>بعد از اولین پیامک: وب‌اپ ← تنظیمات ← «فرستنده‌های پیامک» ← فقط شناسه‌ی بانک را تیک بزن.</li>
+  <li><b class="t">اپ اندروید <span class="phase p-test">نیاز به تست روی گوشی</span></b>APK را نصب کن ← آدرس سرور ← رمز اپ ← تنظیمات ← «روشن کردن orb» ← اجازه‌ی نمایش روی برنامه‌ها و میکروفون.</li>
+  <li><b class="t">اپ آیفون <span class="phase p-test">نیاز به تست روی گوشی</span></b>روی مک: <code>xcodegen generate</code> ← Team و شناسه‌ی اپ ← Run روی آیفون ← وب‌اپ روی همان گوشی ← تنظیمات ← «اتصال اپ آیفون».</li>
+  <li><b class="t">حسابداری <span class="phase p-done">آماده</span></b>پنل <code>/bank/acc/</code> با <code>admin</code> و رمز اپ ← رمز را عوض کن ← مشخصات شرکت، حساب‌های بانک و صندوق، اشخاص، کالاها ← اتصال تراکنش‌های بانک به حساب بانکی.</li>
+  <li><b class="t">پشتیبان‌گیری <span class="phase p-next">پیشنهاد</span></b>از <code>/var/www/html/bank/data/</code> (همه‌ی حساب‌ها همین فایل‌هاست) هر روز نسخه‌ی پشتیبان بگیر.</li>
+</ol>
+
+<h2 id="next">۹. نقشه‌ی راه آینده و وضعیت</h2>
+<table>
+<tr><th>کار</th><th>وضعیت</th><th>توضیح</th></tr>
+<tr><td>سرور، بله، پیامک، حسابداری، وب‌اپ</td><td class="ok">انجام شده و تست شده</td><td>۸ مجموعه تست خودکار (PHP، مرورگر، حسابرسی ارقام)</td></tr>
+<tr><td>اپ آیفون</td><td class="ok">بیلد می‌شود</td><td>روی مک GitHub کامپایل و روی شبیه‌ساز عکس‌برداری شد</td></tr>
+<tr><td>اپ اندروید و orb شناور</td><td class="ok">بیلد و روی شبیه‌ساز اجرا شد</td><td>orb روی صفحه‌ی اصلی، پرسیدن تراکنش، نوتیف</td></tr>
+<tr><td>صحبت با میکروفون روی گوشی واقعی</td><td class="wn">باید تست شود</td><td>شبیه‌سازها میکروفون ندارند</td></tr>
+<tr><td>PiP آیفون روی گوشی واقعی</td><td class="wn">باید تست شود</td><td>شبیه‌ساز ابری PiP ندارد</td></tr>
+<tr><td>نوتیف خود اپ آیفون (APNs)</td><td class="no">نشده</td><td>حساب پولی Apple Developer و کلید APNs روی سرور</td></tr>
+<tr><td>اتصال اپ آیفون بدون وب‌اپ</td><td class="no">نشده</td><td>ورود مستقیم با رمز اپ</td></tr>
+<tr><td>خواندن پیامک مستقیم در اپ اندروید</td><td class="no">نشده</td><td>جایگزین ESP32 روی گوشی اندرویدی که سیم‌کارت بانک دارد</td></tr>
+<tr><td>App Store / Google Play</td><td class="no">نشده</td><td>کلید امضای خصوصی، سیاست حریم خصوصی، بررسی اپل برای PiP</td></tr>
+<tr><td>پشتیبان‌گیری خودکار</td><td class="no">نشده</td><td>ارسال روزانه‌ی فایل دیتابیس به جای امن</td></tr>
+</table>
+
+<h2 id="files">۱۰. ساختار فایل‌ها</h2>
+<pre>
+server/             سرور (PHP)
+  api.php           همه‌ی مسیرهای اپ، دستگاه، دستیار
+  lib.php           تشخیص پیامک، تراکنش‌ها، بله، صدا
+  acc_*.php         حسابداری (هسته، عملیات، بانک، پیامک، مؤدیان)
+  assistant*.php    دستیار صوتی و داده‌ی اپ‌ها
+  jobs.php cron.php bot.php webpush.php
+  app/              وب‌اپ گوشی (+ android/bank-assistant.apk)
+  acc/              پنل حسابداری
+  tests/            تست‌های خودکار
+firmware/           ESP32: sim800_test, gprs_forwarder, sms_forwarder, bale_direct
+voice/              صدای فارسی محلی (Whisper + Piper)
+ios/                اپ آیفون (SwiftUI, XcodeGen)
+android/            اپ اندروید (Kotlin, Gradle)
+tools/              ساخت orb، سرور نمونه، عکس‌برداری
+deploy-vps.sh       نصب یک‌دستوری روی VPS
+start-windows.bat   اجرا روی کامپیوتر خودت
+.github/workflows/  بیلد خودکار آیفون و اندروید
+</pre>
+
+<div class="foot">دستیار بانک و حسابداری · نسخه‌ی مهر ۱۴۰۵</div>
+</div>
+</body>
+</html>
