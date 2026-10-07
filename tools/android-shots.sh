@@ -24,6 +24,7 @@ adb shell am start -W -n $PKG/.MainActivity --es server http://10.0.2.2:8840/ --
 shot a2-web-home 14
 
 # the floating orb: it polls, finds the unanswered bank transactions and asks
+adb shell am force-stop $PKG
 adb shell am start -W -n $PKG/.MainActivity --es server http://10.0.2.2:8840/ --ez demo_orb true
 sleep 3
 adb shell input keyevent KEYCODE_HOME
@@ -31,6 +32,11 @@ shot a3-orb-home-asking 6
 shot a4-orb-home 14
 adb shell am start -a android.settings.SETTINGS
 shot a5-orb-over-settings 4
+# the web app's orb card (settings)
+adb shell am start -W -n $PKG/.MainActivity
+sleep 2
+adb shell input swipe 540 1700 540 400 300
+shot a6-app-after 3
 adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys activity services $PKG | grep -i -E "OrbService|isForeground" | head -5
 adb logcat -d -s AndroidRuntime:E | tail -30

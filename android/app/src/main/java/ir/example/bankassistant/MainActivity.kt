@@ -80,6 +80,12 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("demo_orb", false) == true) OrbService.start(this)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("demo_orb", false)) OrbService.start(this)
+    }
+
     override fun onResume() {
         super.onResume()
         if (startOrbWhenAllowed && OrbService.canDrawOverlays(this)) {
