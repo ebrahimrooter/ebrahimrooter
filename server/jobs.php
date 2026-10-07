@@ -139,6 +139,17 @@ function jobs_due($withHealth = true) {
     } catch (Throwable $e) {
         error_log('acc sms: ' . $e->getMessage());
     }
+    // nightly backup of all the books (data/backups, and the owner's Bale chat)
+    if ((int)date('G') >= 3 && ba_kv_get('daemon:backup') !== $today) {
+        ba_kv_set('daemon:backup', $today);
+        try {
+            require_once __DIR__ . '/backup.php';
+            backup_create('daily');
+        } catch (Throwable $e) {
+            error_log('backup: ' . $e->getMessage());
+            ba_notify('⚠️ پشتیبان‌گیری شبانه انجام نشد: ' . $e->getMessage());
+        }
+    }
     if ((int)date('G') >= 21 && ba_kv_get('daemon:remind') !== $today) {
         ba_kv_set('daemon:remind', $today);
         job_remind();

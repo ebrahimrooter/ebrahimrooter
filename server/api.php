@@ -801,6 +801,30 @@ case 'transcribe':
     }
     out(['ok' => true, 'text' => $text]);
 
+case 'backups':
+    require_once __DIR__ . '/backup.php';
+    out(['ok' => true, 'items' => backup_list(), 'last' => ba_kv_get('backup:last'),
+        'encrypted' => (string)($cfg['backup_password'] ?? '') !== '', 'to_bale' => ($cfg['backup_to_bale'] ?? true) && !empty($cfg['bale_chat_id'])]);
+
+case 'backup_now':
+    require_post();
+    require_once __DIR__ . '/backup.php';
+    $b = backup_create('app');
+    unset($b['file']);
+    out(['ok' => true] + $b);
+
+case 'backup_download':
+    require_once __DIR__ . '/backup.php';
+    $path = backup_path($_GET['name'] ?? '');
+    if (!$path) {
+        fail('پیدا نشد', 404);
+    }
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+
 case 'assistant_pair':
     // One-time code (5 minutes) for connecting the iPhone assistant app.
     require_post();

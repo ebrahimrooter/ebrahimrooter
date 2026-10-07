@@ -1011,6 +1011,7 @@
       )) +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
       '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
+      '<h2>پشتیبان‌گیری</h2><div class="card" id="bkBox"><p class="muted">…</p></div>' +
       voiceInfo() +
       '<div class="btns"><button class="btn ghost" id="testVoice">آزمایش صدا و میکروفون</button></div>' +
       '<h2>فرستنده‌های پیامک</h2><p class="muted">شناسه‌ای که پیامک بانک با آن می‌آید (مثلاً یک نام انگلیسی) را تیک بزن؛ بقیه پیامک‌ها دیگر ذخیره نمی‌شوند. اگر هیچ‌کدام تیک نخورد، همه بررسی می‌شوند.</p>' +
@@ -1072,6 +1073,7 @@
     baleSettings();
     renderPerms(document.getElementById('permBox'));
     settingsTail();
+    backupSettings();
     if (IS_ANDROID) androidSettings(); else iosSettings();
   }
 
@@ -1088,6 +1090,47 @@
         setTimeout(iosDevices, 60000);
       }, function (e) { toast(e.message); });
     };
+  }
+
+  /* ---------- backups of all the books (server/backup.php) ---------- */
+
+  function backupSettings() {
+    var box = document.getElementById('bkBox');
+    if (!box) return;
+    api('backups').then(function (d) {
+      var last = d.last;
+      var size = function (n) { return faDigits(Math.max(1, Math.round(n / 1024))) + ' KB'; };
+      box.innerHTML = '<p class="muted">هر شب ساعت ۳ از همه‌ی حساب‌ها (بانک و همه‌ی شرکت‌ها) یک پشتیبان گرفته می‌شود' +
+        (d.to_bale ? ' و فایلش به چت بله‌ی تو فرستاده می‌شود' : '') + '. ' +
+        (d.encrypted ? 'فایل‌ها با رمز پشتیبان قفل‌اند.' : '<span class="warn">رمز پشتیبان (backup_password) گذاشته نشده؛ فایل‌ها رمز ندارند.</span>') + '</p>' +
+        (last ? '<p>آخرین پشتیبان: <b class="num">' + esc(last.at) + '</b> · ' + size(last.size) + (last.bale ? ' · در بله ✅' : '') + '</p>' : '<p class="muted">هنوز پشتیبانی گرفته نشده.</p>') +
+        '<div class="btns"><button class="btn" type="button" id="bkNow">پشتیبان بگیر</button></div>' +
+        (d.items.length ? '<div class="list" style="margin-top:8px">' + d.items.map(function (b) {
+          return '<div class="item"><div class="grow"><div class="num">' + esc(b.at) + '</div><div class="muted">' + size(b.size) + (b.encrypted ? ' · رمزدار' : '') + '</div></div>' +
+            '<button class="btn ghost" type="button" data-bk="' + esc(b.name) + '">دانلود</button></div>';
+        }).join('') + '</div>' : '') +
+        '<p class="muted">برگرداندن روی سرور: <span class="num">php cron.php restore FILE PASSWORD</span> (داده‌ی فعلی کنار گذاشته می‌شود، پاک نمی‌شود).</p>';
+      document.getElementById('bkNow').onclick = function () {
+        this.disabled = true;
+        api('backup_now', { body: {} }).then(function (b) { toast('پشتیبان گرفته شد' + (b.sent_to_bale ? ' و به بله رفت' : '')); backupSettings(); },
+          function (e) { toast(e.message); backupSettings(); });
+      };
+      Array.prototype.forEach.call(box.querySelectorAll('[data-bk]'), function (btn) {
+        btn.onclick = function () {
+          var name = btn.getAttribute('data-bk');
+          fetch(API + '?r=backup_download&name=' + encodeURIComponent(name), { headers: { 'X-App-Token': token() } })
+            .then(function (r) { if (!r.ok) throw new Error('دانلود نشد'); return r.blob(); })
+            .then(function (blob) {
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = name;
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+            }, function (e) { toast(e.message); });
+        };
+      });
+    }, function (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; });
   }
 
   /* ---------- Android app: the native floating orb (android/) ---------- */

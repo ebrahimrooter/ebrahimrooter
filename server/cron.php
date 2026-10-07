@@ -132,11 +132,46 @@ function job_voice_test() {
     return 0;
 }
 
+/** A backup of all the books now (also made every night by the daemon). */
+function job_backup() {
+    require_once __DIR__ . '/backup.php';
+    $b = backup_create('cli');
+    echo "{$b['file']}  " . round($b['size'] / 1024) . ' KB  ' . implode(', ', $b['databases'])
+        . ($b['encrypted'] ? '  encrypted' : '  NOT encrypted (set backup_password)') . ($b['sent_to_bale'] ? '  sent to Bale' : '') . "\n";
+    return 0;
+}
+
+/** php cron.php restore FILE [PASSWORD] — stop the daemon / web server first. */
+function job_restore() {
+    global $argv;
+    require_once __DIR__ . '/backup.php';
+    $file = $argv[2] ?? '';
+    if ($file !== '' && !is_file($file)) {
+        $file = (string)backup_path($file);
+    }
+    if ($file === '' || !is_file($file)) {
+        fwrite(STDERR, "usage: php cron.php restore FILE [PASSWORD]\n");
+        foreach (backup_list() as $b) {
+            fwrite(STDERR, "  {$b['name']}  {$b['at']}" . ($b['encrypted'] ? '  (encrypted)' : '') . "\n");
+        }
+        return 1;
+    }
+    try {
+        $r = backup_restore($file, $argv[3] ?? '');
+    } catch (RuntimeException $e) {
+        fwrite(STDERR, $e->getMessage() . "\n");
+        return 1;
+    }
+    echo 'restored: ' . implode(', ', $r['restored']) . "\nthe data before it: {$r['previous']}\n";
+    return 0;
+}
+
 $job = $argv[1] ?? 'weekly';
 $jobs = ['weekly' => 'job_weekly', 'remind' => 'job_remind', 'health' => 'job_health',
-    'bale-setup' => 'job_bale_setup', 'daemon' => 'job_daemon', 'voice-test' => 'job_voice_test'];
+    'bale-setup' => 'job_bale_setup', 'daemon' => 'job_daemon', 'voice-test' => 'job_voice_test',
+    'backup' => 'job_backup', 'restore' => 'job_restore'];
 if (!isset($jobs[$job])) {
-    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon|voice-test\n");
+    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon|voice-test|backup|restore\n");
     exit(1);
 }
 exit((int)$jobs[$job]());

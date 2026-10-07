@@ -55,4 +55,18 @@ return [
     'voice_timeout' => 120,
     // Answer a Bale voice message with a voice message too (plus the usual text).
     'bale_voice_reply' => true,
+
+    // Backups of all the books every night at 3 (data/backups, and as a file in your Bale chat).
+    // backup_password encrypts them (AES-256-GCM). Keep it somewhere safe: without it no restore.
+    //   php cron.php backup    /    php cron.php restore FILE PASSWORD
+    'backup_password' => '',
+    'backup_keep' => 14,
+    'backup_to_bale' => true,
+
+    // The iPhone app's own notifications (APNs). developer.apple.com → Keys → «+» →
+    // Apple Push Notifications service → download AuthKey_XXXX.p8 (once!).
+    'apns_key_id' => '',            // e.g. ABC123DEFG
+    'apns_team_id' => '',           // your Team ID (Membership details)
+    'apns_key_file' => '',          // e.g. /etc/bank-assistant/AuthKey_ABC123DEFG.p8 (outside the web folder)
+    'apns_topic' => 'ir.example.bankassistant',   // the app's bundle id (ios/project.yml)
 ];
