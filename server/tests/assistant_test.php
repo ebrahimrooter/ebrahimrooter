@@ -151,6 +151,8 @@ check('morning alert lists the open cheques', strpos($msg, 'سررسید چک') 
 echo "iPhone app data\n";
 $sms = http($A . 'ingest', ['sender' => '+98700717', 'text' => "بانک ملت\nواریز:2,500,000\nحساب:1234\nمانده:12,500,000\n" . date('H:i')], ['X-Device-Token: d'])[1];
 $h = http($A . 'assistant_home', [], $D);
+$pp = http($A . 'assistant_pending', [], $D)[1];
+check('pending poll (Android orb)', count(array_filter($pp['items'] ?? [], fn($t) => $t['amount'] === 2500000 && $t['direction'] === 'in')) === 1, json_encode($pp));
 check('home needs the device token', http($A . 'assistant_home', [])[0] === 401);
 $pend = array_values(array_filter($h[1]['pending'] ?? [], fn($t) => $t['amount'] === 2500000));
 check('home: pending deposit from the bank SMS', $h[0] === 200 && count($pend) === 1 && $pend[0]['direction'] === 'in' && strpos($pend[0]['sms_text'], 'واریز') !== false, json_encode($sms) . json_encode($h[1]));

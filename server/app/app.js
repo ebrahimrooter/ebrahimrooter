@@ -1001,12 +1001,14 @@
     app.innerHTML = '<h1>تنظیمات</h1>' +
       '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
       '<div class="btns"><a class="btn ghost" href="#/acc">رفتن به حسابداری</a><a class="btn plain" href="../acc/" target="_blank" rel="noopener">پنل در مرورگر</a></div></div>' +
+      (IS_ANDROID ? androidCard() : (
       '<h2>اپ دستیار آیفون</h2><div class="card" id="iosBox"><p class="muted">اپ همراه «دستیار حسابداری» (پوشه‌ی ios/) با صدا به سؤال‌های حسابداری جواب می‌دهد و وقتی به صفحه‌ی اصلی گوشی بروی، وضعیتش در Dynamic Island و صفحه‌ی قفل می‌ماند. رمز این اپ به آن داده نمی‌شود؛ با یک کد یک‌بارمصرف وصل می‌شود.</p>' +
       '<div class="btns"><button class="btn" type="button" id="iosPair">اتصال اپ آیفون</button><a class="btn ghost" href="bankassistant://listen">باز کردن دستیار</a></div><div id="iosCode"></div><div id="iosDevices" class="muted"></div></div>' +
       '<h2>سیری آیفون (بدون باز کردن اپ)</h2><div class="card"><p class="muted">در اپ Shortcuts یک میان‌بر به اسم Bank بساز (مراحلش در README، بخش «میان‌بر سیری»). این دو آدرس و هدر <span class="num">X-App-Token</span> با رمز همین اپ را لازم دارد:</p>' +
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_next</div>' +
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_answer</div>' +
-      '<p class="muted">بعد بگو «Hey Siri, Bank» یا با دو ضربه به پشت گوشی (Back Tap) اجرایش کن.</p></div>' +
+      '<p class="muted">بعد بگو «Hey Siri, Bank» یا با دو ضربه به پشت گوشی (Back Tap) اجرایش کن.</p></div>'
+      )) +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
       '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
       voiceInfo() +
@@ -1069,6 +1071,11 @@
     };
     baleSettings();
     renderPerms(document.getElementById('permBox'));
+    settingsTail();
+    if (IS_ANDROID) androidSettings(); else iosSettings();
+  }
+
+  function iosSettings() {
     iosDevices();
     document.getElementById('iosPair').onclick = function () {
       api('assistant_pair', { body: {} }).then(function (d) {
@@ -1081,6 +1088,65 @@
         setTimeout(iosDevices, 60000);
       }, function (e) { toast(e.message); });
     };
+  }
+
+  /* ---------- Android app: the native floating orb (android/) ---------- */
+
+  var AND = window.AndroidOrb || null;
+  var IS_ANDROID = !!AND || /Android/i.test(navigator.userAgent);
+
+  function androidCard() {
+    if (!AND) {
+      return '<h2>اپ اندروید — orb روی صفحه‌ی گوشی</h2><div class="card"><p class="muted">در اندروید، دستیار می‌تواند به شکل یک orb شناور روی صفحه‌ی اصلی و همه‌ی برنامه‌ها بماند: ' +
+        'هر وقت روی آن بزنی گوش می‌دهد، و وقتی واریز یا برداشتی برسد خودش می‌پرسد «بابت چی بود؟». برای این کار اپ اندروید را نصب کن (همین اپ است، به‌اضافه‌ی orb).</p>' +
+        '<div class="btns"><a class="btn" href="android/bank-assistant.apk" download>دانلود اپ اندروید</a></div>' +
+        '<p class="muted">بعد از دانلود، فایل را باز کن و اجازه‌ی «نصب از این منبع» را بده. در اپ همان آدرس این صفحه را بزن و با همین رمز وارد شو.</p></div>';
+    }
+    return '<h2>orb روی صفحه‌ی گوشی</h2><div class="card" id="andBox"></div>';
+  }
+
+  function androidSettings() {
+    var box = document.getElementById('andBox');
+    if (!box || !AND) return;
+    var paired = AND.isPaired(), on = AND.orbOn(), overlay = AND.canOverlay();
+    box.innerHTML = '<p class="muted">orb دستیار روی صفحه‌ی اصلی و روی همه‌ی برنامه‌ها شناور می‌ماند. بزن: گوش می‌دهد · بکش: جابه‌جا · روی ✕ بینداز: بسته می‌شود · نگه دار: همین اپ باز می‌شود.</p>' +
+      '<p>' + (on ? '🟢 orb روشن است' : '⚪️ orb خاموش است') + (paired ? '' : ' · <span class="warn">در حال وصل شدن…</span>') +
+      (overlay ? '' : '<br><span class="muted">بار اول اجازه‌ی «نمایش روی برنامه‌های دیگر» را بده.</span>') + '</p>' +
+      '<label class="check"><input type="checkbox" id="andAuto"' + (AND.autoAsk() ? ' checked' : '') + '> وقتی واریز یا برداشت رسید، خودش بپرسد «بابت چی بود؟»</label>' +
+      '<div class="btns">' + (on ? '<button class="btn ghost" type="button" id="andStop">خاموش کردن orb</button>' : '<button class="btn" type="button" id="andStart">روشن کردن orb</button>') +
+      '<button class="btn ghost" type="button" id="andTalk">صحبت با orb</button></div>' +
+      '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>';
+    var on1 = function (id, fn) { var el = document.getElementById(id); if (el) el.onclick = fn; };
+    on1('andStart', function () { androidPair(); AND.startOrb(); setTimeout(androidSettings, 800); });
+    on1('andStop', function () { AND.stopOrb(); setTimeout(androidSettings, 500); });
+    on1('andTalk', function () { androidPair(); AND.talk(); });
+    on1('andServer', function () { if (confirm('اتصال این گوشی به سرور فعلی قطع شود و آدرس دیگری بزنی؟')) AND.changeServer(); });
+    document.getElementById('andAuto').onchange = function () { AND.setAutoAsk(this.checked); };
+  }
+
+  /** The native orb gets its own device token with a one-time code (never the app password). */
+  var andPairing = false;
+  function androidPair() {
+    if (!AND || andPairing || AND.isPaired()) return;
+    andPairing = true;
+    api('assistant_pair', { body: {} }).then(function (d) { AND.pair(d.code); }, function () { andPairing = false; });
+  }
+  window.onAndroidPaired = function (ok, msg) {
+    andPairing = false;
+    if (ok) toast('orb به حسابداری وصل شد'); else if (msg) toast('اتصال orb: ' + msg);
+    androidSettings();
+  };
+  window.onAndroidOrb = function () { androidSettings(); androidHomeChip(); };
+
+  function androidHomeChip() {
+    var el = document.getElementById('ghAnd');
+    if (!el || !AND) return;
+    var on = AND.orbOn();
+    el.textContent = on ? '🟢 orb روی صفحه‌ی گوشی روشن است' : '✨ orb را روی صفحه‌ی گوشی بیاور';
+    el.onclick = function (e) { e.preventDefault(); androidPair(); if (on) AND.talk(); else AND.startOrb(); setTimeout(androidHomeChip, 800); };
+  }
+
+  function settingsTail() {
     document.getElementById('testVoice').onclick = function () {
       Voice.speak('سلام. یک جمله بگو.').then(function () { return Voice.listen(5000); })
         .then(function (t) { toast(t ? 'شنیدم: ' + t : 'چیزی نشنیدم'); }, function (e) { toast('میکروفون: ' + e.message); });
@@ -1686,11 +1752,13 @@
           '<a class="tile t-add" href="#/manual">' + ICON.plus + '<span>ثبت دستی</span></a>' +
           '<a class="tile t-more" href="#/acc">' + ICON.grid + '<span>حسابداری</span></a>' +
         '</div>' +
-        (store('ba_ios') ? '<a class="gh-ios" href="bankassistant://listen">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
+        (AND ? '<a class="gh-ios" href="#" id="ghAnd"></a>' : store('ba_ios') ? '<a class="gh-ios" href="bankassistant://listen">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
         '</section><div class="gsheet" id="money"><p class="muted">در حال بارگذاری…</p></div>';
     }
     document.getElementById('homeOrb').onclick = orbTalk;
     orbMountAll();
+    androidHomeChip();
+    androidPair();
     var q6 = '&from=' + isoDay(-190) + '&to=' + to;
     return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending'), api('list', { query: q6 })]).then(function (r) {
       var items = r[0].items, wallets = r[1].wallets, pending = r[2].items, half = r[3].items;

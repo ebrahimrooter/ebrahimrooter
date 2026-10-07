@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- https for the server on the internet; plain http is allowed only because the
+     server can also run on a computer at home (start-windows.bat, http://192.168.x.x).
+     The setup screen refuses http for anything that is not a home-network address. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

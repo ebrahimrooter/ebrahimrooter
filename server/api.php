@@ -267,6 +267,11 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                     $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];   // e.g. not enough stock
                 }
                 out(['ok' => true, 'heard' => $text] + $ans);
+            case 'assistant_pending':
+                // light poll for the Android floating orb: unanswered bank transactions
+                require_once __DIR__ . '/assistant_app.php';
+                out(['ok' => true, 'items' => array_map(fn($t) => ['id' => $t['id'], 'direction' => $t['direction'], 'amount' => $t['amount'],
+                    'bank_date' => $t['bank_date'], 'bank_time' => $t['bank_time']], aa_txs("t.status = 'pending'", [], 20))]);
             case 'assistant_home':
                 require_once __DIR__ . '/assistant_app.php';
                 out(['ok' => true] + aa_home($device));

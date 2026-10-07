@@ -51,6 +51,12 @@ if (strpos($path, '/app/') === 0 && strpos($path, '..') === false) {
         return true;
     }
     if (is_file(__DIR__ . $path)) {
+        if (substr($path, -4) === '.apk') {
+            header('Content-Type: application/vnd.android.package-archive');
+            header('Content-Disposition: attachment; filename="bank-assistant.apk"');
+            readfile(__DIR__ . $path);
+            return true;
+        }
         if (substr($path, -12) === '.webmanifest') {
             header('Content-Type: application/manifest+json');
             readfile(__DIR__ . $path);

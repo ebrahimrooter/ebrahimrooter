@@ -7,9 +7,12 @@ CGIPassAuth On
 SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
 
 # Only the API and the app are reachable from the web.
-<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant)\.php$">
+<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant|assistant_app)\.php$">
   Require all denied
 </FilesMatch>
 <FilesMatch "\.(sqlite|db)$">
   Require all denied
 </FilesMatch>
+
+# the Android app download (app/android/bank-assistant.apk)
+AddType application/vnd.android.package-archive .apk

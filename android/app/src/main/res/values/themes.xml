@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BankAssistant" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">#1F8F45</item>
+        <item name="colorAccent">#8DE08F</item>
+        <item name="android:statusBarColor">#07140C</item>
+        <item name="android:navigationBarColor">#F4F6F4</item>
+        <item name="android:windowBackground">#07140C</item>
+    </style>
+</resources>
