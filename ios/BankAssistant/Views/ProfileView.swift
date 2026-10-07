@@ -35,6 +35,7 @@ struct ProfileView: View {
                 SectionCard {
                     SectionHeader(title: "اتصال")
                     row("server.rack", "سرور", APIClient.shared.server?.host ?? "—")
+                    row("bell.badge", "نوتیف تراکنش‌ها", PushManager.shared.status.isEmpty ? "—" : PushManager.shared.status)
                     row("antenna.radiowaves.left.and.right", "دستگاه پیامک",
                         h?.sms_device == nil ? "وصل نشده" : (h!.sms_device!.online ? "فعال" : "قطع · آخرین پیام \(Fa.digits(h!.sms_device!.last_seen))"))
                     Button {

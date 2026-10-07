@@ -130,11 +130,18 @@ function wp_send(array $sub, array $message) {
  * number). Expired subscriptions (404/410) are removed.
  */
 function wp_notify_all(array $message) {
+    // the iPhone app (ios/) gets the same notification through APNs
+    $sent = 0;
+    try {
+        require_once __DIR__ . '/apns.php';
+        $sent += apns_notify_all($message);
+    } catch (Throwable $e) {
+        error_log('apns: ' . $e->getMessage());
+    }
     if (!function_exists('openssl_pkey_derive') || !function_exists('curl_init')) {
-        return 0;
+        return $sent;
     }
     $db = ba_db();
-    $sent = 0;
     foreach ($db->query('SELECT * FROM push_subs')->fetchAll() as $sub) {
         try {
             $code = wp_send($sub, $message);

@@ -71,6 +71,17 @@ final class APIClient: @unchecked Sendable {
         self.server = server
     }
 
+    /// Sign in with the app password (no phone web app needed). The password is
+    /// sent once over HTTPS and never stored; only the device token is kept.
+    func login(server: URL, password: String, deviceName: String) async throws {
+        guard server.scheme == "https" || server.host == "localhost" || server.host?.hasPrefix("192.168.") == true else {
+            throw APIError.server("آدرس سرور باید https باشد.")
+        }
+        let r: RedeemReply = try await json(server, route: "assistant_login", body: ["password": password, "device_name": deviceName], token: nil)
+        try KeychainStore.set(r.token, for: tokenKey)
+        self.server = server
+    }
+
     func ask(_ text: String) async throws -> AskReply {
         try await json(nil, route: "assistant_ask", body: ["text": text], token: try token())
     }
@@ -123,6 +134,11 @@ final class APIClient: @unchecked Sendable {
     func manual(incoming: Bool, amountToman: String, description: String, party: String) async throws {
         let _: OKReply = try await call("assistant_manual", ["direction": incoming ? "in" : "out", "amount_toman": amountToman,
                                                              "description": description, "party": party])
+    }
+
+    /// The APNs device token of this phone (server/apns.php sends the notifications).
+    func registerPush(token: String, environment: String) async throws {
+        let _: OKReply = try await call("assistant_push_register", ["token": token, "env": environment])
     }
 
     /// Short-lived session of the accounting panel for the in-app panel (kept in memory only).

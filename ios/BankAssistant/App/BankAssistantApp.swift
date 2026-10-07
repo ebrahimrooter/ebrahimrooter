@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct BankAssistantApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var engine = AssistantEngine.shared
     @State private var store = FinanceStore.shared
     @State private var pairing: DeepLink?

@@ -171,8 +171,16 @@ $s = http($A . 'assistant_acc_session', [], $D)[1];
 $me = http($ACC . '/me', null, ['Authorization: Bearer ' . ($s['token'] ?? '')]);
 check('panel session for the in-app panel', $me[0] === 200 && $me[1]['role'] === 'admin', json_encode($me));
 
+echo "sign in with the app password (no web app)\n";
+check('wrong password refused', http($A . 'assistant_login', ['password' => 'nope', 'device_name' => 'x'])[0] === 403);
+[$c, $lg] = http($A . 'assistant_login', ['password' => 'apppass123', 'device_name' => 'iPhone رمزی']);
+check('right password gives a device token', $c === 200 && strlen($lg['token'] ?? '') === 64, json_encode($lg));
+check('that token works', http($A . 'assistant_me', [], ['Authorization: Bearer ' . $lg['token']])[1]['device']['name'] === 'iPhone رمزی');
+for ($i = 0; $i < 5; $i++) { http($A . 'assistant_login', ['password' => 'bad' . $i]); }
+check('5 wrong passwords lock it', http($A . 'assistant_login', ['password' => 'apppass123'])[0] === 429);
+
 echo "revoke\n";
-$dev = http($A . 'assistant_devices', null, ['X-App-Token: apppass123'])[1]['items'][0];
+$dev = array_values(array_filter(http($A . 'assistant_devices', null, ['X-App-Token: apppass123'])[1]['items'], fn($d) => $d['name'] === 'iPhone تست'))[0];
 http($A . 'assistant_revoke', ['id' => $dev['id']], ['X-App-Token: apppass123']);
 check('revoked device is locked out', http($A . 'assistant_ask', ['text' => 'فروش امروز'], $D)[0] === 401);
 check('revoked device: no data', http($A . 'assistant_home', [], $D)[0] === 401);

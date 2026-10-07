@@ -58,7 +58,7 @@ struct MainTabView: View {
         .task {
             await store.refresh()
             if tab == .accounting { openedBooks = true }
-            if Demo.enabled { await demoSheet() }
+            if Demo.enabled { await demoSheet() } else { await PushManager.shared.enable() }
         }
     }
 }

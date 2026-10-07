@@ -7,7 +7,7 @@ CGIPassAuth On
 SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
 
 # Only the API and the app are reachable from the web.
-<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant|assistant_app)\.php$">
+<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant|assistant_app|apns|backup)\.php$">
   Require all denied
 </FilesMatch>
 <FilesMatch "\.(sqlite|db)$">

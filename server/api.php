@@ -238,6 +238,13 @@ if ($route === 'ping') {
 if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route !== 'assistant_devices' && $route !== 'assistant_revoke') {
     require_once __DIR__ . '/assistant.php';
     require_post();
+    if ($route === 'assistant_login') {
+        try {
+            out(['ok' => true] + assistant_login($in['password'] ?? '', $in['device_name'] ?? '', $_SERVER['REMOTE_ADDR'] ?? ''));
+        } catch (RuntimeException $e) {
+            fail($e->getMessage(), $e->getCode() ?: 400);
+        }
+    }
     if ($route === 'assistant_redeem') {
         try {
             out(['ok' => true] + assistant_redeem($in['code'] ?? '', $in['device_name'] ?? '', $_SERVER['REMOTE_ADDR'] ?? ''));
@@ -252,7 +259,8 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
     try {
         switch ($route) {
             case 'assistant_me':
-                out(['ok' => true, 'device' => ['id' => (int)$device['id'], 'name' => $device['name']], 'voice' => ba_voice_configured()]);
+                require_once __DIR__ . '/apns.php';
+                out(['ok' => true, 'device' => ['id' => (int)$device['id'], 'name' => $device['name']], 'voice' => ba_voice_configured(), 'push' => apns_enabled()]);
             case 'assistant_ask':
                 $text = trim((string)($in['text'] ?? ''));
                 if ($text === '' || mb_strlen($text) > 500) {
@@ -267,6 +275,9 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                     $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];   // e.g. not enough stock
                 }
                 out(['ok' => true, 'heard' => $text] + $ans);
+            case 'assistant_push_register':
+                require_once __DIR__ . '/apns.php';
+                out(['ok' => true] + apns_register($device, $in['token'] ?? '', (string)($in['env'] ?? 'sandbox')));
             case 'assistant_pending':
                 // light poll for the Android floating orb: unanswered bank transactions
                 require_once __DIR__ . '/assistant_app.php';

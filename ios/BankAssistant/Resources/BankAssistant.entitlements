@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- the app's own notifications (server/apns.php); Xcode uses «production» for TestFlight / App Store -->
+	<key>aps-environment</key>
+	<string>development</string>
 	<!-- Universal Links: https://YOUR-DOMAIN/bank/assistant/… opens this app (see ios/README.md, «Universal Links») -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>

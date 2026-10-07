@@ -28,6 +28,15 @@ struct HomeView: View {
         .sheet(item: $selected) { tx in TransactionSheet(tx: tx).presentationDetents([.medium, .large]) }
         .sheet(item: $manual) { d in ManualEntrySheet(draft: d).presentationDetents([.medium, .large]) }
         .sheet(item: $list) { f in TransactionListView(filter: f) }
+        .onChange(of: PushManager.shared.openTx) { _, id in
+            guard let id else { return }
+            PushManager.shared.openTx = nil
+            Task {
+                await store.refresh()
+                let all = (store.home?.pending ?? []) + (store.home?.recent ?? [])
+                selected = all.first { $0.id == id }
+            }
+        }
         .task {
             guard Demo.enabled else { return }
             try? await Task.sleep(for: .seconds(1))

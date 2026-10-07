@@ -32,6 +32,11 @@ function assistant_schema()
         last_seen TEXT,
         revoked INTEGER NOT NULL DEFAULT 0
     )");
+    $cols = array_column(ba_db()->query('PRAGMA table_info(assistant_devices)')->fetchAll(), 'name');
+    if (!in_array('apns_token', $cols, true)) {        // iPhone push notifications (apns.php)
+        ba_db()->exec('ALTER TABLE assistant_devices ADD COLUMN apns_token TEXT');
+        ba_db()->exec("ALTER TABLE assistant_devices ADD COLUMN apns_env TEXT NOT NULL DEFAULT 'sandbox'");
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -80,11 +85,47 @@ function assistant_redeem($code, $name, $ip)
     unset($codes[$hit]);                       // one time only
     ba_kv_set('assistant_pair', array_values($codes));
     ba_kv_set($key, null);
+    return assistant_new_device($name);
+}
+
+/** A new device token (returned once; only its SHA-256 is kept). */
+function assistant_new_device($name)
+{
+    assistant_schema();
     $token = bin2hex(random_bytes(32));
     $name = mb_substr(trim((string)$name) ?: 'iPhone', 0, 60);
     ba_db()->prepare('INSERT INTO assistant_devices (name, token_hash, created_at) VALUES (?, ?, ?)')
         ->execute([$name, hash('sha256', $token), date('Y-m-d H:i:s')]);
     return ['token' => $token, 'device_id' => (int)ba_db()->lastInsertId(), 'name' => $name];
+}
+
+/**
+ * Sign in from the iPhone app with the app password, without the phone web app.
+ * The password is only checked here; the app keeps just the device token it gets.
+ * 5 wrong passwords from one address = 15 minutes locked, and a Bale notice.
+ */
+function assistant_login($password, $name, $ip)
+{
+    $key = 'assistant_login_fail:' . $ip;
+    $fails = (array)ba_kv_get($key, ['n' => 0, 'until' => 0]);
+    if ($fails['until'] > time()) {
+        throw new RuntimeException('تلاش زیاد؛ ' . ceil(($fails['until'] - time()) / 60) . ' دقیقه بعد دوباره امتحان کن', 429);
+    }
+    $app = (string)(ba_config()['app_token'] ?? '');
+    if ($app === '' || strpos($app, 'CHANGE-ME') === 0 || !hash_equals($app, (string)$password)) {
+        usleep(400000);
+        $fails['n']++;
+        if ($fails['n'] >= 5) {
+            $fails = ['n' => 0, 'until' => time() + 900];
+            ba_notify('⚠️ پنج بار رمز اشتباه برای ورود اپ آیفون از ' . $ip . '؛ ۱۵ دقیقه قفل شد.');
+        }
+        ba_kv_set($key, $fails);
+        throw new RuntimeException('رمز اپ نادرست است', 403);
+    }
+    ba_kv_set($key, null);
+    $d = assistant_new_device($name);
+    ba_notify('📱 گوشی «' . $d['name'] . '» با رمز اپ به دستیار حسابداری وصل شد. اگر کار تو نبود، از تنظیمات اپ دسترسی‌اش را لغو کن و رمز اپ را عوض کن.');
+    return $d;
 }
 
 /** The device behind "Authorization: Bearer <token>", or null. */
