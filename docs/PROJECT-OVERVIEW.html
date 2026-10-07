@@ -63,6 +63,9 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
   <div><a href="#road">۸. نقشه‌ی راه نصب (از صفر تا کار)</a></div>
   <div><a href="#next">۹. نقشه‌ی راه آینده و وضعیت</a></div>
   <div><a href="#files">۱۰. ساختار فایل‌ها</a></div>
+  <div><a href="#login">۱۱. ورود اپ آیفون بدون وب‌اپ</a></div>
+  <div><a href="#push">۱۲. نوتیف خود اپ آیفون (APNs)</a></div>
+  <div><a href="#backup">۱۳. پشتیبان‌گیری خودکار</a></div>
 </div>
 
 <h2 id="sum">۱. خلاصه‌ی پروژه</h2>
@@ -222,7 +225,9 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
 <tr><td>دستگاه پیامک</td><td><code>X-Device-Token</code></td><td><code>ingest</code> · <code>heartbeat</code></td></tr>
 <tr><td>ربات بله</td><td>توکن ربات + chat id</td><td><code>bale</code> (webhook)</td></tr>
 <tr><td>وب‌اپ</td><td><code>X-App-Token</code> (رمز اپ)</td><td>pending · list · confirm · ignore · manual · report · people · wallets · categories · reconcile · otp · push_* · settings · export · assistant_web · assistant_pair …</td></tr>
-<tr><td>اپ آیفون / orb اندروید</td><td><code>Bearer</code> توکن دستگاه (کد یک‌بارمصرف)</td><td>assistant_redeem · ask · transcribe · speak · home · list · pending · confirm · ignore · manual · acc_session</td></tr>
+<tr><td>ورود اپ آیفون</td><td>رمز اپ (یک بار) یا کد یک‌بارمصرف</td><td><code>assistant_login</code> · <code>assistant_redeem</code> → توکن دستگاه</td></tr>
+<tr><td>اپ آیفون / orb اندروید</td><td><code>Bearer</code> توکن دستگاه</td><td>ask · transcribe · speak · home · list · pending · confirm · ignore · manual · acc_session · push_register</td></tr>
+<tr><td>پشتیبان‌گیری</td><td><code>X-App-Token</code></td><td><code>backups</code> · <code>backup_now</code> · <code>backup_download</code></td></tr>
 <tr><td>پنل حسابداری</td><td>نشست ۱۲ ساعته</td><td><code>acc/api.php?p=/…</code> — ۱۰۱ مسیر REST با دسترسی نقش‌ها</td></tr>
 </table>
 <div class="grid">
@@ -234,12 +239,12 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
 <h2 id="apps">۷. اپ‌ها و پنل</h2>
 <table>
 <tr><th></th><th>اپ آیفون</th><th>اپ اندروید</th><th>وب‌اپ گوشی</th><th>پنل حسابداری</th></tr>
-<tr><td>نصب</td><td>Xcode (حساب Apple)</td><td>APK مستقیم</td><td>مرورگر + صفحه‌ی اصلی</td><td>مرورگر کامپیوتر</td></tr>
+<tr><td>نصب و ورود</td><td>Xcode · ورود با رمز اپ</td><td>APK مستقیم</td><td>مرورگر + صفحه‌ی اصلی</td><td>مرورگر کامپیوتر</td></tr>
 <tr><td>واریز/برداشت و «بابت چی بود؟»</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td></tr>
 <tr><td>حسابداری کامل</td><td class="ok">✔ (داخل اپ)</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td></tr>
 <tr><td>دستیار صوتی orb</td><td class="ok">✔</td><td class="ok">✔</td><td class="ok">✔</td><td>—</td></tr>
 <tr><td>orb روی صفحه‌ی اصلی</td><td class="wn">PiP (فقط هنگام صحبت)</td><td class="ok">✔ همیشه</td><td>—</td><td>—</td></tr>
-<tr><td>نوتیف تراکنش</td><td class="wn">از وب‌اپ / بله</td><td class="ok">✔ خودش</td><td class="ok">✔ Web Push</td><td>—</td></tr>
+<tr><td>نوتیف تراکنش</td><td class="ok">✔ APNs (جواب داخل نوتیف)</td><td class="ok">✔ خودش</td><td class="ok">✔ Web Push</td><td>—</td></tr>
 <tr><td>سیری / دستیار گوشی</td><td class="ok">«Hey Siri, Ask Orb»</td><td>—</td><td>میان‌بر سیری</td><td>—</td></tr>
 </table>
 
@@ -251,9 +256,10 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
   <li><b class="t">اتصال ESP32 به سرور <span class="phase p-done">آماده</span></b><code>gprs_forwarder.ino</code>: <code>SERVER_URL</code>، <code>DEVICE_TOKEN</code>، <code>ALLOWED_SENDER</code> و APN را بنویس و آپلود کن. یک پیامک آزمایشی ← باید در بله «بابت چی بود؟» بیاید و در تنظیمات اپ «دستگاه پیامک: فعال» دیده شود.</li>
   <li><b class="t">فرستنده‌ی بانک <span class="phase p-done">آماده</span></b>بعد از اولین پیامک: وب‌اپ ← تنظیمات ← «فرستنده‌های پیامک» ← فقط شناسه‌ی بانک را تیک بزن.</li>
   <li><b class="t">اپ اندروید <span class="phase p-test">نیاز به تست روی گوشی</span></b>APK را نصب کن ← آدرس سرور ← رمز اپ ← تنظیمات ← «روشن کردن orb» ← اجازه‌ی نمایش روی برنامه‌ها و میکروفون.</li>
-  <li><b class="t">اپ آیفون <span class="phase p-test">نیاز به تست روی گوشی</span></b>روی مک: <code>xcodegen generate</code> ← Team و شناسه‌ی اپ ← Run روی آیفون ← وب‌اپ روی همان گوشی ← تنظیمات ← «اتصال اپ آیفون».</li>
+  <li><b class="t">اپ آیفون <span class="phase p-test">نیاز به تست روی گوشی</span></b>روی مک: <code>xcodegen generate</code> ← Team و شناسه‌ی اپ ← Run روی آیفون ← در اپ: آدرس سرور و رمز اپ ← «ورود» (بخش ۱۱).</li>
   <li><b class="t">حسابداری <span class="phase p-done">آماده</span></b>پنل <code>/bank/acc/</code> با <code>admin</code> و رمز اپ ← رمز را عوض کن ← مشخصات شرکت، حساب‌های بانک و صندوق، اشخاص، کالاها ← اتصال تراکنش‌های بانک به حساب بانکی.</li>
-  <li><b class="t">پشتیبان‌گیری <span class="phase p-next">پیشنهاد</span></b>از <code>/var/www/html/bank/data/</code> (همه‌ی حساب‌ها همین فایل‌هاست) هر روز نسخه‌ی پشتیبان بگیر.</li>
+  <li><b class="t">پشتیبان‌گیری <span class="phase p-done">آماده</span></b><code>backup_password</code> را در config.php بگذار؛ از همان شب خودکار است (بخش ۱۳).</li>
+  <li><b class="t">نوتیف اپ آیفون <span class="phase p-test">کلید اپل لازم است</span></b>کلید .p8 از developer.apple.com و چهار خط در config.php (بخش ۱۲).</li>
 </ol>
 
 <h2 id="next">۹. نقشه‌ی راه آینده و وضعیت</h2>
@@ -264,11 +270,11 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
 <tr><td>اپ اندروید و orb شناور</td><td class="ok">بیلد و روی شبیه‌ساز اجرا شد</td><td>orb روی صفحه‌ی اصلی، پرسیدن تراکنش، نوتیف</td></tr>
 <tr><td>صحبت با میکروفون روی گوشی واقعی</td><td class="wn">باید تست شود</td><td>شبیه‌سازها میکروفون ندارند</td></tr>
 <tr><td>PiP آیفون روی گوشی واقعی</td><td class="wn">باید تست شود</td><td>شبیه‌ساز ابری PiP ندارد</td></tr>
-<tr><td>نوتیف خود اپ آیفون (APNs)</td><td class="no">نشده</td><td>حساب پولی Apple Developer و کلید APNs روی سرور</td></tr>
-<tr><td>اتصال اپ آیفون بدون وب‌اپ</td><td class="no">نشده</td><td>ورود مستقیم با رمز اپ</td></tr>
+<tr><td>نوتیف خود اپ آیفون (APNs)</td><td class="ok">انجام شده</td><td>با سرور شبیه APNs تست شد؛ روی آیفون واقعی کلید .p8 و حساب پولی Apple لازم است (بخش ۱۲)</td></tr>
+<tr><td>اتصال اپ آیفون بدون وب‌اپ</td><td class="ok">انجام شده</td><td>ورود با رمز اپ (بخش ۱۱)</td></tr>
 <tr><td>خواندن پیامک مستقیم در اپ اندروید</td><td class="no">نشده</td><td>جایگزین ESP32 روی گوشی اندرویدی که سیم‌کارت بانک دارد</td></tr>
 <tr><td>App Store / Google Play</td><td class="no">نشده</td><td>کلید امضای خصوصی، سیاست حریم خصوصی، بررسی اپل برای PiP</td></tr>
-<tr><td>پشتیبان‌گیری خودکار</td><td class="no">نشده</td><td>ارسال روزانه‌ی فایل دیتابیس به جای امن</td></tr>
+<tr><td>پشتیبان‌گیری خودکار</td><td class="ok">انجام شده و تست شده</td><td>هر شب، رمزدار، در سرور و چت بله؛ برگرداندن با یک دستور (بخش ۱۳)</td></tr>
 </table>
 
 <h2 id="files">۱۰. ساختار فایل‌ها</h2>
@@ -278,6 +284,8 @@ server/             سرور (PHP)
   lib.php           تشخیص پیامک، تراکنش‌ها، بله، صدا
   acc_*.php         حسابداری (هسته، عملیات، بانک، پیامک، مؤدیان)
   assistant*.php    دستیار صوتی و داده‌ی اپ‌ها
+  apns.php          نوتیف اپ آیفون
+  backup.php        پشتیبان‌گیری و برگرداندن
   jobs.php cron.php bot.php webpush.php
   app/              وب‌اپ گوشی (+ android/bank-assistant.apk)
   acc/              پنل حسابداری
@@ -291,6 +299,50 @@ deploy-vps.sh       نصب یک‌دستوری روی VPS
 start-windows.bat   اجرا روی کامپیوتر خودت
 .github/workflows/  بیلد خودکار آیفون و اندروید
 </pre>
+
+
+<h2 id="login">۱۱. ورود اپ آیفون بدون وب‌اپ <small>مرحله‌به‌مرحله</small></h2>
+<ol class="steps">
+  <li><b class="t">اپ را باز کن</b>بعد از صفحه‌های معرفی، صفحه‌ی «اتصال به حسابداری» می‌آید. حالت پیش‌فرض «رمز اپ» است.</li>
+  <li><b class="t">آدرس سرور</b>همان آدرس وب‌اپ؛ مثلاً <code>185-221-237-61.sslip.io/bank</code>. اپ خودش <code>https://</code> و <code>api.php</code> را اضافه می‌کند. آدرس اینترنتی باید https باشد.</li>
+  <li><b class="t">رمز اپ</b>همان رمزی که در وب‌اپ و پنل می‌زنی (<code>app_token</code>) ← «ورود».</li>
+  <li><b class="t">چه اتفاقی می‌افتد</b>سرور رمز را چک می‌کند و یک <b>توکن دستگاه</b> می‌دهد که در Keychain آیفون می‌ماند. <b>رمز اپ روی گوشی ذخیره نمی‌شود.</b> در چت بله پیام «گوشی … وصل شد» می‌آید.</li>
+  <li><b class="t">امنیت</b>۵ رمز اشتباه از یک آدرس = ۱۵ دقیقه قفل و خبر در بله. هر گوشی را از وب‌اپ ← تنظیمات ← «اپ دستیار آیفون» می‌شود لغو کرد؛ اگر شک داری رمز اپ را هم عوض کن.</li>
+  <li><b class="t">راه قبلی هم هست</b>«کد یک‌بارمصرف» از تنظیمات وب‌اپ، برای وقتی نمی‌خواهی رمز را روی آن گوشی تایپ کنی.</li>
+</ol>
+
+<h2 id="push">۱۲. نوتیف خود اپ آیفون (APNs) <small>مرحله‌به‌مرحله</small></h2>
+<div class="card">نیاز: حساب <b>Apple Developer Program</b> (پولی، سالانه). با Apple ID رایگان اپل اجازه‌ی نوتیف نمی‌دهد؛ در آن حالت نوتیف از وب‌اپ یا بله می‌آید.</div>
+<ol class="steps">
+  <li><b class="t">ساخت کلید</b>developer.apple.com ← Certificates, IDs &amp; Profiles ← <b>Keys</b> ← «+» ← نام دلخواه ← تیک <b>Apple Push Notifications service (APNs)</b> ← Continue ← Register ← <b>Download</b>. فایل <code>AuthKey_XXXXXXXXXX.p8</code> فقط یک بار دانلود می‌شود؛ نگهش دار. <b>Key ID</b> (۱۰ حرف) را یادداشت کن.</li>
+  <li><b class="t">Team ID</b>developer.apple.com ← Membership details ← Team ID (۱۰ حرف).</li>
+  <li><b class="t">شناسه‌ی اپ</b>در Identifiers، شناسه‌ی اپ (مثلاً <code>ir.yourname.bankassistant</code>) را بساز و <b>Push Notifications</b> را تیک بزن. همین شناسه در <code>ios/project.yml</code> و Xcode.</li>
+  <li><b class="t">فایل روی سرور</b><pre>sudo mkdir -p /etc/bank-assistant
+sudo cp AuthKey_ABC123DEFG.p8 /etc/bank-assistant/
+sudo chown root:www-data /etc/bank-assistant/AuthKey_ABC123DEFG.p8
+sudo chmod 640 /etc/bank-assistant/AuthKey_ABC123DEFG.p8</pre>(بیرون از پوشه‌ی وب، تا از اینترنت دیده نشود.)</li>
+  <li><b class="t">config.php</b><pre>'apns_key_id'   => 'ABC123DEFG',
+'apns_team_id'  => 'TEAM123456',
+'apns_key_file' => '/etc/bank-assistant/AuthKey_ABC123DEFG.p8',
+'apns_topic'    => 'ir.yourname.bankassistant',</pre></li>
+  <li><b class="t">Xcode</b>Signing &amp; Capabilities ← <b>Push Notifications</b> (در پروژه آماده است؛ فقط Team را انتخاب کن) ← Run روی آیفون.</li>
+  <li><b class="t">در اپ</b>بعد از ورود، اپ اجازه‌ی نوتیف می‌خواهد ← Allow. در پروفایل اپ «نوتیف تراکنش‌ها: فعال» دیده می‌شود.</li>
+  <li><b class="t">آزمایش</b>وب‌اپ ← تنظیمات ← «نوتیف آزمایشی»؛ یا یک پیامک بانک. روی نوتیف واریز/برداشت <b>نگه دار</b>: «بابت چی بود؟» را همان‌جا بنویس ← «ثبت» (بدون باز کردن اپ در دفاتر ثبت می‌شود). یا «جواب با صدا» ← اپ باز می‌شود با همان تراکنش و دکمه‌ی میکروفون.</li>
+  <li><b class="t">نسخه‌ی TestFlight / App Store</b>این نسخه‌ها خودشان به سرور «production» اپل وصل می‌شوند؛ تنظیم دیگری لازم نیست.</li>
+</ol>
+
+<h2 id="backup">۱۳. پشتیبان‌گیری خودکار <small>مرحله‌به‌مرحله</small></h2>
+<ol class="steps">
+  <li><b class="t">رمز پشتیبان</b>در config.php: <code>'backup_password' =&gt; 'یک رمز بلند'</code>. فایل‌ها با AES-256 قفل می‌شوند. <b>این رمز را جای امنی جدا از سرور بنویس</b>؛ بدون آن برگرداندن ممکن نیست.</li>
+  <li><b class="t">خودکار</b>هر شب از ساعت ۳: همه‌ی پایگاه‌های داده (بانک و همه‌ی شرکت‌ها) یک فایل <code>bank-backup-تاریخ.bkp</code> می‌شوند؛ ۱۴ تای آخر روی سرور (<code>data/backups</code>) می‌مانند (<code>backup_keep</code>) و هر فایل به <b>چت بله‌ی تو</b> فرستاده می‌شود (نسخه‌ی بیرون از سرور). اگر نشد، در بله خبر می‌دهد.</li>
+  <li><b class="t">دستی</b>وب‌اپ ← تنظیمات ← «پشتیبان‌گیری» ← «پشتیبان بگیر»؛ همان‌جا هر فایل را دانلود کن. یا روی سرور: <code>php cron.php backup</code>.</li>
+  <li><b class="t">برگرداندن</b><pre>sudo systemctl stop bank-bot
+cd /var/www/html/bank
+sudo -u www-data php cron.php restore                       # فهرست پشتیبان‌ها
+sudo -u www-data php cron.php restore bank-backup-20261007-030000.bkp 'رمز پشتیبان'
+sudo systemctl start bank-bot</pre>فایلی که از بله دانلود کرده‌ای را هم می‌شود داد (مسیر کامل فایل). داده‌ی فعلی پاک نمی‌شود؛ به <code>data/before-restore-…</code> منتقل می‌شود.</li>
+  <li><b class="t">آزمایش کن</b>یک بار روی یک کپی سرور برگرداندن را امتحان کن تا مطمئن شوی رمز را درست داری.</li>
+</ol>
 
 <div class="foot">دستیار بانک و حسابداری · نسخه‌ی مهر ۱۴۰۵</div>
 </div>
