@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تست دستیار بانک</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--deep:#07140c;--forest:#17381f;--lime:#8de08f;--leaf:#5bbd6d;--g1:#1f8f45;--ink:#121414;--muted:#5d6d69;--line:#dde6e3;--bg:#eef2ef;--card:#fff;--bale:#3a83f1}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.7 Vazirmatn,Tahoma,sans-serif}
+header{background:radial-gradient(600px 300px at 85% -10%,#275c34,transparent 70%),var(--deep);color:#fff;padding:22px 20px 20px}
+header .in{max-width:1380px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:24px;font-weight:800}
+header p{margin:2px 0 0;color:rgba(255,255,255,.7);font-size:14px}
+header .sp{flex:1}
+.btn{font:inherit;font-weight:700;border:0;border-radius:12px;padding:9px 16px;cursor:pointer;background:var(--g1);color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.ghost{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25)}
+.btn.light{background:#e3f5e4;color:var(--g1)}
+.btn.bale{background:var(--bale)}
+.btn.sm{padding:6px 12px;font-size:13px;border-radius:10px}
+main{max-width:1380px;margin:0 auto;padding:18px 16px 40px;display:grid;grid-template-columns:420px 1fr 380px;gap:18px;align-items:start}
+@media (max-width:1180px){main{grid-template-columns:1fr 1fr}.phone-col{grid-row:span 2}}
+@media (max-width:760px){main{grid-template-columns:1fr}.phone-col{grid-row:auto}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:16px}
+.card h2{margin:0 0 4px;font-size:17px}
+.muted{color:var(--muted);font-size:13px}
+.phone{width:390px;max-width:100%;height:800px;border-radius:52px;background:#000;padding:12px;margin:0 auto;box-shadow:0 30px 60px rgba(0,0,0,.25);position:relative}
+.phone iframe{width:100%;height:100%;border:0;border-radius:42px;background:#07140c}
+.phone::before{content:'';position:absolute;top:22px;left:50%;transform:translateX(-50%);width:110px;height:30px;border-radius:20px;background:#000;z-index:2}
+.phone-links{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.esp{display:flex;align-items:center;gap:10px;margin:8px 0 12px}
+.led{width:12px;height:12px;border-radius:50%;background:#2ecc71;box-shadow:0 0 10px #2ecc71}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.chip{font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;cursor:pointer}
+.chip:hover{border-color:var(--leaf)}
+textarea,input{width:100%;font:inherit;border:1px solid #cbd8d4;border-radius:12px;padding:10px 12px;background:#f8faf9}
+textarea{min-height:110px;direction:rtl;resize:vertical}
+.log{font-size:12.5px;max-height:160px;overflow:auto;background:#0d1a12;color:#cdeccd;border-radius:12px;padding:10px;margin-top:10px;direction:ltr;text-align:left;white-space:pre-wrap}
+.bale-win{border-radius:20px;overflow:hidden;border:1px solid var(--line);background:#e6ebf2;display:flex;flex-direction:column;height:560px}
+.bale-top{background:var(--bale);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.bale-top .av{width:36px;height:36px;border-radius:50%;background:#fff;color:var(--bale);display:grid;place-items:center;font-weight:800}
+.msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:85%;padding:8px 12px;border-radius:14px;white-space:pre-wrap;font-size:14px;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+.m.bot{background:#fff;align-self:flex-start;border-top-right-radius:4px}
+.m.me{background:#d7f0c6;align-self:flex-end;border-top-left-radius:4px}
+.kb{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.kb button{font:inherit;font-size:12.5px;border:0;background:#eef3fb;color:#1d4f9a;border-radius:10px;padding:5px 10px;cursor:pointer}
+.bale-in{display:flex;gap:8px;padding:10px;background:#fff}
+.bale-in input{flex:1}
+.grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.grid3 a{display:block;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#fff;text-decoration:none;color:inherit;font-size:12px;text-align:center}
+.grid3 img{width:100%;display:block}
+.grid3 span{display:block;padding:6px}
+.steps{margin:6px 0 0;padding-inline-start:20px;font-size:14px}
+.steps li{margin:3px 0}
+.full{grid-column:1/-1}
+.panel-frame{width:100%;height:760px;border:1px solid var(--line);border-radius:18px;background:#fff}
+.tag{display:inline-block;font-size:12px;background:#fff3d6;color:#7a4d00;border-radius:99px;padding:1px 10px}
+</style>
+</head>
+<body>
+<header><div class="in">
+  <div><h1>نسخه‌ی تست — دستیار بانک و حسابداری</h1>
+  <p>بدون سرور و PHP، با اطلاعات نمونه. هر چه اینجا ثبت کنی فقط در همین مرورگر می‌ماند.</p></div>
+  <div class="sp"></div>
+  <a class="btn ghost" href="acc/index.html" target="_blank">پنل حسابداری در تب جدید</a>
+  <button class="btn ghost" id="reset" type="button">شروع دوباره</button>
+</div></header>
+
+<main>
+  <section class="phone-col">
+    <div class="phone"><iframe id="app" src="app/index.html" title="وب‌اپ گوشی" allow="microphone; autoplay"></iframe></div>
+    <div class="phone-links">
+      <a class="btn light sm" href="app/index.html" target="_blank">باز کردن اپ در صفحه‌ی کامل</a>
+      <button class="btn light sm" type="button" data-go="#/">خانه</button>
+      <button class="btn light sm" type="button" data-go="#/acc">حسابداری</button>
+      <button class="btn light sm" type="button" data-go="#/settings">تنظیمات</button>
+    </div>
+    <p class="muted" style="text-align:center">دستیار صوتی (orb) در کروم با میکروفون کامپیوتر یا گوشی کار می‌کند.</p>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>📡 شبیه‌ساز ESP32 + SIM800</h2>
+      <div class="esp"><span class="led"></span><b>دستگاه پیامک: فعال</b><span class="muted">· آنتن ۲۲ از ۳۱ · سیم‌کارت ثبت شده</span></div>
+      <p class="muted">یک پیامک بانک بفرست؛ مثل وقتی که ESP32 آن را به سرور می‌فرستد. بعد orb در گوشی و ربات بله می‌پرسند «بابت چی بود؟».</p>
+      <div class="chips">
+        <button class="chip" type="button" data-sms="in">واریز ۲٬۷۵۰٬۰۰۰ تومان</button>
+        <button class="chip" type="button" data-sms="out">برداشت ۸۹۰٬۰۰۰ تومان</button>
+        <button class="chip" type="button" data-sms="big">واریز ۱۲ میلیون</button>
+        <button class="chip" type="button" data-sms="otp">رمز پویا</button>
+      </div>
+      <textarea id="sms"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn" id="send" type="button">ارسال پیامک به سرور</button>
+        <span class="muted" style="align-self:center">فرستنده: <b>Bank Mellat</b> · <span class="ltr">POST api.php?r=ingest</span></span>
+      </div>
+      <div class="log" id="log">ESP32 ready. Waiting for SMS…</div>
+    </div>
+
+    <div class="card">
+      <h2>🧪 چه چیزهایی را امتحان کنم؟</h2>
+      <ol class="steps">
+        <li>یک پیامک «برداشت» بفرست؛ در گوشی orb باز می‌شود. روی orb بزن و بگو «خرید سوخت تراکتور» (یا فرم را پر کن).</li>
+        <li>در ربات بله جواب بده؛ بعد در اپ «واریز و برداشت» ببین ثبت شده.</li>
+        <li>در اپ روی orb بزرگ بزن و بپرس: «فروش امسال»، «سود»، «موجودی بانک»، «چک‌ها»، «حساب علی رضایی».</li>
+        <li>تب «حسابداری»: فاکتور، اشخاص، کالا، خزانه، چک، گزارش‌ها. شخص یا کالای جدید اضافه کن.</li>
+        <li>تنظیمات ← «پشتیبان‌گیری» ← «پشتیبان بگیر».</li>
+        <li>پنل کامپیوتر را از دکمه‌ی بالا در تب جدید باز کن.</li>
+      </ol>
+      <p class="muted"><span class="tag">نسخه‌ی تست</span> گزارش‌های پیچیده و سند حسابداری همان اطلاعات نمونه‌اند؛ محاسبه‌ی واقعی روی سرور انجام می‌شود.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="bale-win">
+      <div class="bale-top"><span class="av">🤖</span><div><b>ربات حسابداری</b><div style="font-size:12px;opacity:.8">بله · شبیه‌ساز</div></div></div>
+      <div class="msgs" id="msgs"></div>
+      <form class="bale-in" id="baleForm"><input id="baleIn" placeholder="جواب بده یا /pending /today" autocomplete="off"><button class="btn bale sm">ارسال</button></form>
+    </div>
+  </section>
+
+  <section class="card full">
+    <h2>📱 اپ‌های native (عکس از شبیه‌سازها)</h2>
+    <p class="muted">اپ آیفون (SwiftUI) و اپ اندروید (Kotlin) را نمی‌شود در مرورگر اجرا کرد؛ این‌ها عکس واقعی از شبیه‌ساز آیفون و اندروید با همین اطلاعات نمونه‌اند.</p>
+    <div class="grid3" id="gallery"></div>
+  </section>
+
+  <section class="card full">
+    <h2>💻 پنل حسابداری (کامپیوتر)</h2>
+    <iframe class="panel-frame" src="acc/index.html" title="پنل حسابداری" loading="lazy"></iframe>
+  </section>
+</main>
+
+<script src="snapshot.js"></script>
+<script src="mock.js"></script>
+<script>
+(function () {
+  var T = window.__TEST;
+  var $ = function (id) { return document.getElementById(id); };
+  var app = $('app');
+  var now = function () { var d = new Date(); return d.toTimeString().slice(0, 5); };
+  var jdate = function () {
+    try { return new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch (e) { return '1405/07/18'; }
+  };
+  var SMS = {
+    in: function () { return 'بانک ملت\nواریز:27,500,000\nحساب:0123456789\nمانده:1,090,200,000\n' + jdate() + '-' + now(); },
+    out: function () { return 'بانک ملت\nبرداشت:8,900,000\nحساب:0123456789\nمانده:1,081,300,000\n' + jdate() + '-' + now(); },
+    big: function () { return 'بانک ملت\nواریز:120,000,000\nحساب:0123456789\nمانده:1,201,300,000\n' + jdate() + '-' + now(); },
+    otp: function () { return 'بانک ملت\nرمز پویا: 482913\nمبلغ: 1,500,000\nپذیرنده: فروشگاه نمونه\nاعتبار ۲ دقیقه'; }
+  };
+  $('sms').value = SMS.out();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sms]'), function (b) {
+    b.onclick = function () { $('sms').value = SMS[b.getAttribute('data-sms')](); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) {
+    b.onclick = function () { app.src = 'app/index.html' + b.getAttribute('data-go'); };
+  });
+  var log = function (s) { $('log').textContent += '\n[' + new Date().toTimeString().slice(0, 8) + '] ' + s; $('log').scrollTop = 1e9; };
+
+  // ---------------- Bale simulator
+  var waiting = null;   // transaction the bot asked about
+  var draft = null;
+  function bot(text, buttons) {
+    var m = document.createElement('div');
+    m.className = 'm bot';
+    m.textContent = text;
+    if (buttons) {
+      var kb = document.createElement('div');
+      kb.className = 'kb';
+      buttons.forEach(function (b) {
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = b[0];
+        x.onclick = b[1];
+        kb.appendChild(x);
+      });
+      m.appendChild(kb);
+    }
+    $('msgs').appendChild(m);
+    $('msgs').scrollTop = 1e9;
+  }
+  function me(text) {
+    var m = document.createElement('div');
+    m.className = 'm me';
+    m.textContent = text;
+    $('msgs').appendChild(m);
+    $('msgs').scrollTop = 1e9;
+  }
+  function askNext() {
+    var p = T.pending();
+    if (!p.length) { waiting = null; bot('✅ تراکنش بی‌جوابی نمانده.'); return; }
+    var tx = p[p.length - 1];
+    waiting = tx.id;
+    bot((tx.direction === 'in' ? '🟢 واریز ' : '🔴 برداشت ') + T.toman(tx.amount) + '\n🕓 ' + tx.bank_date + ' ' + (tx.bank_time || '') +
+      (tx.balance ? ' · مانده: ' + T.toman(tx.balance) : '') + '\nبابت چی بود؟ بنویس.',
+      [['⏭ بعداً', function () { me('⏭ بعداً'); waiting = null; bot('باشد، بعداً می‌پرسم.'); }],
+       ['🚫 نادیده بگیر', function () { me('🚫 نادیده'); ignore(tx.id); }]]);
+  }
+  function ignore(id) {
+    fetch('api.php?r=ignore', { method: 'POST', body: JSON.stringify({ id: id }), headers: { 'Content-Type': 'application/json' } })
+      .then(function () { bot('🚫 نادیده گرفته شد.'); askNext(); });
+  }
+  function answer(text) {
+    var tx = T.pending().filter(function (t) { return t.id === waiting; })[0];
+    if (!tx) { waiting = null; return false; }
+    var g = T.guess(text, tx.direction);
+    var cat = (T.state().bank.categories.json.items || []).filter(function (c) { return c.id === g.category_id; })[0];
+    draft = { id: tx.id, g: g };
+    bot('📝 بابت: ' + g.description + '\n👤 طرف حساب: ' + (g.party || '—') + '\n📂 دسته: ' + (cat ? cat.name : '—') + '\nدرسته؟',
+      [['✅ ثبت', function () { me('✅'); save(); }], ['🚫 نادیده', function () { me('🚫'); draft = null; ignore(tx.id); }]]);
+    return true;
+  }
+  function save() {
+    if (!draft) return;
+    T.confirm(draft.id, draft.g.description, draft.g.party, draft.g.category_id);
+    bot('✅ ثبت شد و در حسابداری نشست.');
+    draft = null;
+    waiting = null;
+    setTimeout(askNext, 400);
+  }
+  $('baleForm').onsubmit = function (e) {
+    e.preventDefault();
+    var v = $('baleIn').value.trim();
+    if (!v) return;
+    $('baleIn').value = '';
+    me(v);
+    if (/^(آره|بله|ثبت|درسته)/.test(v) && draft) return save();
+    if (v === '/pending') return askNext();
+    if (v === '/today' || v === '/start') {
+      var w = T.wallets();
+      return bot('📊 امروز\n' + w.map(function (x) { return '• ' + x.name + ': ' + T.toman(x.balance); }).join('\n') + '\n⏳ بی‌جواب: ' + T.pending().length);
+    }
+    if (waiting && answer(v)) return;
+    var r = T.ask(v);
+    bot(r.reply);
+  };
+  bot('سلام! من ربات حسابداری‌ام (شبیه‌ساز).\nهر واریز و برداشت که برسد می‌پرسم «بابت چی بود؟».\nفرمان‌ها: /pending · /today');
+
+  // ---------------- ESP32 simulator
+  $('send').onclick = function () {
+    var text = $('sms').value.trim();
+    if (!text) return;
+    log('AT+CMGL="REC UNREAD" → 1 message from "Bank Mellat"');
+    log('POST api.php?r=ingest  X-Device-Token: ••••  (' + text.length + ' chars)');
+    var r = T.ingest(text);
+    if (!r.ok) { log('server: ' + r.error); return; }
+    if (r.otp) {
+      log('server: 200 {"otp":true}');
+      bot('🔐 رمز یکبار مصرف رسید · ۲ دقیقه در اپ قابل دیدن است');
+      return;
+    }
+    log('server: 200 {"transaction_id":' + r.transaction_id + '}  → notifications');
+    app.src = 'app/index.html#/orb/' + r.transaction_id;     // like tapping the notification
+    askNext();
+  };
+
+  $('reset').onclick = function () {
+    if (!confirm('همه‌ی تغییرات این تست پاک شود و از اطلاعات نمونه‌ی اول شروع شود؟')) return;
+    T.reset();
+    try { localStorage.removeItem('ba_orb_last'); } catch (e) {}
+    location.reload();
+  };
+
+  // ---------------- screenshots of the native apps
+  var shots = [['shots/ios-2-home.png', 'آیفون · خانه'], ['shots/ios-3-report.png', 'آیفون · گزارش'], ['shots/ios-5-assistant.png', 'آیفون · دستیار'],
+    ['shots/ios-6-confirm.png', 'آیفون · بابت چی بود؟'], ['shots/ios-8-list.png', 'آیفون · تراکنش‌ها'], ['shots/ios-1-onboarding.png', 'آیفون · شروع'],
+    ['shots/and-orb-home.png', 'اندروید · orb روی صفحه'], ['shots/and-orb-small.png', 'اندروید · orb کوچک'], ['shots/and-web-home.png', 'اندروید · اپ']];
+  $('gallery').innerHTML = shots.map(function (s) {
+    return '<a href="' + s[0] + '" target="_blank"><img src="' + s[0] + '" alt="' + s[1] + '" loading="lazy"><span>' + s[1] + '</span></a>';
+  }).join('');
+})();
+</script>
+</body>
+</html>
