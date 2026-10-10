@@ -137,6 +137,11 @@ final class APIClient: @unchecked Sendable {
                                                              "description": description, "party": party])
     }
 
+    /// «کالا و انبار»: every product of the books with its stock, in total and per warehouse.
+    func inventory() async throws -> Inventory {
+        try await call("assistant_inventory", [:])
+    }
+
     // MARK: - bank cards (Wallet stack, one panel per card)
 
     func cards() async throws -> CardList {

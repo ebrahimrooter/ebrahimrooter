@@ -452,19 +452,21 @@
     });
   }
 
+  /** A one-time code waiting: a link straight to its card's «رمز پویا» (codes are only shown in the card's panel). */
   function otpBadge() {
-    api('otp_count').then(function (d) {
+    api('wallets').then(function (d) {
+      var w = d.items.filter(function (x) { return +x.otps > 0; })[0];
       var el = document.getElementById('otpLink');
+      if (!w) { if (el) el.remove(); return; }
       if (!el) {
         el = document.createElement('a');
         el.id = 'otpLink';
-        el.className = 'btn ghost block';
-        el.href = '#/otp';
+        el.className = 'btn ghost block alert';
         el.style.marginBottom = '12px';
         app.insertBefore(el, app.children[1] || null);
       }
-      el.textContent = d.count ? '🔐 ' + faDigits(d.count) + ' رمز یکبار مصرف رسیده — ببین' : '🔐 رمز یکبار مصرف';
-      el.classList.toggle('alert', !!d.count);
+      el.href = '#/card/' + w.id + '/otp';
+      el.textContent = '🔐 رمز یکبار مصرف «' + w.name + '» رسیده — ببین';
     }).catch(function () {});
   }
 
@@ -854,60 +856,12 @@
   // The PIN lives only in this variable: never in storage, gone on reload or after 3 idle minutes.
   var otp = { pin: '', timer: null, lockAt: 0 };
 
+  /** Old links (#/otp): the codes live in each card's panel now. */
   function viewOtp() {
-    clearInterval(otp.timer);
-    if (!otp.pin || Date.now() > otp.lockAt) {
-      otp.pin = '';
-      app.innerHTML = '<h1>🔐 رمز یکبار مصرف</h1><div class="card"><p class="muted">رمزهای پویای بانک که روی سیم‌کارت دستگاه می‌آیند، رمزشده و فقط چند دقیقه اینجا نگه داشته می‌شوند.</p>' +
-        (state.me && !state.me.otp_ready ? '<p class="warn">اول otp_pin را در config.php سرور بگذار.</p>' : '') +
-        '<form id="pinf"><label for="pin">PIN رمزها</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" required>' +
-        '<div class="btns"><button class="btn">باز کن</button></div></form></div>';
-      document.getElementById('pinf').onsubmit = function (e) {
-        e.preventDefault();
-        otp.pin = document.getElementById('pin').value;
-        otp.lockAt = Date.now() + 180000;
-        viewOtp();
-      };
-      return;
-    }
-    app.innerHTML = '<h1>🔐 رمز یکبار مصرف</h1><div id="otps"><p class="muted">…</p></div>' +
-      '<p class="muted" style="font-size:13px">صفحه را باز بگذار؛ رمز تازه خودش ظاهر می‌شود. بعد از ۳ دقیقه بی‌کاری دوباره PIN می‌خواهد.</p>' +
-      '<div class="btns"><button class="btn plain" id="lock">قفل کن</button></div>';
-    document.getElementById('lock').onclick = function () { otp.pin = ''; viewOtp(); };
-    var poll = function () {
-      if (location.hash !== '#/otp') { clearInterval(otp.timer); return; }
-      if (Date.now() > otp.lockAt) { otp.pin = ''; viewOtp(); return; }
-      fetch(API + '?r=otp', { headers: { 'X-App-Token': token(), 'X-OTP-PIN': otp.pin }, cache: 'no-store' })
-        .then(function (res) { return res.json(); })
-        .then(function (d) {
-          if (!d.ok) { otp.pin = ''; clearInterval(otp.timer); toast(d.error); viewOtp(); return; }
-          var box = document.getElementById('otps');
-          if (!box) return;
-          box.innerHTML = d.items.length ? d.items.map(function (o) {
-            return '<div class="card otp"><div class="code num">' + esc(o.code) + '</div>' +
-              (o.amount ? '<div>مبلغ: <b>' + toman(o.amount) + '</b></div>' : '') +
-              (o.merchant ? '<div>پذیرنده: <b>' + esc(o.merchant) + '</b></div>' : '') +
-              '<div class="muted">⚠️ اگر خریدی با این مبلغ و پذیرنده انجام نمی‌دهی، رمز را به کسی نده.</div>' +
-              '<div class="track"><i class="in" style="width:' + Math.min(100, Math.round(o.seconds_left / 1.8)) + '%"></i></div>' +
-              '<div class="muted">' + faDigits(o.seconds_left) + ' ثانیه اعتبار</div>' +
-              '<div class="btns"><button class="btn" data-copy="' + esc(o.code) + '">کپی</button><button class="btn ghost" data-clear="' + o.id + '">پاک کن</button></div></div>';
-          }).join('') : '<div class="card"><p>⏳ منتظر رمز… خرید را شروع کن؛ به‌محض رسیدن پیامک اینجا ظاهر می‌شود.</p></div>';
-          Array.prototype.forEach.call(box.querySelectorAll('[data-copy]'), function (b) {
-            b.onclick = function () {
-              otp.lockAt = Date.now() + 180000;
-              if (navigator.clipboard) navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () { toast('کپی شد'); });
-            };
-          });
-          Array.prototype.forEach.call(box.querySelectorAll('[data-clear]'), function (b) {
-            b.onclick = function () {
-              fetch(API + '?r=otp_clear', { method: 'POST', headers: { 'X-App-Token': token(), 'X-OTP-PIN': otp.pin, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: b.getAttribute('data-clear') }) }).then(poll);
-            };
-          });
-        }).catch(function () {});
-    };
-    poll();
-    otp.timer = setInterval(poll, 2000);
+    return api('wallets').then(function (d) {
+      var w = d.items.filter(function (x) { return +x.otps > 0; })[0] || d.items.filter(function (x) { return x.kind !== 'cash'; })[0];
+      location.replace(w ? '#/card/' + w.id + '/otp' : '#/');
+    });
   }
 
   /* -- reconciliation -- */
@@ -1158,9 +1112,11 @@
 
   function viewCard(id, sub) {
     if (id === 'new') return cardSettings(null);
+    // opened from the router: the section in the address; another card starts on its transactions
     if (sub === 'otp') cardState.tab = 'otp';
     else if (sub === 'settings') cardState.tab = 'set';
-    else if (sub === undefined && !/^#\/card\//.test(lastHash || '')) cardState.tab = 'tx';
+    else if (sub === 'tx' || String(cardState.id) !== String(id)) cardState.tab = 'tx';
+    cardState.id = id;
     var iso = function (d) { var x = new Date(Date.now() - d * 864e5); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
     return Promise.all([api('wallets'), api('list', { query: '&from=' + iso(120) + '&to=' + iso(0) }), api('pending')]).then(function (r) {
       var w = r[0].items.filter(function (x) { return String(x.id) === String(id); })[0];
@@ -2272,7 +2228,7 @@
     else if (tab === 'person-edit') p = viewPersonEdit(decodeURIComponent(parts[1] || ''));
     else if (tab === 'otp') p = viewOtp();
     else if (tab === 'orb') p = openOrbFor(+parts[1]);
-    else if (tab === 'card') p = viewCard(parts[1], parts[2]);
+    else if (tab === 'card') p = viewCard(parts[1], parts[2] || 'tx');
     else if (tab === 'reconcile') p = viewReconcile();
     else if (tab === 'settings') p = viewSettings();
     else if (tab === 'acc') p = viewAccounting();

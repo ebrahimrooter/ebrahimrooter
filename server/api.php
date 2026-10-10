@@ -417,8 +417,10 @@ function api_wallet_save(array $in) {
     $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($in['color'] ?? '')) ? $in['color'] : (BA_BANKS[$bank]['color'] ?? null);
     $sms = $bank && isset(BA_BANKS[$bank]) ? 1 : 0;
     if (!empty($in['id'])) {
-        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ?, bank = COALESCE(?, bank), card = ?, color = COALESCE(?, color),
-            is_sms = MAX(is_sms, ?) WHERE id = ?')->execute([$name, $kind, $opening, $bank, $card, $color, $sms, (int)$in['id']]);
+        // the older settings form sends no card digits: keep them
+        $keepCard = !array_key_exists('card', $in);
+        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ?, bank = COALESCE(?, bank), card = CASE WHEN ? THEN card ELSE ? END,
+            color = COALESCE(?, color), is_sms = MAX(is_sms, ?) WHERE id = ?')->execute([$name, $kind, $opening, $bank, $keepCard ? 1 : 0, $card, $color, $sms, (int)$in['id']]);
         $id = (int)$in['id'];
     } else {
         $db->prepare('INSERT INTO wallets (name, kind, opening, bank, card, color, is_sms) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -510,8 +512,8 @@ case 'otp_clear':
 case 'otp_count':
     // No PIN: only says whether something is waiting, never the code.
     $wid = (int)($_GET['wallet_id'] ?? 0);
-    $q = $db->prepare('SELECT COUNT(*) FROM otps' . ($wid ? ' WHERE wallet_id = ?' : ''));
-    $q->execute($wid ? [$wid] : []);
+    $q = $db->prepare('SELECT COUNT(*) FROM otps WHERE expires_at >= ?' . ($wid ? ' AND wallet_id = ?' : ''));   // expired codes don't count
+    $q->execute($wid ? [time(), $wid] : [time()]);
     out(['ok' => true, 'count' => (int)$q->fetchColumn()]);
 
 case 'senders':

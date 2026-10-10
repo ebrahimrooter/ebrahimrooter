@@ -80,6 +80,18 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('.cp-seg button[data-tab="set"]');
   await page.waitForTimeout(500);
   check('card settings: bank, last 4 digits, color', await page.evaluate(() => !!document.querySelector('#cardf select[name=bank]') && !!document.querySelector('#cardf input[name=card]')));
+  // another card opens on its transactions, not on the section left open on the previous one
+  await page.click('.cp-seg button[data-tab="otp"]');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { location.hash = '#/'; });
+  await page.waitForTimeout(1000);
+  await page.click('.wst-item:nth-child(1)', { position: { x: 60, y: 24 } });
+  await page.waitForTimeout(1000);
+  check('next card opens on «تراکنش‌ها»', await page.evaluate(() => /^#\/card\/\d+$/.test(location.hash) && document.querySelector('.cp-seg button.on').getAttribute('data-tab') === 'tx' && !document.getElementById('pinf')));
+  // old «#/otp» links go to a card's own «رمز پویا»
+  await page.evaluate(() => { location.hash = '#/otp'; });
+  await page.waitForTimeout(1200);
+  check('#/otp opens a card\'s «رمز پویا»', await page.evaluate(() => /^#\/card\/\d+\/otp$/.test(location.hash) && !!document.getElementById('pinf')));
   // «کالا و انبار»: every product with its stock (empty books here: the list says so)
   await page.click('#tabbar a[data-tab="stock"]');
   await page.waitForTimeout(1200);

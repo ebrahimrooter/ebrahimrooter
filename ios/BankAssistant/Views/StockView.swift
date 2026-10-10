@@ -50,27 +50,6 @@ struct Inventory: Decodable {
     let totals: StockTotals
 }
 
-extension APIClient {
-    /// Every product of the books with its stock, in total and per warehouse.
-    func inventory() async throws -> Inventory {
-        guard let base = server, let token = KeychainStore.get("deviceToken") else { throw APIError.notPaired }
-        var c = URLComponents(url: base, resolvingAgainstBaseURL: false)!
-        c.queryItems = [URLQueryItem(name: "r", value: "assistant_inventory")]
-        var req = URLRequest(url: c.url!)
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue(token, forHTTPHeaderField: "X-Auth-Token")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = Data("{}".utf8)
-        let (data, resp): (Data, URLResponse)
-        do { (data, resp) = try await URLSession.shared.data(for: req) } catch { throw APIError.offline(error.localizedDescription) }
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 401 { throw APIError.unauthorized }
-        guard (200..<300).contains(code) else { throw APIError.server("خطای سرور (\(code))") }
-        return try JSONDecoder().decode(Inventory.self, from: data)
-    }
-}
-
 extension Fa {
     /// 12.5 → «۱۲٫۵», 40 → «۴۰»
     static func qty(_ v: Double) -> String {

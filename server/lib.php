@@ -672,8 +672,9 @@ function ba_otp_active($wallet_id = null) {
             'seconds_left' => max(0, (int)$r['expires_at'] - time()),
         ];
     }
-    if ($rows) {
-        ba_db()->prepare('UPDATE otps SET seen_at = COALESCE(seen_at, ?)')->execute([date('Y-m-d H:i:s')]);
+    if ($rows) {   // only the codes shown (one card's section marks only that card's)
+        $ids = implode(',', array_map(fn($r) => (int)$r['id'], $rows));
+        ba_db()->prepare("UPDATE otps SET seen_at = COALESCE(seen_at, ?) WHERE id IN ($ids)")->execute([date('Y-m-d H:i:s')]);
     }
     return $out;
 }

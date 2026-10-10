@@ -108,6 +108,14 @@ check('iPhone: wrong PIN refused', http($A . 'assistant_otp', ['wallet_id' => (s
 $blu2 = array_column(http($A . 'wallets', null, $H)[1]['items'], null, 'bank')['blu'];
 check('iPhone: card settings saved', $c === 200 && $blu2['card'] === '6219861122334455' && $blu2['color'] === '#2255ff', json_encode($blu2, JSON_UNESCAPED_UNICODE));
 
+// the older settings form (name / kind / opening only) keeps the card digits
+http($A . 'wallet_save', ['id' => $by['blu']['id'], 'name' => 'بلو', 'kind' => 'bank', 'opening_toman' => '0'], $H);
+$blu3 = array_column(http($A . 'wallets', null, $H)[1]['items'], null, 'id')[$by['blu']['id']];
+check('renaming from settings keeps the card digits', $blu3['card'] === '6219861122334455' && $blu3['name'] === 'بلو', json_encode($blu3, JSON_UNESCAPED_UNICODE));
+// an expired code is not counted and viewing one card's codes marks only those as seen
+exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "lib.php"; ba_db()->exec("UPDATE otps SET expires_at = " . (time() - 5));'));
+check('expired codes not counted', (int)http($A . 'otp_count', null, $H)[1]['count'] === 0);
+
 proc_terminate($srv);
 exec('rm -rf ' . escapeshellarg($tmp));
 echo $fails ? "\n$fails FAILED\n" : "\nall passed\n";
