@@ -114,6 +114,10 @@ function apns_notify_all(array $message)
         $payload['aps']['alert']['body'] = 'بابت چی بود؟ نگه دار و بنویس، یا بزن تا با صدا بگویی.';
         $payload['tx_id'] = (int)$m[1];
     }
+    // a one-time code: the app opens that card's «رمز پویا»
+    if (preg_match('~#/card/(\d+)/otp~', (string)($message['url'] ?? ''), $m)) {
+        $payload['card_otp'] = (int)$m[1];
+    }
     $sent = 0;
     foreach ($rows as $r) {
         try {

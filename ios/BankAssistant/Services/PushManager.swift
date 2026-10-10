@@ -12,6 +12,8 @@ final class PushManager {
 
     /// A transaction the user opened from a notification (HomeView shows it).
     var openTx: Int?
+    /// A one-time code arrived for this card: open its «رمز پویا».
+    var openCardOTP: Int?
     private(set) var status = ""
 
     /// Debug builds talk to Apple's sandbox, TestFlight / App Store builds to production.

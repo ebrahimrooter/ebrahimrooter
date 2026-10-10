@@ -88,6 +88,26 @@ $tx = http($A . 'transaction&id=' . $r['transaction_id'], null, $H)[1]['item'];
 check('second card of the same bank chosen by its digits', (int)$tx['wallet_id'] === (int)$nw['id'], json_encode([$nw, $tx['wallet_id']]));
 check('banks list for the card form', count(http($A . 'banks', null, $H)[1]['items']) === 4);
 
+echo "iPhone app\n";
+$dt = http($A . 'assistant_login', ['password' => 'apppass123', 'device_name' => 'iPhone'])[1]['token'] ?? '';
+$D = ['Authorization: Bearer ' . $dt];
+$cards = http($A . 'assistant_cards', [], $D)[1];
+check('iPhone: card stack with banks', count($cards['items'] ?? []) >= 6 && count($cards['banks'] ?? []) === 4, json_encode($cards, JSON_UNESCAPED_UNICODE));
+$home = http($A . 'assistant_home', [], $D)[1];
+$hm = array_column($home['wallets'], null, 'id');
+$hm = ['melli' => $hm[$by['melli']['id']], 'blu' => $hm[$by['blu']['id']]];
+check('iPhone home: cards carry bank, digits, colour, pending, OTP count', $hm['melli']['color'] !== '' && $hm['melli']['otps'] === 1 && isset($hm['blu']['pending']), json_encode($hm['melli'], JSON_UNESCAPED_UNICODE));
+check('iPhone: transactions carry their card', isset($home['recent'][0]['wallet_id']));
+$l = http($A . 'assistant_list', ['wallet_id' => (string)$by['saderat']['id'], 'from' => '2020-01-01'], $D)[1]['items'];
+check('iPhone: one card\'s transactions', $l && !array_filter($l, fn($t) => $t['wallet_id'] !== (int)$by['saderat']['id']), json_encode(array_column($l, 'wallet_id')));
+$o = http($A . 'assistant_otp', ['wallet_id' => (string)$by['melli']['id'], 'pin' => '4321'], $D);
+check("iPhone: Melli's «رمز پویا» with the PIN", $o[0] === 200 && count($o[1]['items']) === 1 && $o[1]['items'][0]['code'] === '584213', json_encode($o, JSON_UNESCAPED_UNICODE));
+check('iPhone: other card does not see it', count(http($A . 'assistant_otp', ['wallet_id' => (string)$by['blu']['id'], 'pin' => '4321'], $D)[1]['items']) === 0);
+check('iPhone: wrong PIN refused', http($A . 'assistant_otp', ['wallet_id' => (string)$by['melli']['id'], 'pin' => '0000'], $D)[0] === 403);
+[$c, $sv] = http($A . 'assistant_card_save', ['id' => (string)$by['blu']['id'], 'name' => 'بلو بانک', 'bank' => 'blu', 'card' => '6219861122334455', 'color' => '#2255ff'], $D);
+$blu2 = array_column(http($A . 'wallets', null, $H)[1]['items'], null, 'bank')['blu'];
+check('iPhone: card settings saved', $c === 200 && $blu2['card'] === '6219861122334455' && $blu2['color'] === '#2255ff', json_encode($blu2, JSON_UNESCAPED_UNICODE));
+
 proc_terminate($srv);
 exec('rm -rf ' . escapeshellarg($tmp));
 echo $fails ? "\n$fails FAILED\n" : "\nall passed\n";

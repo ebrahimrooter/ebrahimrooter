@@ -113,7 +113,8 @@ function aa_home(array $device)
         'balance' => array_sum(array_column($wallets, 'balance')),
         'wallets' => array_map(fn($w) => ['id' => (int)$w['id'], 'name' => $w['name'], 'kind' => $w['kind'],
             'balance' => $w['balance'], 'bank_balance' => $w['bank_balance'], 'bank' => (string)($w['bank'] ?? ''),
-            'card' => (string)($w['card'] ?? ''), 'color' => (string)($w['color'] ?? ''), 'pending' => (int)$w['pending']], $wallets),
+            'card' => (string)($w['card'] ?? ''), 'color' => (string)($w['color'] ?? ''), 'pending' => (int)$w['pending'],
+            'otps' => (int)($w['otps'] ?? 0), 'opening' => (int)($w['opening'] ?? 0)], $wallets),
         'month' => ['label' => $cur['label'], 'in' => $cur['in'], 'out' => $cur['out'],
             'in_change' => $pct($cur['in'], $prev['in']), 'out_change' => $pct($cur['out'], $prev['out'])],
         'months' => $months,
@@ -127,10 +128,14 @@ function aa_home(array $device)
 }
 
 /** Transactions of a period (Gregorian dates), optionally one direction. */
-function aa_list($from, $to, $direction)
+function aa_list($from, $to, $direction, $wallet_id = 0)
 {
     $where = "t.occurred_at >= ? AND t.occurred_at <= ? AND t.status != 'ignored'";
     $args = [$from . ' 00:00:00', $to . ' 23:59:59'];
+    if ($wallet_id) {   // one card's panel
+        $where .= ' AND t.wallet_id = ?';
+        $args[] = (int)$wallet_id;
+    }
     if ($direction === 'in' || $direction === 'out') {
         $where .= ' AND t.direction = ?';
         $args[] = $direction;

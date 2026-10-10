@@ -114,8 +114,9 @@ final class APIClient: @unchecked Sendable {
     }
 
     /// Dates are Gregorian yyyy-mm-dd; direction "in" / "out" / "" (both).
-    func transactions(from: String? = nil, to: String? = nil, direction: String = "") async throws -> TxList {
+    func transactions(from: String? = nil, to: String? = nil, direction: String = "", walletID: Int? = nil) async throws -> TxList {
         var b: [String: String] = ["direction": direction]
+        if let walletID { b["wallet_id"] = String(walletID) }
         if let from { b["from"] = from }
         if let to { b["to"] = to }
         return try await call("assistant_list", b)
@@ -134,6 +135,26 @@ final class APIClient: @unchecked Sendable {
     func manual(incoming: Bool, amountToman: String, description: String, party: String) async throws {
         let _: OKReply = try await call("assistant_manual", ["direction": incoming ? "in" : "out", "amount_toman": amountToman,
                                                              "description": description, "party": party])
+    }
+
+    // MARK: - bank cards (Wallet stack, one panel per card)
+
+    func cards() async throws -> CardList {
+        try await call("assistant_cards", [:])
+    }
+
+    /// New card (id nil) or the card's settings: name, bank, digits, colour, opening balance in toman.
+    func saveCard(id: Int?, name: String, bank: String, card: String, color: String, openingToman: String) async throws -> Int {
+        var b = ["name": name, "bank": bank, "kind": bank == "cash" ? "cash" : "bank", "card": card, "color": color, "opening_toman": openingToman]
+        if let id { b["id"] = String(id) }
+        let r: SavedID = try await call("assistant_card_save", b)
+        return r.id
+    }
+
+    /// The «رمز پویا» of one card (needs the OTP PIN of config.php; never stored on the phone).
+    func otps(walletID: Int, pin: String) async throws -> [OneTimeCode] {
+        let r: OTPList = try await call("assistant_otp", ["wallet_id": String(walletID), "pin": pin])
+        return r.items
     }
 
     /// The APNs device token of this phone (server/apns.php sends the notifications).

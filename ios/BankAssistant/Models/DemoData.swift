@@ -36,17 +36,19 @@ enum Demo {
                       total_out: all.filter { !$0.isIn }.reduce(0) { $0 + $1.amount })
     }
 
-    private static func tx(_ id: Int, _ dir: String, _ amount: Int, _ status: String, _ desc: String, _ party: String, _ date: String, _ time: String, _ sms: String? = nil) -> String {
+    private static let walletNames = [1: "بانک ملت", 3: "بلو بانک", 4: "بانک ملی", 5: "بانک صادرات", 2: "صندوق"]
+
+    private static func tx(_ id: Int, _ dir: String, _ amount: Int, _ status: String, _ desc: String, _ party: String, _ date: String, _ time: String, _ sms: String? = nil, w: Int = 1) -> String {
         let s = sms.map { "\"\($0)\"" } ?? "null"
         return """
-        {"id":\(id),"direction":"\(dir)","amount":\(amount),"status":"\(status)","description":"\(desc)","party":"\(party)","category":"","wallet":"بانک ملت","bank_date":"\(date)","bank_time":"\(time)","occurred_at":"2026-10-06 10:00:00","source":"sms","sms_text":\(s)}
+        {"id":\(id),"direction":"\(dir)","amount":\(amount),"status":"\(status)","description":"\(desc)","party":"\(party)","category":"","wallet":"\(walletNames[w] ?? "")","wallet_id":\(w),"bank_date":"\(date)","bank_time":"\(time)","occurred_at":"2026-10-06 10:00:00","source":"sms","sms_text":\(s)}
         """
     }
 
     private static var json: String {
         let pending = [
-            tx(101, "in", 27_500_000, "pending", "", "", "1405/07/14", "14:47", "بانک ملت\\nواریز:27,500,000\\nحساب:1234\\nمانده:1,059,300,000"),
-            tx(102, "out", 8_900_000, "pending", "", "", "1405/07/14", "11:20", "بانک ملت\\nبرداشت:8,900,000\\nحساب:1234"),
+            tx(101, "in", 27_500_000, "pending", "", "", "1405/07/14", "14:47", "بلو\\nواریز به حساب: 27,500,000 ریال\\nمانده: 735,000,000 ریال", w: 3),
+            tx(102, "out", 8_900_000, "pending", "", "", "1405/07/14", "11:20", "بانک ملی ایران\\nبرداشت از حساب 0101234567001\\nمبلغ: 8,900,000 ریال", w: 4),
         ].joined(separator: ",")
         let recent = [
             tx(90, "in", 120_000_000, "confirmed", "فروش عمده بذر", "فروشگاه نور", "1405/07/13", "16:05"),
@@ -58,7 +60,11 @@ enum Demo {
         ].joined(separator: ",")
         return """
         {"company":"بازرگانی سبز","device_name":"iPhone","balance":10593000000,
-         "wallets":[{"id":1,"name":"بانک ملت","kind":"bank","balance":9873000000,"bank_balance":9873000000},{"id":2,"name":"صندوق","kind":"cash","balance":720000000,"bank_balance":null}],
+         "wallets":[{"id":1,"name":"بانک ملت","kind":"bank","balance":7123000000,"bank_balance":7123000000,"bank":"mellat","card":"6104337788","color":"#c8102e","pending":0,"otps":0},
+           {"id":3,"name":"بلو بانک","kind":"bank","balance":735000000,"bank_balance":735000000,"bank":"blu","card":"6219861122","color":"#1688f0","pending":1,"otps":0},
+           {"id":4,"name":"بانک ملی","kind":"bank","balance":1450000000,"bank_balance":1450000000,"bank":"melli","card":"6037991234","color":"#0b3a74","pending":1,"otps":1},
+           {"id":5,"name":"بانک صادرات","kind":"bank","balance":565000000,"bank_balance":565000000,"bank":"saderat","card":"6037695566","color":"#0e5e8c","pending":0,"otps":0},
+           {"id":2,"name":"صندوق (نقد)","kind":"cash","balance":720000000,"bank_balance":null,"bank":"cash","card":"","color":"#5b6b64","pending":0,"otps":0}],
          "month":{"label":"مهر","in":2545000000,"out":852000000,"in_change":16,"out_change":-8},
          "months":[
           {"label":"اردیبهشت","year":1405,"month":2,"from":"2026-04-21","to":"2026-05-21","in":1450000000,"out":980000000},

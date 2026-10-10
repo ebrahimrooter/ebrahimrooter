@@ -10,6 +10,8 @@ struct Transaction: Decodable, Identifiable, Hashable {
     let party: String
     let category: String
     let wallet: String
+    /// the bank card it came on (each card has its own panel)
+    let wallet_id: Int?
     let bank_date: String          // Jalali yyyy/mm/dd
     let bank_time: String
     let occurred_at: String
@@ -31,12 +33,29 @@ struct Transaction: Decodable, Identifiable, Hashable {
     }
 }
 
+/// A bank card (or the cash box): one card in the Wallet stack, with its own panel.
 struct Wallet: Decodable, Identifiable, Hashable {
     let id: Int
     let name: String
     let kind: String
     let balance: Int
     let bank_balance: Int?
+    /// mellat | melli | saderat | blu | cash
+    var bank: String? = nil
+    /// card / account digits (the last 4 pick the card when a bank has several)
+    var card: String? = nil
+    /// "#rrggbb"
+    var color: String? = nil
+    var pending: Int? = nil
+    /// fresh one-time codes waiting in this card's «رمز پویا»
+    var otps: Int? = nil
+    var opening: Int? = nil
+
+    var isCash: Bool { kind == "cash" || bank == "cash" }
+    var lastFour: String? {
+        guard let c = card, c.count >= 4 else { return nil }
+        return String(c.suffix(4))
+    }
 }
 
 struct MonthSum: Decodable, Identifiable, Hashable {
@@ -156,3 +175,29 @@ enum Fa {
         }
     }
 }
+
+struct BankInfo: Decodable, Hashable, Identifiable {
+    let code: String
+    let name: String
+    let color: String
+    var id: String { code }
+}
+
+struct CardList: Decodable {
+    let items: [Wallet]
+    let banks: [BankInfo]
+}
+
+struct SavedID: Decodable { let id: Int }
+
+/// One-time code (رمز پویا) of a card, decrypted on the server for a few minutes.
+struct OneTimeCode: Decodable, Identifiable, Hashable {
+    let id: Int
+    let code: String
+    let amount: Int?
+    let merchant: String?
+    let wallet_id: Int?
+    let seconds_left: Int
+}
+
+struct OTPList: Decodable { let items: [OneTimeCode] }

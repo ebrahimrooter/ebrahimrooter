@@ -297,7 +297,7 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
             case 'assistant_list':
                 require_once __DIR__ . '/assistant_app.php';
                 out(['ok' => true] + aa_list(valid_date($in['from'] ?? date('Y-m-d', strtotime('-30 days'))),
-                    valid_date($in['to'] ?? date('Y-m-d')), (string)($in['direction'] ?? '')));
+                    valid_date($in['to'] ?? date('Y-m-d')), (string)($in['direction'] ?? ''), (int)($in['wallet_id'] ?? 0)));
             case 'assistant_confirm':
                 require_once __DIR__ . '/assistant_app.php';
                 $id = (int)($in['id'] ?? 0);
@@ -320,6 +320,17 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                 require_once __DIR__ . '/assistant_app.php';
                 aa_manual($in);
                 out(['ok' => true]);
+            case 'assistant_cards':
+                // the bank cards (Wallet stack) with their pending counts and fresh one-time codes
+                out(['ok' => true, 'items' => ba_wallets(), 'banks' => array_map(fn($c, $b) => ['code' => $c, 'name' => $b['name'], 'color' => $b['color']],
+                    array_keys(BA_BANKS), BA_BANKS)]);
+            case 'assistant_card_save':
+                out(['ok' => true, 'id' => api_wallet_save($in)]);
+            case 'assistant_otp':
+                // the «رمز پویا» section of one card: the PIN comes in the body
+                $_SERVER['HTTP_X_OTP_PIN'] = (string)($in['pin'] ?? '');
+                require_otp_pin($cfg);
+                out(['ok' => true, 'items' => ba_otp_active((int)($in['wallet_id'] ?? 0) ?: null)]);
             case 'assistant_inventory':
                 require_once __DIR__ . '/inventory.php';
                 out(['ok' => true] + inv_list(1));
@@ -389,6 +400,32 @@ function require_otp_pin($cfg) {
         fail('PIN اشتباه است', 403);
     }
     ba_kv_set('otp_lock', ['fails' => 0, 'until' => 0]);
+}
+
+/** A card / cash box from the card form (web app «تنظیمات کارت» and the iPhone app). Returns its id. */
+function api_wallet_save(array $in) {
+    $db = ba_db();
+    $name = trim((string)($in['name'] ?? ''));
+    if ($name === '') {
+        fail('نام خالی است');
+    }
+    $kind = ($in['kind'] ?? '') === 'cash' ? 'cash' : 'bank';
+    $opening = rial_from($in, 'opening_rial', 'opening_toman');
+    // card: bank (reads its SMS), last digits of the card / account, colour
+    $bank = $kind === 'cash' ? 'cash' : (isset(BA_BANKS[$in['bank'] ?? '']) ? $in['bank'] : null);
+    $card = preg_replace('/[^\d]/', '', ba_normalize((string)($in['card'] ?? ''))) ?: null;
+    $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($in['color'] ?? '')) ? $in['color'] : (BA_BANKS[$bank]['color'] ?? null);
+    $sms = $bank && isset(BA_BANKS[$bank]) ? 1 : 0;
+    if (!empty($in['id'])) {
+        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ?, bank = COALESCE(?, bank), card = ?, color = COALESCE(?, color),
+            is_sms = MAX(is_sms, ?) WHERE id = ?')->execute([$name, $kind, $opening, $bank, $card, $color, $sms, (int)$in['id']]);
+        $id = (int)$in['id'];
+    } else {
+        $db->prepare('INSERT INTO wallets (name, kind, opening, bank, card, color, is_sms) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$name, $kind, $opening, $bank, $card, $color, $sms]);
+        $id = (int)$db->lastInsertId();
+    }
+    return $id;
 }
 
 switch ($route) {
@@ -573,27 +610,7 @@ case 'inventory':
 
 case 'wallet_save':
     require_post();
-    $name = trim((string)($in['name'] ?? ''));
-    if ($name === '') {
-        fail('نام خالی است');
-    }
-    $kind = ($in['kind'] ?? '') === 'cash' ? 'cash' : 'bank';
-    $opening = rial_from($in, 'opening_rial', 'opening_toman');
-    // card: bank (reads its SMS), last digits of the card / account, colour
-    $bank = $kind === 'cash' ? 'cash' : (isset(BA_BANKS[$in['bank'] ?? '']) ? $in['bank'] : null);
-    $card = preg_replace('/[^\d]/', '', ba_normalize((string)($in['card'] ?? ''))) ?: null;
-    $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($in['color'] ?? '')) ? $in['color'] : (BA_BANKS[$bank]['color'] ?? null);
-    $sms = $bank && isset(BA_BANKS[$bank]) ? 1 : 0;
-    if (!empty($in['id'])) {
-        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ?, bank = COALESCE(?, bank), card = ?, color = COALESCE(?, color),
-            is_sms = MAX(is_sms, ?) WHERE id = ?')->execute([$name, $kind, $opening, $bank, $card, $color, $sms, (int)$in['id']]);
-        $id = (int)$in['id'];
-    } else {
-        $db->prepare('INSERT INTO wallets (name, kind, opening, bank, card, color, is_sms) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            ->execute([$name, $kind, $opening, $bank, $card, $color, $sms]);
-        $id = (int)$db->lastInsertId();
-    }
-    out(['ok' => true, 'id' => $id]);
+    out(['ok' => true, 'id' => api_wallet_save($in)]);
 
 case 'banks':
     // the banks the SMS reader knows (for the card form)

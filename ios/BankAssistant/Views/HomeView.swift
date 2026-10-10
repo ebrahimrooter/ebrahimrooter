@@ -8,13 +8,22 @@ struct HomeView: View {
     @State private var selected: Transaction?
     @State private var manual: ManualDraft?
     @State private var list: ListFilter?
+    @State private var card: CardRoute?
+    @State private var newCard = false
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(spacing: 0) {
                 header
                 sheet
             }
+        }
+        .task {
+            guard Demo.enabled, Demo.sheet == "stack" else { return }
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation { proxy.scrollTo("cards", anchor: .top) }
+        }
         }
         .background(alignment: .top) {
             VStack(spacing: 0) {
@@ -28,20 +37,29 @@ struct HomeView: View {
         .sheet(item: $selected) { tx in TransactionSheet(tx: tx).presentationDetents([.medium, .large]) }
         .sheet(item: $manual) { d in ManualEntrySheet(draft: d).presentationDetents([.medium, .large]) }
         .sheet(item: $list) { f in TransactionListView(filter: f) }
+        .sheet(item: $card) { r in CardPanel(route: r) }
+        .sheet(isPresented: $newCard) { NewCardSheet() }
         .onChange(of: PushManager.shared.openTx) { _, id in
             guard let id else { return }
             PushManager.shared.openTx = nil
             Task {
                 await store.refresh()
                 let all = (store.home?.pending ?? []) + (store.home?.recent ?? [])
-                selected = all.first { $0.id == id }
+                if let tx = all.first(where: { $0.id == id }) { ask(tx) }
             }
+        }
+        .onChange(of: PushManager.shared.openCardOTP) { _, id in
+            guard let id else { return }
+            PushManager.shared.openCardOTP = nil
+            Task { await store.refresh(); card = CardRoute(walletID: id, tab: .otp) }
         }
         .task {
             guard Demo.enabled else { return }
             try? await Task.sleep(for: .seconds(1))
             switch Demo.sheet {
             case "tx": selected = store.home?.pending.first
+            case "card": if let tx = store.home?.pending.first { ask(tx) }
+            case "otp": card = CardRoute(walletID: 4, tab: .otp)
             case "manual": manual = ManualDraft(party: "علی رضایی")
             case "list": list = ListFilter(direction: "")
             default: break
@@ -126,6 +144,16 @@ struct HomeView: View {
         .padding(.bottom, 26)
     }
 
+    /// A bank transaction is answered in its card's panel (the orb asks there).
+    private func ask(_ tx: Transaction) {
+        if let w = tx.wallet_id, w > 0, store.home?.wallets.contains(where: { $0.id == w }) == true {
+            selected = nil
+            card = CardRoute(walletID: w, ask: tx)
+        } else {
+            selected = tx
+        }
+    }
+
     private var statusPill: some View {
         let d = store.home?.sms_device
         return HStack(spacing: 6) {
@@ -165,6 +193,9 @@ struct HomeView: View {
             if let alert = store.home?.cheque_alert {
                 chequeCard(alert)
             }
+            WalletStack(wallets: store.home?.wallets ?? [], hidden: store.hideBalance,
+                        onTap: { w in card = CardRoute(walletID: w.id) }, onAdd: { newCard = true })
+                .id("cards")
             pendingCard
             peopleCard
             recentCard
@@ -192,7 +223,7 @@ struct HomeView: View {
                                 .font(.fa(13, .semibold)).foregroundStyle(Theme.ink)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .overlay(Capsule().strokeBorder(Theme.ink, lineWidth: 1))
-                            Button("ثبت کن") { selected = first }
+                            Button("ثبت کن") { ask(first) }
                                 .font(.fa(13, .semibold)).foregroundStyle(.white)
                                 .padding(.horizontal, 16).padding(.vertical, 8)
                                 .background(Capsule().fill(Theme.ink))

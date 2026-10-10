@@ -39,7 +39,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 PushManager.notice("ثبت نشد", error.localizedDescription)
             }
         default:   // tapped, or «جواب با صدا»
-            await MainActor.run { PushManager.shared.openTx = txID }
+            let otpCard = (info["card_otp"] as? NSNumber)?.intValue ?? (info["card_otp"] as? Int)
+            await MainActor.run {
+                if let otpCard { PushManager.shared.openCardOTP = otpCard } else { PushManager.shared.openTx = txID }
+            }
         }
     }
 }
