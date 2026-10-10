@@ -17,6 +17,9 @@ require_once __DIR__ . '/lib.php';
 const ASSISTANT_PAIR_TTL = 300;          // seconds a pairing code lives
 const ASSISTANT_DRAFT_TTL = 600;         // seconds an invoice draft waits for «آره»
 
+/** Days without use after which a paired phone has to pair again. */
+const ASSISTANT_IDLE_DAYS = 180;
+
 function assistant_schema()
 {
     static $done = false;
@@ -139,6 +142,11 @@ function assistant_device()
     $q = ba_db()->prepare('SELECT * FROM assistant_devices WHERE token_hash = ? AND revoked = 0');
     $q->execute([hash('sha256', strtolower($token))]);
     $d = $q->fetch();
+    // a phone not used for half a year (lost, sold…) is signed out for good
+    if ($d && strtotime($d['last_seen'] ?: $d['created_at']) < time() - ASSISTANT_IDLE_DAYS * 86400) {
+        ba_db()->prepare('UPDATE assistant_devices SET revoked = 1 WHERE id = ?')->execute([$d['id']]);
+        return null;
+    }
     if ($d && (!$d['last_seen'] || strtotime($d['last_seen']) < time() - 60)) {
         ba_db()->prepare('UPDATE assistant_devices SET last_seen = ? WHERE id = ?')->execute([date('Y-m-d H:i:s'), $d['id']]);
     }

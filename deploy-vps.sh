@@ -12,6 +12,9 @@
 #                     e.g. --domain 185-221-237-61.sslip.io
 #                     The Bale bot works either way: a background service
 #                     fetches its messages (bank-bot.service).
+#                     Without --domain the server's own <IP-with-dashes>.sslip.io is used,
+#                     so the app always gets HTTPS (passwords never travel in plain text).
+#   --no-https        really stay on plain http (not recommended)
 #   --email ADDR      for Let's Encrypt expiry notices (optional)
 #   --no-voice        skip the local STT/TTS (faster-whisper + Piper)
 #   --stt-model NAME  passed to voice/install.sh (default large-v3-turbo)
@@ -25,6 +28,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 WEB=/var/www/html/bank
 DOMAIN=
+NO_HTTPS=0
 EMAIL=
 VOICE=1
 VOICE_ARGS=()
@@ -35,6 +39,7 @@ while [ $# -gt 0 ]; do
     --domain) DOMAIN="$2"; shift 2;;
     --email) EMAIL="$2"; shift 2;;
     --no-voice) VOICE=0; shift;;
+    --no-https) NO_HTTPS=1; shift;;
     --ios-app-id) IOS_APP_ID="$2"; shift 2;;
     --stt-model|--models-from|--tts-voice) VOICE_ARGS+=("$1" "$2"); shift 2;;
     -h|--help) sed -n '2,22p' "$0"; exit 0;;
@@ -61,13 +66,28 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q apache2 libapache2-mod-php php php-cli php-sqlite3 php-curl php-mbstring \
   rsync curl unzip ca-certificates cron
+if [ -z "$DOMAIN" ] && [ "$NO_HTTPS" = 0 ]; then
+  # no domain: the free name that points at this IP, so HTTPS works anyway
+  PUBIP=$(curl -fsS -4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+  [ -n "$PUBIP" ] && DOMAIN="$(printf '%s' "$PUBIP" | tr . -).sslip.io" && say "no --domain given: using $DOMAIN for HTTPS"
+fi
 [ -n "$DOMAIN" ] && apt-get install -y -q certbot python3-certbot-apache
 
 # --------------------------------------------------------------- files
 say "Copying the app to $WEB"
 mkdir -p "$WEB"
 # keep the owner's config and database on updates
-rsync -a --delete --exclude 'config.php' --exclude 'config.php.bak*' --exclude 'data/' "$SRC/server/" "$WEB/"
+# older installs left config.php.bak.* in the web folder (readable from the internet):
+# move them out, they hold every password
+CFG_BAK=/var/backups/bank-assistant
+install -d -m 700 "$CFG_BAK"
+for b in "$WEB"/config.php.bak* "$WEB"/config.php.*; do
+  [ -e "$b" ] || continue
+  mv -f "$b" "$CFG_BAK/$(basename "$b").moved-$(date +%s)"
+  warn "moved $(basename "$b") out of the web folder - it may have been downloaded: change all passwords (php cron.php rotate-secrets)"
+done
+chmod 600 "$CFG_BAK"/* 2>/dev/null || true
+rsync -a --delete --exclude 'config.php' --exclude 'data/' "$SRC/server/" "$WEB/"
 mkdir -p "$WEB/data"
 [ -f "$WEB/data/.htaccess" ] || cp "$SRC/server/data/.htaccess" "$WEB/data/.htaccess"
 chown -R www-data:www-data "$WEB"
@@ -88,7 +108,7 @@ restart_apache
 if [ -n "$DOMAIN" ]; then
   say "HTTPS certificate for $DOMAIN"
   if [ -n "$EMAIL" ]; then M=(-m "$EMAIL"); else M=(--register-unsafely-without-email); fi
-  if certbot --apache -d "$DOMAIN" --non-interactive --agree-tos "${M[@]}"; then
+  if certbot --apache -d "$DOMAIN" --non-interactive --agree-tos --redirect "${M[@]}"; then
     BASE="https://$DOMAIN/bank"
   else
     warn "certbot failed: is the domain's DNS (A record) pointing at this server? Run again later."
@@ -115,10 +135,12 @@ $s = file_get_contents(dirname($cfg) . '/config.sample.php');
 $s = str_replace(
     ["'CHANGE-ME-app'", "'CHANGE-ME-device'", "'otp_pin' => ''",
      "'https://example.com/bank/app/'", "'https://example.com/bank/api.php'"],
-    [var_export(bin2hex(random_bytes(5)), true), var_export(bin2hex(random_bytes(16)), true),
+    [var_export(bin2hex(random_bytes(8)), true), var_export(bin2hex(random_bytes(16)), true),
      "'otp_pin' => '" . random_int(100000, 999999) . "'",
      var_export($base . '/app/', true), var_export($base . '/api.php', true)],
     $s);
+// backups are encrypted (and only then sent to Bale)
+$s = str_replace("'backup_password' => ''", "'backup_password' => " . var_export(bin2hex(random_bytes(12)), true), $s);
 file_put_contents($cfg, $s);
 PHP
   NEW_CFG=1
@@ -126,7 +148,7 @@ else
   say "config.php already exists - kept (passwords unchanged)"
   if ! php -l "$CFG" >/dev/null 2>&1; then
     # e.g. a failed edit: go back to the newest backup that is valid PHP
-    for b in $(ls -t "$CFG".bak.* 2>/dev/null); do
+    for b in $(ls -t "$CFG_BAK"/config.php.* 2>/dev/null); do
       if php -l "$b" >/dev/null 2>&1; then
         warn "config.php was broken - restored from $(basename "$b")"
         cp -p "$b" "$CFG"
@@ -188,6 +210,7 @@ fi
 APP=$(php -r '$c = require $argv[1]; echo $c["app_token"];' "$CFG")
 DEV=$(php -r '$c = require $argv[1]; echo $c["device_token"];' "$CFG")
 PIN=$(php -r '$c = require $argv[1]; echo $c["otp_pin"];' "$CFG")
+BKP=$(php -r '$c = require $argv[1]; echo $c["backup_password"] ?? "";' "$CFG")
 if [ -n "$IOS_APP_ID" ]; then
   say "Universal Links for the iPhone assistant app ($IOS_APP_ID)"
   WK="$(dirname "$WEB")/.well-known"
@@ -204,6 +227,7 @@ echo "  Panel:          $BASE/acc/   (user: admin, first password = app password
 if [ "$NEW_CFG" = 1 ]; then
   echo "  App password:   $APP        <- write these down, shown only now"
   echo "  OTP PIN:        $PIN"
+  echo "  Backup password: $BKP   <- keep it outside the server: without it backups cannot be restored"
 fi
 echo "  ESP32 (gprs_forwarder.ino):"
 echo "    SERVER_URL   = \"$BASE/api.php\""

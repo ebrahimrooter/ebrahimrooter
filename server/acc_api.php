@@ -20,6 +20,7 @@ function acc_routes()
     return [
         ['POST', '#^/login$#', null, 'r_login'],
         ['POST', '#^/login/app$#', null, 'r_login_app'],
+        ['POST', '#^/download-ticket$#', '', 'r_download_ticket'],
         ['GET', '#^/health$#', null, fn() => ['ok' => true]],
         ['GET', '#^/me$#', '', fn($u) => acc_user_out($u)],
         ['PUT', '#^/me/password$#', '', 'r_change_password'],
@@ -55,6 +56,7 @@ function acc_routes()
         ['GET', '#^/users$#', 'admin', 'r_users'],
         ['POST', '#^/users$#', 'admin', 'r_user_create'],
         ['PUT', '#^/users/(\d+)/permissions$#', 'admin', 'r_user_perms'],
+        ['PUT', '#^/users/(\d+)/companies$#', 'admin', 'r_user_companies'],
         ['GET', '#^/permissions/roles$#', '', fn() => ACC_ROLE_PERMS],
         ['GET', '#^/logs$#', 'admin', 'r_logs'],
         ['GET', '#^/backup$#', 'admin', 'r_backup'],
@@ -161,7 +163,7 @@ function acc_dispatch()
             $user = null;
             if ($perm !== null) {
                 $token = ba_bearer_token();
-                $user = acc_session_user($token);
+                $user = $token === '' && isset($_GET['ticket']) ? acc_ticket_user((string)$_GET['ticket'], $path) : acc_session_user($token);
                 if (!$user) {
                     throw new AccError('توکن نامعتبر است', 401);
                 }
@@ -174,6 +176,9 @@ function acc_dispatch()
                 $cid = (int)($_SERVER['HTTP_X_COMPANY'] ?? ($_GET['company'] ?? 1)) ?: 1;
                 if ($cid !== 1 && !isset(acc_companies()[$cid])) {
                     throw new AccError('موسسه یافت نشد', 404);
+                }
+                if (!in_array($cid, acc_user_companies($user), true)) {
+                    throw new AccError('به این موسسه دسترسی ندارید', 403);
                 }
                 acc_use_company($cid);
             }
@@ -189,9 +194,43 @@ function acc_dispatch()
     } catch (InvalidArgumentException $e) {
         acc_out(['detail' => $e->getMessage()], 400);
     } catch (Throwable $e) {
-        error_log('acc api: ' . $e);
-        acc_out(['detail' => 'خطای سرور: ' . $e->getMessage()], 500);
+        acc_out(['detail' => ba_public_error($e)], 500);
     }
+}
+
+/**
+ * Links the browser opens by itself (print page, backup, CSV, attachment) cannot
+ * send the Authorization header: the panel asks for a one-time ticket for exactly
+ * that address, valid 60 seconds, and puts it in the link instead of its session.
+ */
+function r_download_ticket($u)
+{
+    $path = '/' . trim((string)(acc_body()['path'] ?? ''), '/');
+    if (!preg_match('#^/(invoices/\d+/print|labels|backup|export/csv|attachments/\d+/download|reports/ttms)$#', $path)) {
+        throw new AccError('این آدرس لینک دانلود ندارد');
+    }
+    $ticket = bin2hex(random_bytes(16));
+    $all = array_filter((array)ba_kv_get('acc_tickets', []), fn($t) => $t['exp'] > time());
+    $all[hash('sha256', $ticket)] = ['user' => (int)$u['id'], 'path' => $path, 'exp' => time() + 60];
+    ba_kv_set('acc_tickets', $all);
+    return ['ticket' => $ticket];
+}
+
+/** The user behind a one-time download ticket for this address (used up on the spot). */
+function acc_ticket_user($ticket, $path)
+{
+    $all = (array)ba_kv_get('acc_tickets', []);
+    $key = hash('sha256', $ticket);
+    $t = $all[$key] ?? null;
+    if (!$t) {
+        return null;
+    }
+    unset($all[$key]);
+    ba_kv_set('acc_tickets', array_filter($all, fn($x) => $x['exp'] > time()));
+    if ($t['exp'] < time() || $t['path'] !== $path) {
+        return null;
+    }
+    return acc_row('SELECT * FROM acc_users WHERE id = ? AND is_active = 1', [$t['user']]) ?: null;
 }
 
 /** Requires a permission inside a handler (when it depends on the body). */
@@ -225,8 +264,11 @@ function r_login_app()
 {
     $app = (string)(ba_config()['app_token'] ?? '');
     $given = (string)($_SERVER['HTTP_X_APP_TOKEN'] ?? '');
+    if (($wait = ba_throttle_wait('app')) > 0) {
+        throw new AccError('تلاش زیاد با رمز اشتباه؛ ' . ceil($wait / 60) . ' دقیقه بعد دوباره امتحان کن.', 429);
+    }
     if ($app === '' || strpos($app, 'CHANGE-ME') === 0 || !hash_equals($app, $given)) {
-        usleep(300000);
+        ba_throttle_fail('app');
         throw new AccError('رمز اپ نادرست است', 401);
     }
     $u = acc_row("SELECT * FROM acc_users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1");
@@ -246,8 +288,8 @@ function r_change_password($u)
     if (!password_verify((string)($b['old_password'] ?? ''), $u['password_hash'])) {
         throw new AccError('رمز فعلی اشتباه است');
     }
-    if (mb_strlen((string)($b['new_password'] ?? '')) < 6) {
-        throw new AccError('رمز جدید حداقل ۶ حرف باشد');
+    if (mb_strlen((string)($b['new_password'] ?? '')) < 10) {
+        throw new AccError('رمز جدید حداقل ۱۰ حرف باشد');
     }
     acc_update('acc_users', $u['id'], ['password_hash' => password_hash($b['new_password'], PASSWORD_DEFAULT)]);
     acc_q('DELETE FROM acc_sessions WHERE user_id = ?', [$u['id']]);
@@ -256,6 +298,16 @@ function r_change_password($u)
     }
     acc_log($u['username'], 'change_password');
     return ['ok' => true];
+}
+
+/** A user-typed address the server will call: refuse this server and the private network. */
+function acc_check_public_url($url)
+{
+    try {
+        curl_close(ba_curl_public($url, []));
+    } catch (RuntimeException $e) {
+        throw new AccError($e->getMessage());
+    }
 }
 
 function r_dashboard()
@@ -273,13 +325,16 @@ function r_dashboard()
     ];
 }
 
-function r_company()
+function r_company($u = null)
 {
     $c = acc_company();
     foreach (['webhook_enabled', 'tax_key_set', 'allow_negative_stock'] as $k) {
         $c[$k] = (bool)$c[$k];
     }
-    unset($c['id'], $c['tax_private_key'], $c['tax_certificate']);
+    unset($c['id'], $c['tax_private_key'], $c['tax_certificate'], $c['api_key']);
+    if (!$u || $u['role'] !== 'admin') {   // every user reads the company's name and settings, only admin its secrets
+        unset($c['webhook_secret'], $c['webhook_url']);
+    }
     return $c;
 }
 
@@ -297,6 +352,9 @@ function r_company_save($u)
     if (isset($set['webhook_url']) && $set['webhook_url'] !== '' && !preg_match('~^https?://~', $set['webhook_url'])) {
         throw new AccError('آدرس Webhook باید با http یا https شروع شود');
     }
+    if (!empty($set['webhook_url'])) {
+        acc_check_public_url($set['webhook_url']);
+    }
     acc_update('acc_company', 1, $set);
     acc_log($u['username'], 'update_company');
     return ['ok' => true];
@@ -305,15 +363,15 @@ function r_company_save($u)
 function r_users()
 {
     return array_map(fn($x) => ['id' => (int)$x['id'], 'username' => $x['username'], 'full_name' => $x['full_name'],
-        'role' => $x['role'], 'is_active' => (bool)$x['is_active']], acc_all('SELECT * FROM acc_users ORDER BY id'));
+        'role' => $x['role'], 'is_active' => (bool)$x['is_active'], 'companies' => acc_user_companies($x)], acc_all('SELECT * FROM acc_users ORDER BY id'));
 }
 
 function r_user_create($u)
 {
     $b = acc_body();
     $name = trim((string)($b['username'] ?? ''));
-    if ($name === '' || mb_strlen((string)($b['password'] ?? '')) < 6) {
-        throw new AccError('نام کاربری و رمز (حداقل ۶ حرف) لازم است');
+    if ($name === '' || mb_strlen((string)($b['password'] ?? '')) < 10) {
+        throw new AccError('نام کاربری و رمز (حداقل ۱۰ حرف) لازم است');
     }
     if (!isset(ACC_ROLE_PERMS[$b['role'] ?? ''])) {
         throw new AccError('نقش نامعتبر است');
@@ -371,7 +429,9 @@ function r_restore($u)
     try {
         $t = new PDO('sqlite:' . $up);
         $t->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $ok = $t->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $t->query('SELECT COUNT(*) FROM acc_journals')->fetchColumn() !== false;
+        $ok = $t->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $t->query('SELECT COUNT(*) FROM acc_journals')->fetchColumn() !== false
+            // this program makes no triggers or views: a file with them could run hidden SQL on every query later
+            && (int)$t->query("SELECT COUNT(*) FROM sqlite_master WHERE type IN ('trigger', 'view')")->fetchColumn() === 0;
         $t = null;
     } catch (Throwable $e) {
         $ok = false;
@@ -392,13 +452,30 @@ function r_restore($u)
     return ['ok' => true, 'kept' => basename($keep)];
 }
 
-function r_companies()
+function r_companies($u)
 {
+    $mine = acc_user_companies($u);
     $out = [];
     foreach (acc_companies() as $id => $name) {
-        $out[] = ['id' => $id, 'name' => $name];
+        if (in_array($id, $mine, true)) {
+            $out[] = ['id' => $id, 'name' => $name];
+        }
     }
     return $out;
+}
+
+/** Which companies a (non-admin) user may open. */
+function r_user_companies($u, $uid)
+{
+    $x = acc_row('SELECT * FROM acc_users WHERE id = ?', [$uid]);
+    if (!$x) {
+        throw new AccError('کاربر یافت نشد', 404);
+    }
+    $all = array_keys(acc_companies());
+    $ids = array_values(array_intersect($all, array_map('intval', (array)(acc_body()['companies'] ?? []))));
+    acc_update('acc_users', $uid, ['companies' => json_encode($ids ?: [1])]);
+    acc_log($u['username'], 'user_companies', $x['username'] . ': ' . implode(',', $ids ?: [1]));
+    return ['ok' => true, 'companies' => $ids ?: [1]];
 }
 
 /** New company (موسسه) with its own books; lists can be copied from the current one. */
@@ -757,10 +834,10 @@ function r_invoice_print($u, $id)
         $rows .= '<tr><td>' . (++$i) . '</td><td>' . $e($it['code']) . '</td><td>' . $e($it['name']) . '</td><td>' . $e((float)$it['qty'] . ' ' . $it['unit'])
             . '</td><td>' . $n($it['price']) . '</td><td>' . $n($it['qty'] * $it['price']) . '</td></tr>';
     }
-    header('Content-Type: text/html; charset=utf-8');
+    $printJs = acc_print_page_headers();
     echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>' . $e($inv['number']) . '</title>'
         . '<style>body{font-family:Vazirmatn,Tahoma,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #bbb;padding:6px;text-align:right}'
-        . '.muted{color:#555}.tot td{font-weight:bold}@media print{button{display:none}}</style></head><body>'
+        . '.muted{color:#555}.tot td{font-weight:bold}@media print{button{display:none}}</style></head><body data-autoprint>'
         . '<h2>' . $e($titles[$inv['kind']] ?? 'فاکتور') . ' ' . $e($inv['number']) . '</h2>'
         . '<p>فروشنده: ' . $e($c['name']) . ' | شناسه ملی: ' . $e($c['national_id']) . ' | کد اقتصادی: ' . $e($c['economic_code'])
         . ($c['address'] ? ' | ' . $e($c['address']) : '') . ($c['phone'] ? ' | تلفن: ' . $e($c['phone']) : '') . '</p>'
@@ -772,7 +849,7 @@ function r_invoice_print($u, $id)
         . '<tr><td colspan="5">مالیات بر ارزش افزوده</td><td>' . $n($inv['tax']) . '</td></tr><tr class="tot"><td colspan="5">مبلغ کل</td><td>' . $n($inv['total']) . '</td></tr></tfoot></table>'
         . ($inv['due_date'] ? '<p>سررسید پرداخت: ' . $e($inv['due_date']) . '</p>' : '') . ($inv['note'] ? '<p>' . nl2br($e($inv['note'])) . '</p>' : '')
         . ($c['invoice_footer'] ? '<p class="muted">' . nl2br($e($c['invoice_footer'])) . '</p>' : '')
-        . '<p><button onclick="print()">چاپ</button></p><script>window.onload=function(){window.print()}</script></body></html>';
+        . '<p><button data-print>چاپ</button></p>' . $printJs . '</body></html>';
     return null;
 }
 
@@ -1548,6 +1625,9 @@ function r_sms_settings_save($u)
     }
     if ($s['sms_provider'] === 'custom' && !preg_match('~^https?://.*\{to\}.*~', $s['sms_custom_url']) ) {
         throw new AccError('آدرس وب‌سرویس باید با http شروع شود و {to} و {text} داشته باشد');
+    }
+    if ($s['sms_provider'] === 'custom') {
+        acc_check_public_url(str_replace(['{to}', '{text}', '{from}'], '', $s['sms_custom_url']));
     }
     ba_kv_set('acc_sms_settings', $s);
     acc_log($u['username'], 'sms_settings', $s['sms_provider']);

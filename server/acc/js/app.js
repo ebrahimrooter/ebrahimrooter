@@ -138,8 +138,23 @@ function accountingApp() {
     get lowStockProducts() { return this.lowStock; },
 
     /** Address for links opened outside fetch (print, CSV, files): carries the login token. */
-    link(path) {
-      return API(path) + "&token=" + encodeURIComponent(this.token) + "&company=" + (this.companyId || 1);
+    /** Text → safe HTML (names, codes and descriptions typed by any user go into report tables). */
+    h(v) {
+      return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    },
+
+    /** Opens a print page / download with a one-time ticket (the session never goes into a URL). */
+    async openAuthed(path, sameTab) {
+      const win = sameTab ? null : window.open("", "_blank");   // opened now: popup blockers allow it only inside the click
+      try {
+        const p = path.replace(/^\/api/, "").split("?")[0];
+        const r = await this.req("/api/download-ticket", { method: "POST", body: JSON.stringify({ path: p }) });
+        const url = API(path) + "&ticket=" + r.ticket + "&company=" + (this.companyId || 1);
+        if (win) win.location = url; else location.href = url;
+      } catch (e) {
+        if (win) win.close();
+        alert(e.message);
+      }
     },
 
     get personGroups() {
@@ -298,7 +313,7 @@ function accountingApp() {
       if (await this.morePost(kind, { name })) this.more.form = this.moreForms.brands();
     },
     printLabels() {
-      window.open(this.link("/api/labels?ids=" + this.more.labelIds.join(",") + "&copies=" + (this.more.copies || 1)), "_blank");
+      this.openAuthed("/api/labels?ids=" + this.more.labelIds.join(",") + "&copies=" + (this.more.copies || 1));
     },
     async readCsvFile(ev) {
       const f = ev.target.files[0];
@@ -378,7 +393,7 @@ function accountingApp() {
       try { await this.req("/api/reports/marketers/" + m.id + "/commission?" + this.repQuery(), { method: "POST" }); this.refreshAll(); alert("ثبت شد"); }
       catch (e) { alert(e.message); }
     },
-    ttmsLink() { return this.link("/api/reports/ttms?year=" + (this.rep.year || JDATE.slice(0, 4)) + "&season=" + this.rep.season + "&kind=" + this.rep.group); },
+    ttmsDownload() { this.openAuthed("/api/reports/ttms?year=" + (this.rep.year || JDATE.slice(0, 4)) + "&season=" + this.rep.season + "&kind=" + this.rep.group, true); },
     async deleteTxn(t) {
       if (!confirm("دریافت/پرداخت " + t.number + " حذف و سندش برگردانده شود؟")) return;
       try { await this.req("/api/treasury/" + t.id, { method: "DELETE" }); await this.refreshAll(); } catch (e) { alert(e.message); }
@@ -495,7 +510,7 @@ function accountingApp() {
       // each list on its own: a user without access to one section still gets the rest
       const get = (path, fallback) => this.req(path).catch(() => fallback);
       this.companies = await get("/api/companies", []);
-      if (this.companies.length && !this.companies.some(c => c.id == this.companyId)) { this.companyId = 1; localStorage.setItem("acc_company", "1"); }
+      if (this.companies.length && !this.companies.some(c => c.id == this.companyId)) { this.companyId = this.companies[0].id; localStorage.setItem("acc_company", String(this.companyId)); }
       const [dash, company, persons, products, sales, purchases, journals, accounts, txns, cheques, coa, fiscal, warehouses, stockRows, whDocs, taxInvoices, taxReport, serials, stockCounts, branches, currencies, statements] = await Promise.all([
         get("/api/dashboard", { low_stock: [] }),
         get("/api/company", this.company),
@@ -727,7 +742,7 @@ function accountingApp() {
       const r = await this.req("/api/reports/cogs");
       this.reportTitle = "بهای تمام‌شده و ارزش موجودی";
       let html = '<table class="w-full text-sm"><tr class="border-b"><th class="text-right">کالا</th><th class="text-right">موجودی</th><th class="text-right">میانگین</th><th class="text-right">ارزش</th></tr>';
-      (r.rows||[]).forEach(x => { html += `<tr class="border-b"><td class="py-1">${x.name}</td><td>${x.stock}</td><td>${this.formatNumber(x.avg_cost)}</td><td>${this.formatNumber(x.stock_value)}</td></tr>`; });
+      (r.rows||[]).forEach(x => { html += `<tr class="border-b"><td class="py-1">${this.h(x.name)}</td><td>${this.h(x.stock)}</td><td>${this.formatNumber(x.avg_cost)}</td><td>${this.formatNumber(x.stock_value)}</td></tr>`; });
       html += `<tr><td colspan="3" class="font-bold py-2">جمع</td><td class="font-bold">${this.formatNumber(r.total_value)}</td></tr></table>`;
       this.reportContent = html; this.currentPage = "reports";
     },
@@ -745,7 +760,7 @@ function accountingApp() {
       this.currentPage = "reports";
     },
     printInvoice(inv) {
-      window.open(this.link("/api/invoices/" + inv.id + "/print"));
+      this.openAuthed("/api/invoices/" + inv.id + "/print");
     },
     async voidJournal(j) {
       if (!confirm("ابطال سند؟")) return;
@@ -761,7 +776,7 @@ function accountingApp() {
         const r = await this.req("/api/kardex/" + p.id);
         this.reportTitle = "کاردکس " + r.product;
         let html = '<table class="w-full text-sm"><tr class="border-b"><th class="text-right py-1">سند</th><th class="text-right">ورود</th><th class="text-right">خروج</th><th class="text-right">مانده</th></tr>';
-        (r.rows||[]).forEach(x => { html += `<tr class="border-b"><td class="py-1">${x.doc}</td><td>${x.qty_in}</td><td>${x.qty_out}</td><td>${x.balance}</td></tr>`; });
+        (r.rows||[]).forEach(x => { html += `<tr class="border-b"><td class="py-1">${this.h(x.doc)}</td><td>${this.h(x.qty_in)}</td><td>${this.h(x.qty_out)}</td><td>${this.h(x.balance)}</td></tr>`; });
         this.reportContent = html + "</table>";
         this.currentPage = "reports";
       } catch(e){ alert(e.message); }
@@ -789,18 +804,18 @@ function accountingApp() {
       if (type === "sales") {
         this.reportTitle = "گزارش فروش";
         let html = '<table class="w-full text-sm"><thead><tr class="border-b"><th class="text-right py-2">شماره</th><th class="text-right py-2">مشتری</th><th class="text-right py-2">مبلغ</th></tr></thead><tbody>';
-        this.salesInvoices.forEach(i => { html += `<tr class="border-b"><td class="py-2">${i.number}</td><td class="py-2">${i.person_name || this.getPersonName(i.person_id)}</td><td class="py-2">${this.formatNumber(i.total)}</td></tr>`; });
+        this.salesInvoices.forEach(i => { html += `<tr class="border-b"><td class="py-2">${this.h(i.number)}</td><td class="py-2">${this.h(i.person_name || this.getPersonName(i.person_id))}</td><td class="py-2">${this.formatNumber(i.total)}</td></tr>`; });
         html += `</tbody></table><div class="mt-4 font-bold">جمع: ${this.formatNumber(this.stats.sales)} ریال</div>`;
         this.reportContent = html;
       } else if (type === "inventory") {
         this.reportTitle = "موجودی کالا";
         let html = '<table class="w-full text-sm"><thead><tr class="border-b"><th class="text-right py-2">کد</th><th class="text-right py-2">نام</th><th class="text-right py-2">موجودی</th></tr></thead><tbody>';
-        this.products.forEach(p => { html += `<tr class="border-b"><td class="py-2">${p.code}</td><td class="py-2">${p.name}</td><td class="py-2">${p.stock}</td></tr>`; });
+        this.products.forEach(p => { html += `<tr class="border-b"><td class="py-2">${this.h(p.code)}</td><td class="py-2">${this.h(p.name)}</td><td class="py-2">${this.h(p.stock)}</td></tr>`; });
         this.reportContent = html + "</tbody></table>";
       } else if (type === "debtors") {
         this.reportTitle = "بدهکاران";
         let html = '<table class="w-full text-sm"><thead><tr class="border-b"><th class="text-right py-2">نام</th><th class="text-right py-2">مانده</th></tr></thead><tbody>';
-        this.customers.filter(c => c.balance > 0).forEach(c => { html += `<tr class="border-b"><td class="py-2">${c.name}</td><td class="py-2">${this.formatNumber(c.balance)}</td></tr>`; });
+        this.customers.filter(c => c.balance > 0).forEach(c => { html += `<tr class="border-b"><td class="py-2">${this.h(c.name)}</td><td class="py-2">${this.formatNumber(c.balance)}</td></tr>`; });
         this.reportContent = html + "</tbody></table>";
       } else if (type === "pl") {
         this.reportTitle = "سود و زیان ساده";
@@ -811,7 +826,7 @@ function accountingApp() {
         this.reportTitle = "دفتر روزنامه";
         this.journals.forEach(()=>{});
         let html = '<table class="w-full text-sm"><tr class="border-b"><th class="text-right py-1">شماره</th><th class="text-right">شرح</th><th class="text-right">بدهکار</th><th class="text-right">بستانکار</th><th class="text-right">وضعیت</th></tr>';
-        this.journals.forEach(j => { html += `<tr class="border-b"><td class="py-1">${j.number}</td><td>${j.description||""}</td><td>${this.formatNumber(j.debit)}</td><td>${this.formatNumber(j.credit)}</td><td>${j.status||""}</td></tr>`; });
+        this.journals.forEach(j => { html += `<tr class="border-b"><td class="py-1">${this.h(j.number)}</td><td>${this.h(j.description||"")}</td><td>${this.formatNumber(j.debit)}</td><td>${this.formatNumber(j.credit)}</td><td>${this.h(j.status||"")}</td></tr>`; });
         this.reportContent = html + "</table>";
         return;
       }
@@ -820,7 +835,7 @@ function accountingApp() {
       }
     },
     async exportExcel() {
-      window.open(this.link("/api/backup"));
+      this.openAuthed("/api/backup", true);
     },
     async saveCompany() {
       try {
@@ -880,6 +895,14 @@ function accountingApp() {
         this.companyForm = { name: "", copy: false };
         this.companies = await this.req("/api/companies");
         if (confirm("موسسه ساخته شد. الان به آن بروی؟")) { this.companyId = r.id; await this.switchCompany(); }
+      } catch (e) { alert(e.message); }
+    },
+    async toggleUserCompany(u, cid, on) {
+      const list = new Set(u.companies || [1]);
+      if (on) list.add(cid); else list.delete(cid);
+      try {
+        const r = await this.req("/api/users/" + u.id + "/companies", { method: "PUT", body: JSON.stringify({ companies: [...list] }) });
+        u.companies = r.companies;
       } catch (e) { alert(e.message); }
     },
     async loadUsers() {
@@ -980,7 +1003,7 @@ function accountingApp() {
     async loadDues() {
       const r = await this.req("/api/reports/dues");
       this.reportTitle = "سررسید مطالبات و بدهی‌ها";
-      this.reportContent = `<div class="text-sm"><div class="font-semibold mb-1">چک‌های دریافتنی</div>` + (r.receivable_cheques||[]).map(c=>`<div>${c.number} - ${this.formatNumber(c.amount)} - ${c.due_date}</div>`).join("") + `<div class="font-semibold mt-3 mb-1">چک‌های پرداختنی</div>` + (r.payable_cheques||[]).map(c=>`<div>${c.number} - ${this.formatNumber(c.amount)} - ${c.due_date}</div>`).join("") + `</div>`;
+      this.reportContent = `<div class="text-sm"><div class="font-semibold mb-1">چک‌های دریافتنی</div>` + (r.receivable_cheques||[]).map(c=>`<div>${this.h(c.number)} - ${this.formatNumber(c.amount)} - ${this.h(c.due_date)}</div>`).join("") + `<div class="font-semibold mt-3 mb-1">چک‌های پرداختنی</div>` + (r.payable_cheques||[]).map(c=>`<div>${this.h(c.number)} - ${this.formatNumber(c.amount)} - ${this.h(c.due_date)}</div>`).join("") + `</div>`;
       this.currentPage = "reports";
     },
     async loadStock() {
@@ -1075,6 +1098,7 @@ function accountingApp() {
       try {
         await this.req("/api/users", { method: "POST", body: JSON.stringify(this.userForm) });
         this.showUserModal = false;
+        this.userForm = { username: "", password: "", full_name: "", role: "seller" };
         await this.loadUsers();
       } catch (e) { alert(e.message); }
     }

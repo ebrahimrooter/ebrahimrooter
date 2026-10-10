@@ -23,12 +23,17 @@ check() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  FAIL $1 (got: 
 echo "install.php"
 check "plain http is refused (Bale needs https)" "$(curl -s $U/install.php | grep -c 'SSL')" "1"
 check "https: host ready" "$(curl -s -H "$H" $U/install.php | grep -c 'هاست آماده است')" "1"
-OUT=$(curl -s -H "$H" -X POST $U/install.php)
+check "install needs the code from the host's File Manager" "$(curl -s -H "$H" -X POST -d code=WRONG $U/install.php | grep -c 'کد نصب درست نیست')" "1"
+check "nothing installed with a wrong code" "$([ -f "$T/s/config.php" ] && echo yes || echo no)" "no"
+CODE=$(cat "$T/s/data/install-code.txt")
+OUT=$(curl -s -H "$H" -X POST -d "code=$CODE" $U/install.php)
 APP=$(printf '%s' "$OUT" | grep -o 'رمز اپ:<br><span class="big"><code>[0-9a-f]*' | sed 's/.*<code>//')
 DEV=$(printf '%s' "$OUT" | grep -o 'DEVICE_TOKEN = "[0-9a-f]*' | sed 's/.*"//')
-check "passwords shown once" "$([ ${#APP} -eq 10 ] && [ ${#DEV} -eq 32 ] && echo yes)" "yes"
+check "passwords shown once (16-char app password)" "$([ ${#APP} -eq 16 ] && [ ${#DEV} -eq 32 ] && echo yes)" "yes"
+check "backup password made" "$(grep -c "'backup_password' => '[0-9a-f]\{24\}'" "$T/s/config.php")" "1"
+check "install.php deleted itself" "$([ -f "$T/s/install.php" ] && echo yes || echo no)" "no"
 check "ESP32 SERVER_URL line" "$(printf '%s' "$OUT" | grep -c "SERVER_URL   = \"https://127.0.0.1:$P/api.php\"")" "1"
-check "second visit refused" "$(curl -s -o /dev/null -w '%{http_code}' -H "$H" $U/install.php)" "403"
+check "second visit: nothing there" "$(curl -s -o /dev/null -w '%{http_code}' -H "$H" $U/install.php)" "404"
 # test-only: point the Bale client at the mock
 sed -i "s#^return \[#return ['bale_api_base' => 'http://127.0.0.1:$B',#" "$T/s/config.php"
 
@@ -39,9 +44,13 @@ R=$(curl -s -H "$H" -H "$A" -H 'Content-Type: application/json' -d '{"bale_bot_t
 check "connect: bot found, waiting for /start" "$(printf '%s' "$R" | grep -c '"bot":"my_bank_bot","waiting_for_start":true')" "1"
 check "webhook points at this server" "$(grep -c "https://127.0.0.1:$P/api.php?r=bale&key=" "$T/hook")" "1"
 KEY=$(sed 's/.*key=//' "$T/hook")
-curl -s -H 'Content-Type: application/json' -d '{"message":{"chat":{"id":555},"text":"/start"}}' "$U/api.php?r=bale&key=$KEY" >/dev/null
+CC=$(printf '%s' "$R" | sed 's/.*"claim_code":"\([0-9]*\)".*/\1/')
+check "connect shows a 6-digit claim code" "${#CC}" "6"
+curl -s -H 'Content-Type: application/json' -d '{"message":{"chat":{"id":777},"text":"/start"}}' "$U/api.php?r=bale&key=$KEY" >/dev/null
+check "a plain /start (someone who found the bot) does not claim it" "$(curl -s -H "$H" -H "$A" "$U/api.php?r=settings" | grep -c '"chat_id":""')" "1"
+curl -s -H 'Content-Type: application/json' -d '{"message":{"chat":{"id":555},"text":"/start '"$CC"'"}}' "$U/api.php?r=bale&key=$KEY" >/dev/null
 S=$(curl -s -H "$H" -H "$A" "$U/api.php?r=settings")
-check "first /start after connect claims the bot" "$(printf '%s' "$S" | grep -c '"chat_id":"555"')" "1"
+check "«/start CODE» from the owner claims the bot" "$(printf '%s' "$S" | grep -c '"chat_id":"555"')" "1"
 curl -s -H 'Content-Type: application/json' -d '{"message":{"chat":{"id":666},"text":"/start"}}' "$U/api.php?r=bale&key=$KEY" >/dev/null
 check "a later stranger cannot take it over" "$(curl -s -H "$H" -H "$A" "$U/api.php?r=settings" | grep -c '"chat_id":"555"')" "1"
 V='{"update_id":77,"message":{"message_id":9,"chat":{"id":555},"voice":{"file_id":"F"}}}'

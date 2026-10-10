@@ -17,6 +17,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   const page = await browser.newPage({ viewport: { width: 1366, height: 860 }, locale: 'fa-IR' });
   const errors = [], external = [];
   page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(0,3).join(' / ')));
+  page.on('console', m => { if (/Content Security Policy|Refused to (load|execute|apply|connect|frame)/i.test(m.text())) errors.push('CSP: ' + m.text().slice(0, 200)); });
   page.on('response', r => { if (r.status() >= 400) errors.push('HTTP ' + r.status() + ' ' + r.url()); });
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('request', r => { if (!r.url().startsWith('http://127.0.0.1:8833')) external.push(r.url()); });
@@ -124,10 +125,12 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.waitForTimeout(500);
   check('profit report rows', await page.evaluate(() => document.body._x_dataStack[0].repRows.length > 0));
   await page.screenshot({ path: OUT + '/7-mreports.png' });
-  // print opens with the token
+  // print opens with a one-time ticket
   const [popup] = await Promise.all([page.waitForEvent('popup'), page.evaluate(() => { const d = document.body._x_dataStack[0]; d.printInvoice(d.salesInvoices[0]); })]);
+  await popup.waitForURL(/ticket=/, { timeout: 8000 }).catch(() => {});
   await popup.waitForLoadState();
-  check('print page opens (token in link)', (await popup.content()).includes('فاکتور فروش'));
+  const pu = popup.url();
+  check('print page opens with a one-time ticket (no session in the link)', (await popup.content()).includes('فاکتور فروش') && /ticket=/.test(pu) && !/token=/.test(pu), pu);
   check('no JavaScript errors', errors.length === 0, JSON.stringify(errors.slice(0, 5)));
   check('nothing loaded from outside the server', external.length === 0, JSON.stringify(external.slice(0, 5)));
   await browser.close();

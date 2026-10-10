@@ -21,6 +21,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: 'fa-IR', isMobile: true, hasTouch: true });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { if (/Content Security Policy|Refused to (load|execute|apply|connect|frame)/i.test(m.text())) errors.push('CSP: ' + m.text().slice(0, 200)); });
   page.on('response', r => { if (r.status() >= 400 && !r.url().includes('fonts.g')) errors.push('HTTP ' + r.status() + ' ' + r.url()); });
   page.on('dialog', d => d.accept());
   await page.goto('http://127.0.0.1:8834/app/');

@@ -34,6 +34,7 @@ const check = (n, ok, x = '') => { console.log((ok ? '  ok   ' : '  FAIL ') + n 
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
+  p.on('console', m => { if (/Content Security Policy|Refused to (load|execute|apply|connect|frame)/i.test(m.text())) errors.push('CSP: ' + m.text().slice(0, 200)); });
   await p.goto(`http://127.0.0.1:${port}/app/?android=1`);
   await p.fill('#t', 'apppass123');
   await p.click('#f button');

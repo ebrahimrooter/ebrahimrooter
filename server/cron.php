@@ -166,12 +166,79 @@ function job_restore() {
     return 0;
 }
 
+/**
+ * php cron.php rotate-secrets — new app password, device token and OTP PIN in
+ * config.php (a copy of the old file goes to /var/backups/bank-assistant), every
+ * paired phone and every panel session signed out. Use it whenever a password may
+ * have leaked. Then: new DEVICE_TOKEN in the ESP32, pair the phones again.
+ */
+function job_rotate_secrets() {
+    $file = __DIR__ . '/config.php';
+    $src = (string)@file_get_contents($file);
+    if ($src === '') {
+        fwrite(STDERR, "config.php not found\n");
+        return 1;
+    }
+    $new = ['app_token' => bin2hex(random_bytes(8)), 'device_token' => bin2hex(random_bytes(16)), 'otp_pin' => (string)random_int(100000, 999999)];
+    $out = $src;
+    foreach ($new as $k => $v) {
+        $re = "/('" . $k . "'\\s*=>\\s*)'[^']*'/";
+        if (!preg_match($re, $out)) {
+            fwrite(STDERR, "$k not found in config.php\n");
+            return 1;
+        }
+        $out = preg_replace($re, '${1}' . var_export($v, true), $out, 1);
+    }
+    $dir = is_writable('/var/backups') || is_dir('/var/backups/bank-assistant') ? '/var/backups/bank-assistant' : sys_get_temp_dir() . '/bank-assistant-config';
+    @mkdir($dir, 0700, true);
+    $copy = $dir . '/config.php.' . time();
+    if (!@copy($file, $copy)) {
+        fwrite(STDERR, "could not keep a copy of config.php in $dir\n");
+        return 1;
+    }
+    @chmod($copy, 0600);
+    $tmp = $file . '.new-' . getmypid();
+    file_put_contents($tmp, $out);
+    exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $o, $rc);
+    if ($rc !== 0) {
+        @unlink($tmp);
+        fwrite(STDERR, "the new config.php did not pass php -l; nothing changed\n");
+        return 1;
+    }
+    @chmod($tmp, fileperms($file) & 0777);
+    @chown($tmp, fileowner($file));
+    @chgrp($tmp, filegroup($file));
+    rename($tmp, $file);
+    // everyone signs in again: paired phones, panel sessions
+    require_once __DIR__ . '/assistant.php';
+    assistant_schema();
+    ba_db()->exec('UPDATE assistant_devices SET revoked = 1');
+    require_once __DIR__ . '/acc_api.php';
+    acc_use_company(1);
+    acc_db();
+    if (ba_kv_get('acc_admin_default_pw')) {   // admin still on the app password: the old one must stop working
+        acc_q("UPDATE acc_users SET password_hash = ? WHERE username = 'admin'", [password_hash($new['app_token'], PASSWORD_DEFAULT)]);
+    }
+    foreach (array_keys(acc_companies()) as $cid) {
+        acc_use_company($cid);
+        acc_q('DELETE FROM acc_sessions');
+    }
+    acc_use_company(1);
+    echo "new secrets written (old config kept as $copy)\n";
+    echo "  app password:  {$new['app_token']}   (also the panel admin password if admin never changed it)\n";
+    echo "  device token:  {$new['device_token']}   -> DEVICE_TOKEN in the ESP32 sketch\n";
+    echo "  OTP PIN:       {$new['otp_pin']}\n";
+    echo "every paired phone and panel session was signed out.\n";
+    echo "also: make a new Bale bot token in BotFather if it may have leaked, put it in config.php, then php cron.php bale-setup\n";
+    return 0;
+}
+
 $job = $argv[1] ?? 'weekly';
 $jobs = ['weekly' => 'job_weekly', 'remind' => 'job_remind', 'health' => 'job_health',
     'bale-setup' => 'job_bale_setup', 'daemon' => 'job_daemon', 'voice-test' => 'job_voice_test',
-    'backup' => 'job_backup', 'restore' => 'job_restore'];
+    'backup' => 'job_backup', 'restore' => 'job_restore', 'rotate-secrets' => 'job_rotate_secrets'];
 if (!isset($jobs[$job])) {
-    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon|voice-test|backup|restore\n");
+    fwrite(STDERR, "usage: php cron.php weekly|remind|health|bale-setup|daemon|voice-test|backup|restore|rotate-secrets\n");
     exit(1);
 }
 exit((int)$jobs[$job]());

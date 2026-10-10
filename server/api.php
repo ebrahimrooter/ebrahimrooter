@@ -60,7 +60,7 @@ set_exception_handler(function ($ex) {
     if ($ex instanceof InvalidArgumentException) {
         fail($ex->getMessage(), 400);   // a validation message meant for the user
     }
-    fail('خطای سرور: ' . $ex->getMessage(), 500);
+    fail(ba_public_error($ex), 500);
 });
 
 /** "1,250,000" / "۱۲۵۰۰۰۰" in toman or rial field -> rial int. */
@@ -109,7 +109,11 @@ function require_post() {
 if ($route === 'ingest') {
     require_post();
     $token = $_SERVER['HTTP_X_DEVICE_TOKEN'] ?? ($in['token'] ?? '');
+    if (ba_throttle_wait('device') > 0) {
+        fail('تلاش زیاد', 429);
+    }
     if (!token_ok($token, $cfg['device_token'] ?? '')) {
+        ba_throttle_fail('device', 20);
         fail('توکن دستگاه نادرست است', 401);
     }
     $sender = trim((string)($in['sender'] ?? ''));
@@ -250,14 +254,14 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
         try {
             out(['ok' => true] + assistant_login($in['password'] ?? '', $in['device_name'] ?? '', $_SERVER['REMOTE_ADDR'] ?? ''));
         } catch (RuntimeException $e) {
-            fail($e->getMessage(), $e->getCode() ?: 400);
+            fail(ba_public_error($e), $e->getCode() ?: 400);
         }
     }
     if ($route === 'assistant_redeem') {
         try {
             out(['ok' => true] + assistant_redeem($in['code'] ?? '', $in['device_name'] ?? '', $_SERVER['REMOTE_ADDR'] ?? ''));
         } catch (RuntimeException $e) {
-            fail($e->getMessage(), $e->getCode() ?: 400);
+            fail(ba_public_error($e), $e->getCode() ?: 400);
         }
     }
     $device = assistant_device();
@@ -280,7 +284,7 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                     if (!($e instanceof AccError)) {
                         throw $e;
                     }
-                    $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];   // e.g. not enough stock
+                    $ans = ['reply' => ba_public_error($e), 'state' => 'error', 'data' => []];   // e.g. not enough stock
                 }
                 out(['ok' => true, 'heard' => $text] + $ans);
             case 'assistant_push_register':
@@ -357,29 +361,41 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                 exit;
         }
     } catch (InvalidArgumentException $e) {
-        fail($e->getMessage());
+        fail(ba_public_error($e));
     } catch (RuntimeException $e) {
         if (!in_array($route, ['assistant_transcribe', 'assistant_speak'], true)) {
-            fail($e->getMessage(), $e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 400);
+            fail(ba_public_error($e), $e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 400);
         }
-        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
+        fail(ba_public_error($e), ba_voice_configured() ? 502 : 501);
     } catch (Throwable $e) {
-        error_log('assistant: ' . $e);
-        fail('خطا: ' . $e->getMessage(), 500);
+        fail(ba_public_error($e), 500);
     }
     fail('مسیر نامعتبر', 404);
 }
 
 /* ------------------------------ app side ----------------------------- */
 
-$app_token = $_SERVER['HTTP_X_APP_TOKEN'] ?? ($_GET['token'] ?? '');
+$app_token = $_SERVER['HTTP_X_APP_TOKEN'] ?? '';
+if (($wait = ba_throttle_wait('app')) > 0) {
+    fail('تلاش زیاد با رمز اشتباه؛ ' . ceil($wait / 60) . ' دقیقه بعد دوباره امتحان کن.', 429);
+}
 if (!token_ok($app_token, $cfg['app_token'] ?? '')) {
+    ba_throttle_fail('app');
     fail('رمز اپ نادرست است', 401);
 }
 $db = ba_db();
 ba_otp_purge();
 
 /** Second lock for OTPs: PIN from config, 5 wrong tries = 15 minutes locked. */
+/**
+ * 10 minutes in which the owner claims the bot by sending «/start CODE» in Bale;
+ * the code is shown only in the app, so a stranger who finds the bot cannot.
+ */
+function bale_open_claim() {
+    ba_kv_set('bale_claim_code', (string)random_int(100000, 999999));
+    ba_kv_set('bale_claim_until', time() + 600);
+}
+
 function require_otp_pin($cfg) {
     $pin = (string)($cfg['otp_pin'] ?? '');
     if (strlen($pin) < 4) {
@@ -439,6 +455,7 @@ case 'settings':
         'chat_id' => (string)($cfg['bale_chat_id'] ?? ''), 'webhook' => is_array($info) ? ($info['url'] ?? '') !== '' : null,
         'webhook_error' => is_array($info) ? ($info['last_error_message'] ?? null) : null,
         'waiting_for_start' => (int)ba_kv_get('bale_claim_until', 0) > time(),
+        'claim_code' => (int)ba_kv_get('bale_claim_until', 0) > time() ? ba_kv_get('bale_claim_code') : null,
         'polling' => (int)ba_kv_get('daemon:alive', 0) > time() - 120,   // background service fetches Bale messages
         'otp_to_bale' => !empty($cfg['otp_to_bale']), 'voice' => ba_voice_status(true),
         'voice_reply' => (bool)($cfg['bale_voice_reply'] ?? true)]);
@@ -481,18 +498,18 @@ case 'bale_connect':
         fail('بله وب‌هوک را قبول نکرد. چند دقیقه بعد دوباره امتحان کن.');
     }
     if (empty($cfg['bale_chat_id'])) {
-        ba_kv_set('bale_claim_until', time() + 600);
+        bale_open_claim();
     } else {
         ba_notify('✅ ربات دوباره به حسابداری وصل شد.');
     }
     out(['ok' => true, 'bot' => ba_kv_get('bale_bot_username'), 'waiting_for_start' => empty($cfg['bale_chat_id']),
-        'mode' => $polling ? 'polling' : 'webhook']);
+        'claim_code' => empty($cfg['bale_chat_id']) ? ba_kv_get('bale_claim_code') : null, 'mode' => $polling ? 'polling' : 'webhook']);
 
 case 'bale_forget_chat':
     require_post();
     ba_settings_save(['bale_chat_id' => '']);
-    ba_kv_set('bale_claim_until', time() + 600);
-    out(['ok' => true]);
+    bale_open_claim();
+    out(['ok' => true, 'claim_code' => ba_kv_get('bale_claim_code')]);
 
 case 'otp':
     // ?wallet_id=: only the codes of that card (the card's «رمز پویا» section)
@@ -637,7 +654,10 @@ case 'push_subscribe':
     require_post();
     $sub = $in['subscription'] ?? [];
     $ep = (string)($sub['endpoint'] ?? '');
-    if (!preg_match('~^https://~', $ep) || empty($sub['keys']['p256dh']) || empty($sub['keys']['auth'])) {
+    // only the browsers' push services: the server sends to this address, it must not be one of ours
+    $host = strtolower((string)parse_url($ep, PHP_URL_HOST));
+    $pushHosts = '/(^|\.)(fcm\.googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com|push\.yandex\.ru)$/';
+    if (!preg_match('~^https://~', $ep) || !preg_match($pushHosts, $host) || empty($sub['keys']['p256dh']) || empty($sub['keys']['auth'])) {
         fail('اشتراک نوتیف نامعتبر است');
     }
     $db->prepare('INSERT INTO push_subs (endpoint, p256dh, auth, device, created_at) VALUES (?, ?, ?, ?, ?)
@@ -672,7 +692,7 @@ case 'say':
     try {
         $file = ba_tts($text, 'mp3');
     } catch (RuntimeException $e) {
-        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
+        fail(ba_public_error($e), ba_voice_configured() ? 502 : 501);
     }
     header('Content-Type: audio/mpeg');
     header('Cache-Control: private, max-age=86400');
@@ -849,7 +869,7 @@ case 'transcribe':
     try {
         $text = ba_transcribe($_FILES['audio']['tmp_name'], $_FILES['audio']['type'], $_FILES['audio']['name']);
     } catch (RuntimeException $e) {
-        fail($e->getMessage(), ba_voice_configured() ? 502 : 501);
+        fail(ba_public_error($e), ba_voice_configured() ? 502 : 501);
     }
     out(['ok' => true, 'text' => $text]);
 
@@ -900,9 +920,9 @@ case 'assistant_web':
     } catch (Throwable $e) {
         if (!($e instanceof AccError)) {
             error_log('assistant: ' . $e);
-            fail('خطا: ' . $e->getMessage(), 500);
+            fail(ba_public_error($e), 500);
         }
-        $ans = ['reply' => $e->getMessage(), 'state' => 'error', 'data' => []];
+        $ans = ['reply' => ba_public_error($e), 'state' => 'error', 'data' => []];
     }
     out(['ok' => true, 'heard' => $text] + $ans);
 

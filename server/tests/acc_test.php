@@ -12,7 +12,7 @@ $S = $tmp . '/s';
 @unlink("$S/config.php");
 array_map('unlink', glob("$S/data/*.sqlite*") ?: []);
 $taxPort = 33000 + getmypid() % 2000;
-file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', 'device_token' => 'd', 'timezone' => 'Asia/Tehran', 'moadian_url' => 'http://127.0.0.1:$taxPort/requestsmanager/api/v2'];");
+file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', 'device_token' => 'd', 'timezone' => 'Asia/Tehran', 'allow_private_urls' => true, 'moadian_url' => 'http://127.0.0.1:$taxPort/requestsmanager/api/v2'];");
 $port = 31000 + getmypid() % 2000;
 $srv = proc_open(['php', '-S', "127.0.0.1:$port", '-t', $S, "$S/router.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', "$tmp/server.log", 'w']], $pipes);
 usleep(500000);
@@ -240,8 +240,8 @@ ok('POST', '/fiscal/lock');
 check('locked: no invoice', api('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 1]]])[0], 400);
 ok('POST', '/fiscal/unlock');
 check('short password refused', api('POST', '/users', ['username' => 'ali', 'password' => '1', 'role' => 'seller'])[0], 400);
-ok('POST', '/users', ['username' => 'ali', 'password' => 'seller-pass', 'full_name' => 'علی', 'role' => 'seller']);
-$st = api('POST', '/login', ['username' => 'ali', 'password' => 'seller-pass'])[1]['token'];
+ok('POST', '/users', ['username' => 'ali', 'password' => 'seller-pass-1', 'full_name' => 'علی', 'role' => 'seller']);
+$st = api('POST', '/login', ['username' => 'ali', 'password' => 'seller-pass-1'])[1]['token'];
 check('seller: no journals', api('GET', '/journals', null, $st)[0], 403);
 check('seller: no purchases', api('POST', '/invoices', ['kind' => 'purchase', 'person_id' => $supp, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 1]]], $st)[0], 403);
 check('seller: can sell', api('POST', '/invoices', ['kind' => 'sale', 'person_id' => $cust, 'items' => [['product_id' => $prod, 'qty' => 1, 'price' => 200]]], $st)[0], 200);
@@ -249,17 +249,23 @@ check('seller: no users list', api('GET', '/users', null, $st)[0], 403);
 check('person with history cannot be deleted', api('DELETE', '/persons/' . $cust)[0], 400);
 check('activity log', in_array('create_invoice', array_column(ok('GET', '/logs'), 'action'), true), true);
 
-check('password change needs the old one', api('PUT', '/me/password', ['old_password' => 'x', 'new_password' => 'new-pass-1'])[0], 400);
-ok('PUT', '/me/password', ['old_password' => 'apppass123', 'new_password' => 'new-pass-1']);
+check('password change needs the old one', api('PUT', '/me/password', ['old_password' => 'x', 'new_password' => 'new-pass-12345'])[0], 400);
+ok('PUT', '/me/password', ['old_password' => 'apppass123', 'new_password' => 'new-pass-12345']);
 check('old sessions end after a password change', api('GET', '/me')[0], 401);
 check('old password no longer works', api('POST', '/login', ['username' => 'admin', 'password' => 'apppass123'])[0], 401);
-$TOKEN = api('POST', '/login', ['username' => 'admin', 'password' => 'new-pass-1'])[1]['token'];
+$TOKEN = api('POST', '/login', ['username' => 'admin', 'password' => 'new-pass-12345'])[1]['token'];
 check('new password works', api('GET', '/me')[0], 200);
 
 echo "Files and printing\n";
-[$c, $html] = api('GET', '/invoices/' . $sale['id'] . '/print?token=' . $TOKEN, null, '');
-check('print works with ?token= (links)', [$c, strpos($html, 'فاکتور فروش') !== false], [200, true]);
-[$c, $csv] = api('GET', '/export/csv?what=sales&token=' . $TOKEN, null, '');
+$ticket = fn($path) => api('POST', '/download-ticket', ['path' => $path])[1]['ticket'] ?? '';
+check('the session is not accepted in a link (?token=)', api('GET', '/invoices/' . $sale['id'] . '/print?token=' . $TOKEN, null, '')[0], 401);
+$tk = $ticket('/invoices/' . $sale['id'] . '/print');
+[$c, $html] = api('GET', '/invoices/' . $sale['id'] . '/print?ticket=' . $tk, null, '');
+check('print works with a one-time ticket', [$c, strpos($html, 'فاکتور فروش') !== false], [200, true]);
+check('the ticket works only once', api('GET', '/invoices/' . $sale['id'] . '/print?ticket=' . $tk, null, '')[0], 401);
+check('a ticket opens only its own address', api('GET', '/backup?ticket=' . $ticket('/export/csv'), null, '')[0], 401);
+check('no tickets for API data', api('POST', '/download-ticket', ['path' => '/persons'])[0], 400);
+[$c, $csv] = api('GET', '/export/csv?what=sales&ticket=' . $ticket('/export/csv'), null, '');
 check('CSV with BOM for Excel', [$c, substr($csv, 0, 3)], [200, "\xEF\xBB\xBF"]);
 $ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=/attachments&object_type=invoice&object_id=" . $sale['id']);
 file_put_contents("$tmp/a.txt", 'hello');
@@ -268,7 +274,7 @@ curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CU
 $att = json_decode(curl_exec($ch), true);
 curl_close($ch);
 check('upload: name cleaned', $att['filename'] ?? null, 'evil.txt');
-[$c, $data] = api('GET', '/attachments/' . $att['id'] . '/download?token=' . $TOKEN, null, '');
+[$c, $data] = api('GET', '/attachments/' . $att['id'] . '/download?ticket=' . $ticket('/attachments/' . $att['id'] . '/download'), null, '');
 check('download', [$c, $data], [200, 'hello']);
 check('internal files not served', (function () use ($port) {
     $r = [];
@@ -492,6 +498,27 @@ check('lists copied, without balances', [count($p2) > 3, array_sum(array_column(
 check('own books: empty journal', count(json_decode($cget('/journals', $co['id']), true)), 0);
 check('company name', json_decode($cget('/company', $co['id']), true)['name'], 'شرکت دوم');
 check('main company untouched', ok('GET', '/company')['name'] !== 'شرکت دوم', true);
+// a non-admin opens only the companies the admin gave
+$sellerTok = api('POST', '/login', ['username' => 'ali', 'password' => 'seller-pass-1'])[1]['token'];
+$sget = function ($path, $cid) use ($port, $sellerTok) {
+    $ch = curl_init("http://127.0.0.1:$port/acc/api.php?p=" . rawurlencode($path));
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $sellerTok", "X-Company: $cid"]]);
+    curl_exec($ch);
+    $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $c;
+};
+check('seller: other company refused', $sget('/persons', $co['id']), 403);
+check('seller: sees only the main company', count(api('GET', '/companies', null, $sellerTok)[1]), 1);
+$ali = array_values(array_filter(ok('GET', '/users'), fn($x) => $x['username'] === 'ali'))[0];
+ok('PUT', '/users/' . $ali['id'] . '/companies', ['companies' => [1, $co['id']]]);
+check('admin gave the second company: allowed', $sget('/persons', $co['id']), 200);
+check('only admin sets companies', api('PUT', '/users/' . $ali['id'] . '/companies', ['companies' => [1]], $sellerTok)[0], 403);
+// company secrets only for admin
+ok('PUT', '/company', ['webhook_secret' => 'whsec-1']);
+$asSeller = api('GET', '/company', null, $sellerTok)[1];
+check('seller: no webhook secret / api key', [isset($asSeller['webhook_secret']), isset($asSeller['api_key'])], [false, false]);
+check('admin: webhook secret', ok('GET', '/company')['webhook_secret'] ?? null, 'whsec-1');
 $bk = $cget('/backup', 1);
 check('backup is a database file', substr($bk, 0, 15), 'SQLite format 3');
 $before = count(ok('GET', '/persons'));

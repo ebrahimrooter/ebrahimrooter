@@ -883,7 +883,54 @@ function ba_bearer_token() {
     if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
         return trim((string)$_SERVER['HTTP_X_AUTH_TOKEN']);
     }
-    return (string)($_GET['token'] ?? '');
+    return '';   // never from the URL: it would end up in logs and browser history
+}
+
+/**
+ * What a user may see of an error: our own messages (validation, «not enough
+ * stock»…) as they are; database / PHP errors only as a reference number,
+ * the details go to the server log.
+ */
+function ba_public_error(Throwable $e) {
+    if ($e instanceof PDOException || $e instanceof Error || $e instanceof JsonException) {
+        $ref = substr(bin2hex(random_bytes(3)), 0, 6);
+        error_log("[$ref] " . get_class($e) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+        return 'خطای سرور (کد پیگیری ' . $ref . ')';
+    }
+    return $e->getMessage();
+}
+
+/* ---------- brute-force guard: N wrong passwords from one address = locked for a while ---------- */
+
+/** Seconds this address is still locked out of $scope (0 = free). */
+function ba_throttle_wait($scope) {
+    $f = (array)ba_kv_get('throttle:' . $scope . ':' . ($_SERVER['REMOTE_ADDR'] ?? 'cli'), []);
+    return max(0, (int)($f['until'] ?? 0) - time());
+}
+
+/** One wrong try; after $limit of them the address is locked for $lockSeconds (and the owner told in Bale). */
+function ba_throttle_fail($scope, $limit = 8, $lockSeconds = 900) {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'cli';
+    $key = 'throttle:' . $scope . ':' . $ip;
+    $f = (array)ba_kv_get($key, []);
+    $n = (int)($f['n'] ?? 0) + 1;
+    if ($n >= $limit) {
+        ba_kv_set($key, ['n' => 0, 'until' => time() + $lockSeconds]);
+        try {
+            ba_notify('⚠️ ' . $limit . ' رمز اشتباه (' . $scope . ') از ' . $ip . '؛ ' . round($lockSeconds / 60) . ' دقیقه قفل شد.');
+        } catch (Throwable $e) {
+        }
+        return;
+    }
+    ba_kv_set($key, ['n' => $n, 'until' => 0]);
+    usleep(250000);
+}
+
+function ba_throttle_ok($scope) {
+    $key = 'throttle:' . $scope . ':' . ($_SERVER['REMOTE_ADDR'] ?? 'cli');
+    if (ba_kv_get($key) !== null) {
+        ba_kv_set($key, null);
+    }
 }
 
 function ba_kv_get($key, $default = null) {
@@ -913,9 +960,49 @@ function ba_bale_enabled() {
  */
 function ba_curl($url, array $opts) {
     $ch = curl_init($url);
-    curl_setopt_array($ch, $opts + [CURLOPT_RETURNTRANSFER => true]);
+    // only http(s), also after a redirect (no file://, gopher://, dict:// …)
+    curl_setopt_array($ch, $opts + [CURLOPT_RETURNTRANSFER => true, CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
     if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA') && !ini_get('curl.cainfo')) {
         curl_setopt($ch, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+    }
+    return $ch;
+}
+
+/**
+ * For addresses a user typed (webhook, custom SMS service): http(s) to a public
+ * address only, never this server or its private network (127.0.0.1, 10.x,
+ * 192.168.x, the local voice service …). The address is resolved once and curl
+ * is pinned to it, so a DNS answer that changes in between cannot slip through.
+ * Returns the curl handle or throws.
+ */
+function ba_curl_public($url, array $opts) {
+    $p = parse_url((string)$url);
+    $host = strtolower(trim((string)($p['host'] ?? ''), '[]'));
+    if (!in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) || $host === '') {
+        throw new RuntimeException('آدرس باید با http:// یا https:// شروع شود');
+    }
+    $port = (int)($p['port'] ?? (strtolower($p['scheme']) === 'https' ? 443 : 80));
+    $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+    if (!filter_var($host, FILTER_VALIDATE_IP)) {
+        foreach ((array)@dns_get_record($host, DNS_AAAA) as $r) {
+            if (!empty($r['ipv6'])) {
+                $ips[] = $r['ipv6'];
+            }
+        }
+    }
+    if (!$ips) {
+        throw new RuntimeException('آدرس ' . $host . ' پیدا نشد');
+    }
+    $private = !empty(ba_config()['allow_private_urls']);   // tests / a service on the same LAN, by choice
+    foreach ($ips as $ip) {
+        if (!$private && !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            throw new RuntimeException('آدرس‌های داخلی (این سرور یا شبکه‌ی خصوصی) مجاز نیستند');
+        }
+    }
+    $ch = ba_curl($url, $opts + [CURLOPT_FOLLOWLOCATION => false]);
+    if (!filter_var($host, FILTER_VALIDATE_IP)) {
+        curl_setopt($ch, CURLOPT_RESOLVE, [$host . ':' . $port . ':' . (strpos($ips[0], ':') !== false ? '[' . $ips[0] . ']' : $ips[0])]);
     }
     return $ch;
 }

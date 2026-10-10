@@ -9,6 +9,21 @@
 
 $path = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
 
+// the same security headers as .htaccess gives on Apache
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Referrer-Policy: no-referrer');
+header('Permissions-Policy: camera=(), geolocation=(), payment=(), usb=()');
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; "
+    . "img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'self'; "
+    . "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'");
+
+if ($path === '/start.js' || $path === '/assistant/assistant.js') {
+    header('Content-Type: text/javascript; charset=utf-8');
+    readfile(__DIR__ . $path);
+    return true;
+}
+
 if ($path === '/' || $path === '/index.html') {
     header('Content-Type: text/html; charset=utf-8');
     readfile(__DIR__ . '/index.html');

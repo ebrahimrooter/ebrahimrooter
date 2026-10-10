@@ -18,7 +18,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Signing key from the repository secrets (never in the repository itself)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/bank.keystore"
+            echo "BANK_KEYSTORE=$RUNNER_TEMP/bank.keystore" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_B64 secret missing: the APK is built but not published (it would not install over the real app)"
+          fi
       - name: Build the APKs
+        env:
+          BANK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BANK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          BANK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
       - name: Demo server (sample books)
         run: sh tools/demo/run.sh /tmp/demo
@@ -37,11 +52,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: sh tools/android-shots.sh shots
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/bank.keystore"
       - name: Keep the APK and screenshots in the repo
         if: github.event_name == 'push'
         run: |
           mkdir -p server/app/android android/screenshots
-          cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk
+          # only an APK signed with the real key is published
+          if [ "${SIGNED:-0}" = 1 ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
           cp shots/*.png android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

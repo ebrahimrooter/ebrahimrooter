@@ -608,13 +608,13 @@ function r_labels()
                 . '</div><div class="p">' . number_format((float)$p['sale_price']) . ' ریال</div></div>';
         }
     }
-    header('Content-Type: text/html; charset=utf-8');
+    $printJs = acc_print_page_headers();
     echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>برچسب بارکد</title><style>'
         . 'body{font-family:Vazirmatn,Tahoma,sans-serif;margin:8px}.g{display:grid;grid-template-columns:repeat(auto-fill,52mm);gap:2mm}'
         . '.l{width:50mm;height:28mm;border:1px dashed #bbb;padding:1.5mm;box-sizing:border-box;text-align:center;overflow:hidden}'
         . '.n{font-size:9pt;white-space:nowrap;overflow:hidden}.c{font:8pt monospace;direction:ltr}.p{font-size:8pt;font-weight:bold}svg{width:100%;height:11mm}'
-        . '@media print{.l{border:0}button{display:none}}</style></head><body><button onclick="print()">چاپ</button><div class="g">' . $cells
-        . '</div></body></html>';
+        . '@media print{.l{border:0}button{display:none}}</style></head><body><button data-print>چاپ</button><div class="g">' . $cells
+        . '</div>' . $printJs . '</body></html>';
     return null;
 }
 

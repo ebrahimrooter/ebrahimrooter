@@ -194,7 +194,8 @@ const ACC_COLUMNS = [
     ['acc_company', 'allow_negative_stock', 'INTEGER DEFAULT 0'],
     ['acc_invoices', 'no_vat', 'INTEGER DEFAULT 0'],          // seller not registered for VAT / exempt goods
     ['acc_cheques', 'invoice_id', 'INTEGER'],
-    ['acc_cheques', 'date', "TEXT DEFAULT ''"],                // transaction of the bank assistant it came from
+    ['acc_cheques', 'date', "TEXT DEFAULT ''"],
+    ['acc_users', 'companies', "TEXT DEFAULT ''"],             // JSON ids of the companies (موسسه) a non-admin may open                // transaction of the bank assistant it came from
 ];
 
 /** Chart of accounts used by the automatic entries (code => [name, level, nature, parent]). */
@@ -395,6 +396,9 @@ function acc_user_out(array $u)
 
 function acc_login($username, $password)
 {
+    if (($wait = ba_throttle_wait('panel')) > 0) {
+        throw new AccError('تلاش زیاد با رمز اشتباه؛ ' . ceil($wait / 60) . ' دقیقه بعد دوباره امتحان کن.', 429);
+    }
     $u = acc_row('SELECT * FROM acc_users WHERE username = ?', [(string)$username]);
     // admin has not chosen a password yet: the app password in config.php opens it, even
     // if config.php was rebuilt after the database (the first password was generated then)
@@ -410,10 +414,10 @@ function acc_login($username, $password)
         $u = acc_row('SELECT * FROM acc_users WHERE id = ?', [$u['id']]);
     }
     if (!$u || !$u['is_active'] || !password_verify((string)$password, $u['password_hash'])) {
-        // slow down guessing a little
-        usleep(300000);
+        ba_throttle_fail('panel');
         throw new AccError('نام کاربری یا رمز اشتباه است', 401);
     }
+    ba_throttle_ok('panel');
     $token = bin2hex(random_bytes(24));
     acc_q('DELETE FROM acc_sessions WHERE expires_at < ?', [time()]);
     acc_insert('acc_sessions', ['token_hash' => hash('sha256', $token), 'user_id' => $u['id'], 'expires_at' => time() + 12 * 3600]);
@@ -429,6 +433,17 @@ function acc_session_user($token)
     $u = acc_row('SELECT u.* FROM acc_sessions s JOIN acc_users u ON u.id = s.user_id
         WHERE s.token_hash = ? AND s.expires_at > ? AND u.is_active = 1', [hash('sha256', $token), time()]);
     return $u ?: null;
+}
+
+/** Companies (موسسه) this user may open: admin all of them, others those the admin gave (default: the main one). */
+function acc_user_companies(array $u)
+{
+    if ($u['role'] === 'admin') {
+        return array_keys(acc_companies());
+    }
+    $ids = json_decode((string)($u['companies'] ?? ''), true);
+    $ids = is_array($ids) ? array_values(array_unique(array_map('intval', $ids))) : [];
+    return $ids ?: [1];
 }
 
 function acc_can(array $user, $perm)
@@ -636,8 +651,28 @@ function acc_webhook($action, $object_type, array $ids, $data = null)
     }
     $payload = ['Password' => $c['webhook_secret'], 'Action' => $action, 'ObjectType' => $object_type,
         'ObjectIdList' => $ids, 'Data' => $data, 'Timestamp' => gmdate('c'), 'Source' => 'Accounting-API'];
-    $ch = ba_curl($c['webhook_url'], [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+    try {
+        $ch = ba_curl_public($c['webhook_url'], [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_TIMEOUT => 4, CURLOPT_CONNECTTIMEOUT => 2]);
+    } catch (RuntimeException $e) {
+        error_log('webhook refused: ' . $e->getMessage());
+        return;
+    }
     curl_exec($ch);
     curl_close($ch);
 }
+
+/**
+ * Header for the panel's own HTML pages (invoice print, labels): no outside
+ * resources, only this page's script (a nonce), images from data: (barcodes).
+ * Returns the <script> tag for the "print" button.
+ */
+function acc_print_page_headers()
+{
+    $nonce = base64_encode(random_bytes(12));
+    header('Content-Type: text/html; charset=utf-8');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'nonce-$nonce'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'");
+    return '<script nonce="' . $nonce . '">document.querySelectorAll("[data-print]").forEach(function(b){b.addEventListener("click",function(){print()})});'
+        . 'window.addEventListener("load",function(){if(document.body.hasAttribute("data-autoprint"))print()});</script>';
+}
+

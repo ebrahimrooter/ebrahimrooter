@@ -439,13 +439,13 @@
             <template x-for="a in attachments" :key="a.id">
               <div class="flex justify-between text-sm border-b py-1">
                 <span x-text="a.filename"></span>
-                <a :href="link('/api/attachments/'+a.id+'/download')" class="text-primary-600 text-xs" target="_blank">دانلود</a>
+                <a href="#" @click.prevent="openAuthed('/api/attachments/'+a.id+'/download', true)" class="text-primary-600 text-xs">دانلود</a>
               </div>
             </template>
           </div>
 
         <div x-show="currentPage === 'reports'">
-          <div class="mb-3"><button @click="generateReport('daybook')" class="bg-white border px-3 py-2 rounded-lg text-sm">دفتر روزنامه</button><button @click="loadBalanceSheet()" class="bg-white border px-3 py-2 rounded-lg text-sm">ترازنامه</button><button @click="loadCashflow()" class="bg-white border px-3 py-2 rounded-lg text-sm">جریان نقدی</button><button @click="loadCogs()" class="bg-white border px-3 py-2 rounded-lg text-sm">بهای تمام‌شده</button><button @click="loadDues()" class="bg-white border px-3 py-2 rounded-lg text-sm">سررسیدها</button><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=sales')">Excel فروش</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=purchases')">Excel خرید</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" :href="link('/api/export/csv?what=persons')">Excel اشخاص</a></div>
+          <div class="mb-3"><button @click="generateReport('daybook')" class="bg-white border px-3 py-2 rounded-lg text-sm">دفتر روزنامه</button><button @click="loadBalanceSheet()" class="bg-white border px-3 py-2 rounded-lg text-sm">ترازنامه</button><button @click="loadCashflow()" class="bg-white border px-3 py-2 rounded-lg text-sm">جریان نقدی</button><button @click="loadCogs()" class="bg-white border px-3 py-2 rounded-lg text-sm">بهای تمام‌شده</button><button @click="loadDues()" class="bg-white border px-3 py-2 rounded-lg text-sm">سررسیدها</button><a class="bg-white border px-3 py-2 rounded-lg text-sm" href="#" @click.prevent="openAuthed('/api/export/csv?what=sales', true)">Excel فروش</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" href="#" @click.prevent="openAuthed('/api/export/csv?what=purchases', true)">Excel خرید</a><a class="bg-white border px-3 py-2 rounded-lg text-sm" href="#" @click.prevent="openAuthed('/api/export/csv?what=persons', true)">Excel اشخاص</a></div>
         </div>
         <div x-show="currentPage === 'reports'" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1167,7 +1167,7 @@
               <div class="flex gap-2 items-end">
                 <div><label class="block text-xs text-slate-500">سال</label><input x-model="rep.year" placeholder="1405" class="w-20 px-2 py-1.5 border rounded-lg"></div>
                 <div><label class="block text-xs text-slate-500">فصل</label><select x-model="rep.season" class="px-2 py-1.5 border rounded-lg"><option value="1">بهار</option><option value="2">تابستان</option><option value="3">پاییز</option><option value="4">زمستان</option></select></div>
-                <a :href="ttmsLink()" class="bg-primary-600 text-white px-4 py-1.5 rounded-lg">دریافت فایل معاملات فصلی (CSV)</a>
+                <a href="#" @click.prevent="ttmsDownload()" class="bg-primary-600 text-white px-4 py-1.5 rounded-lg">دریافت فایل معاملات فصلی (CSV)</a>
               </div>
             </template>
             <button x-show="rep.tab !== 'ttms'" @click="repLoad()" class="bg-primary-600 text-white px-4 py-1.5 rounded-lg">نمایش</button>
@@ -1467,7 +1467,7 @@
             <p class="text-xs text-slate-500">رمز اول مدیر همان رمز اپ دستیار بانک است؛ یک رمز جدا و قوی بگذار.</p>
             <div class="grid md:grid-cols-3 gap-2">
               <input type="password" x-model="pwForm.old_password" placeholder="رمز فعلی" class="px-3 py-2 border rounded-lg text-sm" autocomplete="current-password">
-              <input type="password" x-model="pwForm.new_password" placeholder="رمز جدید (حداقل ۶ حرف)" class="px-3 py-2 border rounded-lg text-sm" autocomplete="new-password">
+              <input type="password" x-model="pwForm.new_password" placeholder="رمز جدید (حداقل ۱۰ حرف)" class="px-3 py-2 border rounded-lg text-sm" autocomplete="new-password">
               <button @click="changePassword" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">تغییر رمز</button>
             </div>
           </div>
@@ -1516,6 +1516,30 @@
             <div>seller: فروش، اشخاص، کالا، گزارش</div>
             <div>warehouse: انبار و کالا</div>
             <div class="text-xs text-slate-500">هنگام ساخت کاربر، نقش را انتخاب کنید. مدیر می‌تواند از API دسترسی سفارشی بدهد.</div>
+          </div>
+
+          <div class="bg-white rounded-xl border p-4 space-y-3" x-show="user.role === 'admin'" x-init="$watch('currentPage', p => { if (p === 'settings' && isLoggedIn && user.role === 'admin') loadUsers() })">
+            <div class="font-semibold">کاربران و موسسه‌هایشان</div>
+            <p class="text-xs text-slate-500">هر کاربر (غیر از مدیر) فقط موسسه‌هایی را که تیک خورده می‌بیند.</p>
+            <template x-for="u in users" :key="u.id">
+              <div class="border rounded-lg p-2 text-sm">
+                <div><b x-text="u.username"></b> <span class="text-slate-500" x-text="'· ' + (u.full_name || '') + ' · ' + u.role"></span></div>
+                <div class="flex flex-wrap gap-3 mt-1" x-show="u.role !== 'admin'">
+                  <template x-for="c in companies" :key="c.id">
+                    <label class="flex items-center gap-1"><input type="checkbox" :checked="(u.companies || [1]).includes(c.id)" @change="toggleUserCompany(u, c.id, $event.target.checked)"> <span x-text="c.name"></span></label>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 gap-2">
+              <input x-model="userForm.username" class="px-3 py-2 border rounded-lg text-sm" placeholder="نام کاربری" dir="ltr">
+              <input x-model="userForm.full_name" class="px-3 py-2 border rounded-lg text-sm" placeholder="نام">
+              <input x-model="userForm.password" type="password" autocomplete="new-password" class="px-3 py-2 border rounded-lg text-sm" placeholder="رمز (حداقل ۱۰ حرف)">
+              <select x-model="userForm.role" class="px-3 py-2 border rounded-lg text-sm">
+                <option value="seller">فروشنده</option><option value="accountant">حسابدار</option><option value="warehouse">انباردار</option><option value="admin">مدیر</option>
+              </select>
+            </div>
+            <button @click="saveUser()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm">افزودن کاربر</button>
           </div>
 
 

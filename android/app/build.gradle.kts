@@ -16,20 +16,25 @@ android {
     }
 
     // One fixed key so a new APK installs over the old one (sideloaded app, not Play Store).
-    // For Play Store make your own upload key and keep it out of the repository.
+    // The key is never in the repository: CI writes it from the ANDROID_KEYSTORE_B64 secret,
+    // locally put its path and passwords in the environment (see android/README.md).
+    val ks = System.getenv("BANK_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
     signingConfigs {
-        create("sideload") {
-            storeFile = file("../keystore/sideload.keystore")
-            storePassword = "bankassistant"
-            keyAlias = "sideload"
-            keyPassword = "bankassistant"
+        if (ks != null) {
+            create("sideload") {
+                storeFile = ks
+                storePassword = System.getenv("BANK_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("BANK_KEY_ALIAS") ?: "sideload"
+                keyPassword = System.getenv("BANK_KEY_PASSWORD") ?: System.getenv("BANK_KEYSTORE_PASSWORD")
+            }
         }
     }
     buildTypes {
-        getByName("debug") { signingConfig = signingConfigs.getByName("sideload") }
+        // without the key: the machine's own debug key (fine for trying it, not for updates)
+        getByName("debug") { if (ks != null) signingConfig = signingConfigs.getByName("sideload") }
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("sideload")
+            signingConfig = if (ks != null) signingConfigs.getByName("sideload") else signingConfigs.getByName("debug")
         }
     }
     buildFeatures { buildConfig = true }

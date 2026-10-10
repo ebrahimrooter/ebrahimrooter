@@ -364,6 +364,18 @@ sudo systemctl start bank-bot</pre>فایلی که از بله دانلود کر
   <li><b class="t">API</b><code>api.php?r=inventory</code> (رمز اپ) و <code>assistant_inventory</code> (توکن آیفون) — <code>server/inventory.php</code>.</li>
 </ol>
 
+<h2 id="security">۱۶. امنیت <small>بعد از بررسی امنیتی مهر ۱۴۰۵</small></h2>
+<ol class="steps">
+  <li><b class="t">عوض کردن همه‌ی رمزها</b>اگر رمزی ممکن است لو رفته باشد: <pre>cd /var/www/html/bank && sudo -u www-data php cron.php rotate-secrets</pre>رمز اپ، توکن دستگاه و PIN تازه می‌شوند؛ همه‌ی گوشی‌ها و نشست‌های پنل خارج می‌شوند. بعد DEVICE_TOKEN تازه را در ESP32 بگذار و گوشی‌ها را دوباره وصل کن. توکن ربات را از BotFather بله عوض کن و در config.php بگذار.</li>
+  <li><b class="t">پشتیبان config</b>دیگر کنار config.php ساخته نمی‌شود؛ در <code>/var/backups/bank-assistant</code> است. deploy-vps.sh هر <code>config.php.bak*</code> قدیمی را از پوشه‌ی وب بیرون می‌برد.</li>
+  <li><b class="t">وب‌سرور</b>فقط api.php، acc/api.php و install.php از PHP باز است؛ هر نسخه‌ی پشتیبان، فایل مخفی و پایگاه داده بسته است. هدرهای CSP، X-Frame-Options، HSTS، Referrer-Policy. بدون دامنه هم HTTPS (با sslip.io).</li>
+  <li><b class="t">ورود</b>۸ رمز اشتباه از یک آدرس = ۱۵ دقیقه قفل و خبر در بله (رمز اپ، پنل، توکن دستگاه). رمز اپ ۱۶ حرفی، رمز کاربران پنل حداقل ۱۰ حرف. گوشی‌ای که ۶ ماه استفاده نشود باید دوباره وصل شود.</li>
+  <li><b class="t">پنل</b>هر کاربر فقط موسسه‌هایی را می‌بیند که مدیر تیک زده (تنظیمات ← کاربران). نشست هیچ‌وقت در لینک نیست؛ چاپ و دانلود با بلیت یک‌بارمصرف ۶۰ ثانیه‌ای.</li>
+  <li><b class="t">ربات بله</b>اتصال با «<code>/start کد</code>» که فقط اپ نشان می‌دهد.</li>
+  <li><b class="t">پشتیبان‌ها</b>بدون backup_password به بله فرستاده نمی‌شوند (deploy و install رمز می‌سازند).</li>
+  <li><b class="t">کلید امضای اندروید</b>دیگر در مخزن نیست. در GitHub ← Settings ← Secrets and variables ← Actions این‌ها را بساز: <code>ANDROID_KEYSTORE_B64</code> (محتوای فایل ANDROID_KEYSTORE_B64.txt)، <code>ANDROID_KEYSTORE_PASSWORD</code>، <code>ANDROID_KEY_ALIAS</code> = sideload. تا این کار نشود APK جدید منتشر نمی‌شود. با کلید تازه اپ اندروید یک بار باید حذف و دوباره نصب شود.</li>
+</ol>
+
 <div class="foot">دستیار بانک و حسابداری · نسخه‌ی مهر ۱۴۰۵</div>
 </div>
 </body>

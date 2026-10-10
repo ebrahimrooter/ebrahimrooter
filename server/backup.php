@@ -84,10 +84,14 @@ function backup_create($reason = 'manual')
     $info = ['file' => $out, 'name' => $fname, 'size' => filesize($out), 'databases' => array_keys($files),
         'encrypted' => $password !== '', 'sent_to_bale' => false];
     if (($cfg['backup_to_bale'] ?? true) && !empty($cfg['bale_chat_id']) && ba_bale_enabled()) {
-        $caption = '🗄 پشتیبان حساب‌ها · ' . ba_fa_datetime() . ' · ' . round($info['size'] / 1024) . ' KB'
-            . ($info['encrypted'] ? ' · رمزدار' : ' · بدون رمز (backup_password را بگذار)');
-        $info['sent_to_bale'] = (bool)ba_bale_upload('sendDocument', ['chat_id' => $cfg['bale_chat_id'], 'caption' => $caption],
-            'document', $out, 'application/octet-stream', $fname);
+        if ($info['encrypted']) {
+            $caption = '🗄 پشتیبان حساب‌ها · ' . ba_fa_datetime() . ' · ' . round($info['size'] / 1024) . ' KB · رمزدار';
+            $info['sent_to_bale'] = (bool)ba_bale_upload('sendDocument', ['chat_id' => $cfg['bale_chat_id'], 'caption' => $caption],
+                'document', $out, 'application/octet-stream', $fname);
+        } else {
+            // all the books in plain form never leave the server for a chat app
+            ba_notify('🗄 پشتیبان روی سرور ساخته شد، ولی به بله فرستاده نشد چون رمز ندارد. در config.php یک backup_password بگذار.');
+        }
     }
     ba_kv_set('backup:last', ['name' => $fname, 'at' => date('Y-m-d H:i:s'), 'size' => $info['size'],
         'encrypted' => $info['encrypted'], 'bale' => $info['sent_to_bale'], 'reason' => $reason]);

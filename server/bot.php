@@ -491,8 +491,12 @@ function bot_handle_update(array $u) {
 
     if ($owner === '' || $chat !== $owner) {
         if (strpos($text, '/start') === 0) {
-            // Right after "connect" in the app, the first /start claims the bot (10-minute window).
-            if ($owner === '' && (int)ba_kv_get('bale_claim_until', 0) > time()) {
+            // Right after "connect" in the app, «/start CODE» with the code the app shows claims
+            // the bot (10-minute window); a plain /start from someone who found the bot does not.
+            $code = (string)ba_kv_get('bale_claim_code', '');
+            $given = trim(substr($text, 6));
+            if ($owner === '' && (int)ba_kv_get('bale_claim_until', 0) > time() && $code !== '' && hash_equals($code, ba_normalize($given))) {
+                ba_kv_set('bale_claim_code', null);
                 ba_settings_save(['bale_chat_id' => $chat]);
                 ba_kv_set('bale_claim_until', null);
                 ba_notify("✅ ربات به حسابداری تو وصل شد.\n\n" . bot_help());

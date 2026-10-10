@@ -161,13 +161,14 @@ function acc_sms_process($limit = 20)
     return count($rows);
 }
 
-function acc_sms_http($method, $url, $body = null, array $headers = [])
+function acc_sms_http($method, $url, $body = null, array $headers = [], $userUrl = false)
 {
     $opts = [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_HTTPHEADER => $headers];
     if ($body !== null) {
         $opts[CURLOPT_POSTFIELDS] = $body;
     }
-    $ch = ba_curl($url, $opts);
+    // the custom service's address was typed by a user: public addresses only
+    $ch = $userUrl ? ba_curl_public($url, $opts) : ba_curl($url, $opts);
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
@@ -243,9 +244,9 @@ function acc_sms_send_one(array $cfg, $mobile, $text, $pattern = null, array $va
             $fill = fn($s) => strtr($s, ['{to}' => rawurlencode($mobile), '{text}' => rawurlencode($text), '{from}' => rawurlencode($cfg['sms_sender'])]);
             if (strtoupper($cfg['sms_custom_method']) === 'POST') {
                 [$base, $query] = array_pad(explode('?', $url, 2), 2, '');
-                [$code, $resp] = acc_sms_http('POST', $fill($base), $fill($query), ['Content-Type: application/x-www-form-urlencoded']);
+                [$code, $resp] = acc_sms_http('POST', $fill($base), $fill($query), ['Content-Type: application/x-www-form-urlencoded'], true);
             } else {
-                [$code, $resp] = acc_sms_http('GET', $fill($url));
+                [$code, $resp] = acc_sms_http('GET', $fill($url), null, [], true);
             }
             if ($code < 200 || $code >= 300) {
                 throw new RuntimeException("وب‌سرویس پیامک: HTTP $code " . mb_substr(strip_tags($resp), 0, 100));

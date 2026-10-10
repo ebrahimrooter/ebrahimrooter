@@ -1,18 +1,35 @@
 # /bank/ picks the phone app or the accounting panel; inside app/ and acc/ their own index.html
 DirectoryIndex index.html app/index.html
+Options -Indexes
 
 # Apache does not hand the "Authorization: Bearer …" header to PHP by itself;
 # without this the accounting panel logs in and is thrown out at once.
 CGIPassAuth On
 SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
 
-# Only the API and the app are reachable from the web.
-<FilesMatch "^(lib|bot|jobs|webpush|cron|config|config\.sample|router|setup|acc_[a-z_]+|assistant|assistant_app|apns|backup)\.php$">
+# Allow-list: of the PHP files only the entry points can be opened from the web
+# (api.php, acc/api.php, install.php). Every other .php, every hidden file and
+# every copy / backup (config.php.bak.*, *.old, *~, *.swp, *.sample, *.sqlite …) is closed.
+<FilesMatch "\.php$">
   Require all denied
 </FilesMatch>
-<FilesMatch "\.(sqlite|db)$">
+<FilesMatch "^(api|install)\.php$">
+  Require all granted
+</FilesMatch>
+<FilesMatch "(^\.|^config\.|\.(bak|old|orig|save|swp|swo|tmp|dist|sample|sqlite|sqlite3|db|sql|log|sh|md|ini|env|key|pem|p8|keystore|jks)(\.|$)|~$)">
   Require all denied
 </FilesMatch>
 
 # the Android app download (app/android/bank-assistant.apk)
 AddType application/vnd.android.package-archive .apk
+
+# Security headers (same list as router.php for the built-in server)
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "no-referrer"
+  Header always set Permissions-Policy "camera=(), geolocation=(), payment=(), usb=()"
+  # setifempty: the print pages send their own, stricter policy (with a nonce)
+  Header setifempty Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+  Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == 'on'"
+</IfModule>

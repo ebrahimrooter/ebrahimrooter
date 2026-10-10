@@ -648,8 +648,24 @@
             (t.status !== 'confirmed' ? ' · <span class="pill ' + t.status + '">' + (t.status === 'pending' ? 'بی‌جواب' : 'نادیده') + '</span>' : '') +
             '</div></div><b class="' + t.direction + ' num">' + (t.direction === 'in' ? '+' : '−') + toman(t.amount) + '</b></a>';
         }).join('') : '<p class="muted">در این بازه چیزی ثبت نشده.</p>') + '</div>' +
-        '<a class="btn ghost block" href="' + API + '?r=export&token=' + encodeURIComponent(token()) + q + '">⬇ خروجی اکسل (CSV)</a>';
+        '<a class="btn ghost block" href="#" id="csvBtn">⬇ خروجی اکسل (CSV)</a>';
       document.getElementById('days').onchange = function () { store('ba_days', this.value); viewHistory(); };
+      // the file comes with the app password in a header (never in the address: logs, history)
+      document.getElementById('csvBtn').onclick = function (e) {
+        e.preventDefault();
+        fetch(API + '?r=export' + q, { headers: { 'X-App-Token': token() } }).then(function (res) {
+          if (!res.ok) throw new Error('دانلود نشد (' + res.status + ')');
+          return res.blob();
+        }).then(function (b) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = 'bank-transactions.csv';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 30000);
+        }).catch(function (er) { toast(er.message); });
+      };
     });
   }
 
@@ -1557,7 +1573,7 @@
       if (st.has_token && !https && st.polling) lines.push('🔗 اتصال به این سرور: ✅ <span class="muted">(بدون دامنه، سرویس پس‌زمینه پیام‌ها را می‌گیرد)</span>');
       if (st.has_token && https) lines.push(st.webhook ? '🔗 اتصال به این سرور: ✅' : '🔗 اتصال به این سرور: ❌' + (st.webhook_error ? ' <span class="muted">(' + esc(st.webhook_error) + ')</span>' : ''));
       if (st.chat_id) lines.push('💬 چت تو: ✅ وصل');
-      else if (st.waiting_for_start) lines.push('<b class="warn">⏳ حالا در بله به ' + (st.bot ? '<span class="num">@' + esc(st.bot) + '</span>' : 'ربات') + ' پیام <span class="num">/start</span> بفرست…</b>');
+      else if (st.waiting_for_start) lines.push('<b class="warn">⏳ حالا در بله به ' + (st.bot ? '<span class="num">@' + esc(st.bot) + '</span>' : 'ربات') + ' این پیام را بفرست: <span class="num" dir="ltr">/start ' + esc(st.claim_code || '') + '</span></b>');
       box.innerHTML = (lines.length ? '<p>' + lines.join('<br>') + '</p>' : '') +
         (!canConnect ? '<p class="muted">روی کامپیوتر خودت (بدون https) توکن و شناسه‌ی چت را در <span class="num">config.php</span> بگذار؛ این بخش برای هاست است.</p>' :
           '<p class="muted">ربات را در بله با <span class="num">@botfather</span> بساز و توکنش را اینجا بگذار. توکن مثل رمز است؛ به کسی نده.</p>' +
@@ -1569,7 +1585,7 @@
         e.preventDefault();
         f.querySelector('button').disabled = true;
         api('bale_connect', { body: { bale_bot_token: document.getElementById('btok').value.trim() } })
-          .then(function (d) { toast(d.waiting_for_start ? 'حالا در بله /start بفرست' : 'وصل شد'); baleSettings(); },
+          .then(function (d) { toast(d.waiting_for_start ? 'حالا در بله بفرست: /start ' + (d.claim_code || '') : 'وصل شد'); baleSettings(); },
             function (err) { toast(err.message); baleSettings(); });
       };
       var fg = document.getElementById('bforget');

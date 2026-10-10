@@ -5,3 +5,15 @@ voice/models/
 voice/voice.env
 __pycache__/
 dist/
+# secrets never go into the repository (it is public)
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+.env
+server/config.php
+server/config.php.*
+server/data/*.sqlite*
+server/data/backups/
+server/data/acc_uploads/

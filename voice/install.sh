@@ -153,7 +153,11 @@ LINES="    'voice_url' => '$VOICE_URL',
     'voice_cli' => '$VOICE_CLI',"
 if [ -n "$PHP_CONFIG" ] && [ -f "$PHP_CONFIG" ]; then
   say "Writing voice settings into $PHP_CONFIG"
-  cp -p "$PHP_CONFIG" "$PHP_CONFIG.bak.$(date +%s)"
+  # the copy goes OUTSIDE the web folder: a config.php.bak next to config.php would be
+  # served by Apache as plain text with every password in it
+  install -d -m 700 /var/backups/bank-assistant
+  cp -p "$PHP_CONFIG" "/var/backups/bank-assistant/config.php.$(date +%s)"
+  chmod 600 /var/backups/bank-assistant/config.php.*
   # Edited with PHP into a temporary copy; the real file is replaced only if
   # the result passes "php -l", so config.php can never be left broken.
   if VOICE_URL="$VOICE_URL" VOICE_TOKEN="$TOKEN" VOICE_CLI="$VOICE_CLI" CFG="$PHP_CONFIG" php <<'PHP'
