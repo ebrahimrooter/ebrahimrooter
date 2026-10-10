@@ -1092,6 +1092,188 @@
     };
   }
 
+  /* ---------- bank cards, like Apple Wallet: stack on the home screen, one panel per card ---------- */
+
+  var BANKS = {
+    mellat: { fa: 'بانک ملت', en: 'Bank Mellat', logo: 'ملت' },
+    melli: { fa: 'بانک ملی', en: 'Bank Melli Iran', logo: 'ملی' },
+    saderat: { fa: 'بانک صادرات', en: 'Bank Saderat Iran', logo: 'صادرات' },
+    blu: { fa: 'بلو بانک', en: 'blu', logo: 'blu' },
+    cash: { fa: 'صندوق', en: 'Cash', logo: '₮' }
+  };
+  function shade(hex, pct) {
+    var n = parseInt(String(hex || '#2c3e50').slice(1), 16);
+    var f = function (c) { return Math.max(0, Math.min(255, Math.round(c + (pct < 0 ? c : 255 - c) * pct))); };
+    return '#' + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map(function (c) { return c.toString(16).padStart(2, '0'); }).join('');
+  }
+  function cardHtml(w, opts) {
+    opts = opts || {};
+    var b = BANKS[w.bank] || { fa: w.name, en: '', logo: (w.name || '؟').slice(0, 1) };
+    var cash = w.bank === 'cash' || w.kind === 'cash';
+    var c = w.color || '#2c3e50';
+    var hidden = store('ba_hide') === '1';
+    var bg = cash ? 'linear-gradient(160deg,#2a2a2c,#111113)' : 'radial-gradient(120% 90% at 100% 0%,' + shade(c, 0.28) + ',transparent 60%),linear-gradient(135deg,' + c + ',' + shade(c, -0.45) + ')';
+    return '<div class="wc' + (opts.big ? ' big' : '') + '" data-card="' + w.id + '" style="background:' + bg + '">' +
+      '<div class="wc-top"><span class="wc-logo' + (w.bank === 'blu' ? ' blu' : '') + '">' + esc(b.logo) + '</span>' +
+      '<span class="wc-name"><b>' + esc(w.name) + '</b><small>' + esc(b.en) + '</small></span>' +
+      '<span class="wc-badges">' + (w.pending ? '<i class="wb-p">' + faDigits(w.pending) + ' بی‌جواب</i>' : '') + (w.otps ? '<i class="wb-o">🔐</i>' : '') + '</span></div>' +
+      '<div class="wc-bal">' + (hidden ? '••••••' : fa(Math.round((+w.balance || 0) / 10))) + '<small>تومان</small></div>' +
+      '<div class="wc-bot"><span class="wc-num">' + (w.card ? '•••• ' + esc(String(w.card).slice(-4)) : (cash ? 'نقد' : 'شماره‌ی کارت را در تنظیمات کارت بزن')) + '</span>' +
+      (w.bank_balance != null && !cash ? '<span class="wc-bank">مانده‌ی بانک ' + (hidden ? '•••' : fa(Math.round(w.bank_balance / 10))) + '</span>' : '') + '</div></div>';
+  }
+  function cardsStack(wallets) {
+    var list = wallets.slice();
+    var step = 58, h = 214;
+    return '<div class="wst-head"><h3>کارت‌ها</h3><a class="wst-add" href="#/card/new">+ کارت</a></div>' +
+      '<div class="wstack" style="height:' + ((list.length - 1) * step + h) + 'px">' +
+      list.map(function (w, i) { return '<a class="wst-item" href="#/card/' + w.id + '" style="top:' + (i * step) + 'px;z-index:' + (i + 1) + '">' + cardHtml(w) + '</a>'; }).join('') +
+      '</div>';
+  }
+
+  /** The orb asks about a transaction inside its card's panel. */
+  function askInCard(tx, startNow) {
+    if (tx.wallet_id) {
+      history.replaceState(null, '', '#/card/' + tx.wallet_id);   // no hashchange: the voice session keeps going
+      lastHash = location.hash;
+      viewCard(tx.wallet_id);
+    }
+    if (startNow) { orbStart(tx); return; }
+    orbBuild();
+    orb.tx = tx;
+    var st = document.getElementById('orbStage');
+    st.classList.add('open');
+    orbSay((tx.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(tx.amount) + (tx.wallet_name ? ' · ' + tx.wallet_name : ''), 'روی دستیار بزن تا بپرسد');
+    var go = function (e) {
+      if (e && e.target.closest('button')) return;
+      st.removeEventListener('click', go);
+      Voice.unlock();
+      orbStart(tx);
+    };
+    if (navigator.userActivation && navigator.userActivation.isActive && Voice.canListen()) go();
+    else st.addEventListener('click', go);
+  }
+
+  var cardState = { tab: 'tx', filter: 'all' };
+
+  function viewCard(id, sub) {
+    if (id === 'new') return cardSettings(null);
+    if (sub === 'otp') cardState.tab = 'otp';
+    else if (sub === 'settings') cardState.tab = 'set';
+    else if (sub === undefined && !/^#\/card\//.test(lastHash || '')) cardState.tab = 'tx';
+    var iso = function (d) { var x = new Date(Date.now() - d * 864e5); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+    return Promise.all([api('wallets'), api('list', { query: '&from=' + iso(120) + '&to=' + iso(0) }), api('pending')]).then(function (r) {
+      var w = r[0].items.filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!w) { app.innerHTML = '<p class="muted">این کارت پیدا نشد.</p>'; return; }
+      var mine = r[1].items.filter(function (t) { return String(t.wallet_id) === String(id) && t.status !== 'ignored'; });
+      var pend = r[2].items.filter(function (t) { return String(t.wallet_id) === String(id); });
+      var sum = function (d) { return mine.filter(function (t) { return t.direction === d; }).reduce(function (s, t) { return s + +t.amount; }, 0); };
+      var tab = function (k, label) { return '<button type="button" data-tab="' + k + '" class="' + (cardState.tab === k ? 'on' : '') + '">' + label + '</button>'; };
+      app.innerHTML = '<div class="cp-top"><a class="cp-back" href="#/">‹ کارت‌ها</a></div>' + cardHtml(w, { big: true }) +
+        '<div class="stat2 cp-stat"><div><span>واریز ۱۲۰ روز</span><b class="in">' + toman(sum('in')) + '</b></div><div><span>برداشت ۱۲۰ روز</span><b class="out">' + toman(sum('out')) + '</b></div></div>' +
+        '<div class="seg cp-seg">' + tab('tx', 'تراکنش‌ها' + (pend.length ? ' (' + faDigits(pend.length) + ')' : '')) + tab('otp', '🔐 رمز پویا') + tab('set', 'تنظیمات کارت') + '</div>' +
+        '<div id="cpBody"></div>';
+      Array.prototype.forEach.call(app.querySelectorAll('.cp-seg button'), function (b) {
+        b.onclick = function () { cardState.tab = b.getAttribute('data-tab'); history.replaceState(null, '', '#/card/' + id + (cardState.tab === 'otp' ? '/otp' : cardState.tab === 'set' ? '/settings' : '')); lastHash = location.hash; viewCard(id, cardState.tab === 'otp' ? 'otp' : cardState.tab === 'set' ? 'settings' : ''); };
+      });
+      var body = document.getElementById('cpBody');
+      if (cardState.tab === 'otp') return cardOtp(body, w);
+      if (cardState.tab === 'set') return cardSettings(w, body);
+      var shown = mine.filter(function (t) { return cardState.filter === 'all' || t.direction === cardState.filter; });
+      body.innerHTML = (pend.length ? pend.map(function (t) {
+        return '<div class="lcard pend cp-pend"><div class="grow"><h3>بابت چی بود؟</h3><p>' + (t.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(t.amount) + ' · ' + when(t) + '</p>' +
+          '<div class="pend-row"><button class="pbtn" type="button" data-orb="' + t.id + '">🎙 بگو</button><a class="pout" href="#/ask/' + t.id + '">با فرم</a></div></div></div>';
+      }).join('') : '') +
+        '<div class="wcard"><div class="row chips">' + ['all', 'in', 'out'].map(function (k) {
+          return '<button type="button" class="chip' + (cardState.filter === k ? ' on' : '') + '" data-f="' + k + '">' + { all: 'همه', in: 'واریز', out: 'برداشت' }[k] + '</button>';
+        }).join('') + '</div><div class="list txlist">' + (shown.length ? shown.map(function (t) {
+          return '<a class="item" href="#/ask/' + t.id + '"><span class="dir ' + t.direction + '">' + (t.direction === 'in' ? '↙' : '↗') + '</span>' +
+            '<div class="grow"><div class="it">' + esc(t.description || (t.direction === 'in' ? 'واریز' : 'برداشت')) + (t.status === 'pending' ? ' <span class="pill pending">بی‌جواب</span>' : '') + '</div>' +
+            '<div class="muted">' + (t.party ? esc(t.party) + ' · ' : '') + when(t) + '</div></div>' +
+            '<b class="' + t.direction + ' amt">' + (t.direction === 'in' ? '+' : '−') + fa(Math.round(t.amount / 10)) + '</b></a>';
+        }).join('') : '<p class="muted">تراکنشی برای این کارت نیست.</p>') + '</div></div>';
+      Array.prototype.forEach.call(body.querySelectorAll('.chip'), function (b) { b.onclick = function () { cardState.filter = b.getAttribute('data-f'); viewCard(id, ''); }; });
+      Array.prototype.forEach.call(body.querySelectorAll('[data-orb]'), function (b) {
+        b.onclick = function () {
+          var tx = pend.filter(function (t) { return String(t.id) === b.getAttribute('data-orb'); })[0];
+          if (!tx) return;
+          if (!Voice.canListen()) { location.hash = '#/ask/' + tx.id; return; }
+          Voice.unlock();
+          orbStart(tx);
+        };
+      });
+    });
+  }
+
+  /** «رمز پویا» of one card: PIN, then the codes of this card only, as they arrive. */
+  function cardOtp(box, w) {
+    clearInterval(otp.timer);
+    if (!otp.pin || Date.now() > otp.lockAt) {
+      otp.pin = '';
+      box.innerHTML = '<div class="card"><p class="muted">رمزهای پویای «' + esc(w.name) + '» که روی سیم‌کارت دستگاه می‌آیند، رمزشده و فقط چند دقیقه اینجا می‌مانند. رمز کارت‌های دیگر در پنل خودشان است.</p>' +
+        (state.me && !state.me.otp_ready ? '<p class="warn">اول otp_pin را در config.php سرور بگذار.</p>' : '') +
+        '<form id="pinf"><label for="pin">PIN رمزها</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" required>' +
+        '<div class="btns"><button class="btn">باز کن</button></div></form></div>';
+      document.getElementById('pinf').onsubmit = function (e) {
+        e.preventDefault();
+        otp.pin = document.getElementById('pin').value;
+        otp.lockAt = Date.now() + 180000;
+        cardOtp(box, w);
+      };
+      return;
+    }
+    var here = location.hash;
+    box.innerHTML = '<div id="otps"><p class="muted">…</p></div><div class="btns"><button class="btn plain" id="lock" type="button">قفل کن</button></div>';
+    document.getElementById('lock').onclick = function () { otp.pin = ''; cardOtp(box, w); };
+    var poll = function () {
+      if (location.hash !== here || !document.getElementById('otps')) { clearInterval(otp.timer); return; }
+      if (Date.now() > otp.lockAt) { otp.pin = ''; cardOtp(box, w); return; }
+      fetch(API + '?r=otp&wallet_id=' + w.id, { headers: { 'X-App-Token': token(), 'X-OTP-PIN': otp.pin }, cache: 'no-store' })
+        .then(function (res) { return res.json(); })
+        .then(function (d) {
+          if (!d.ok) { otp.pin = ''; clearInterval(otp.timer); toast(d.error); cardOtp(box, w); return; }
+          var list = document.getElementById('otps');
+          if (!list) return;
+          list.innerHTML = d.items.length ? d.items.map(function (o) {
+            return '<div class="card otp"><div class="code num">' + esc(o.code) + '</div>' +
+              (o.amount ? '<div>مبلغ: <b>' + toman(o.amount) + '</b></div>' : '') + (o.merchant ? '<div>پذیرنده: <b>' + esc(o.merchant) + '</b></div>' : '') +
+              '<div class="muted">⚠️ اگر خریدی با این مبلغ و پذیرنده انجام نمی‌دهی، رمز را به کسی نده.</div>' +
+              '<div class="track"><i class="in" style="width:' + Math.min(100, Math.round(o.seconds_left / 1.8)) + '%"></i></div>' +
+              '<div class="muted">' + faDigits(o.seconds_left) + ' ثانیه اعتبار</div>' +
+              '<div class="btns"><button class="btn" type="button" data-copy="' + esc(o.code) + '">کپی</button></div></div>';
+          }).join('') : '<div class="card"><p>⏳ منتظر رمز «' + esc(w.name) + '»… خرید را شروع کن؛ به‌محض رسیدن پیامک اینجا ظاهر می‌شود.</p></div>';
+          Array.prototype.forEach.call(list.querySelectorAll('[data-copy]'), function (b) {
+            b.onclick = function () { otp.lockAt = Date.now() + 180000; if (navigator.clipboard) navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () { toast('کپی شد'); }); };
+          });
+        }).catch(function () {});
+    };
+    poll();
+    otp.timer = setInterval(poll, 2000);
+  }
+
+  function cardSettings(w, box) {
+    var isNew = !w;
+    w = w || { name: '', bank: 'melli', card: '', color: '', kind: 'bank', opening: 0 };
+    var opts = Object.keys(BANKS).map(function (k) { return '<option value="' + k + '"' + (w.bank === k ? ' selected' : '') + '>' + BANKS[k].fa + '</option>'; }).join('');
+    var html = '<form class="card" id="cardf"><label>نام کارت</label><input name="name" value="' + esc(w.name) + '" required placeholder="مثلاً کارت ملی شخصی">' +
+      '<label>بانک (پیامک‌هایش به این کارت می‌آید)</label><select name="bank">' + opts + '</select>' +
+      '<label>چهار رقم آخر کارت یا حساب</label><input name="card" inputmode="numeric" value="' + esc(w.card || '') + '" placeholder="7788">' +
+      '<p class="muted">اگر از یک بانک چند کارت داری، پیامک با همین رقم‌ها به کارت درست می‌رود.</p>' +
+      '<label>رنگ کارت</label><input name="color" type="color" value="' + esc(w.color || '#1f8f45') + '" style="height:44px;padding:4px">' +
+      '<label>مانده‌ی اول (تومان)</label><input name="opening" inputmode="numeric" value="' + (w.opening ? Math.round(w.opening / 10) : '') + '">' +
+      '<div class="btns"><button class="btn">' + (isNew ? 'افزودن کارت' : 'ذخیره') + '</button></div>' +
+      (isNew ? '' : '<p class="muted">در حسابداری این کارت حساب جدای خودش را دارد (به همین نام، در خزانه‌داری).</p>') + '</form>';
+    if (isNew) { app.innerHTML = '<div class="cp-top"><a class="cp-back" href="#/">‹ کارت‌ها</a></div><h1>کارت جدید</h1>' + html; }
+    else box.innerHTML = html;
+    document.getElementById('cardf').onsubmit = function (e) {
+      e.preventDefault();
+      var f = e.target;
+      var bank = f.bank.value;
+      api('wallet_save', { body: { id: isNew ? '' : w.id, name: f.name.value, kind: bank === 'cash' ? 'cash' : 'bank', bank: bank,
+        card: norm(f.card.value), color: f.color.value, opening_toman: norm(f.opening.value).replace(/[^\d-]/g, '') } })
+        .then(function (d) { toast('ذخیره شد'); cardState.tab = 'tx'; location.hash = '#/card/' + (d.id || w.id); }, function (er) { toast(er.message); });
+    };
+  }
+
   /* ---------- backups of all the books (server/backup.php) ---------- */
 
   function backupSettings() {
@@ -1306,20 +1488,18 @@
 
   /** Opened from a notification (#/orb/<id>): show the orb for that transaction. */
   function openOrbFor(id) {
-    document.body.classList.add('siri-mode');
-    // only the orb is shown: no page of the app behind it
-    siriTheme(true);
-    return Promise.resolve().then(function () {
-      return api('transaction', { query: '&id=' + id });
-    }).then(function (d) {
+    return api('transaction', { query: '&id=' + id }).then(function (d) {
       var tx = d.item;
-      if (tx.status !== 'pending') { siriExit(); toast('این تراکنش قبلاً جواب گرفته'); return; }
       if (+tx.id > (+store('ba_orb_last') || 0)) store('ba_orb_last', String(tx.id));   // the poller won't announce it again
-      siriOpen(tx);
-    }).catch(function (e) { siriExit(); toast(e.message); });
+      if (tx.status !== 'pending') {
+        toast('این تراکنش قبلاً جواب گرفته');
+        location.replace(tx.wallet_id ? '#/card/' + tx.wallet_id : '#/');
+        return;
+      }
+      askInCard(tx);   // the card's panel opens and the orb asks there
+    }).catch(function (e) { toast(e.message); location.replace('#/'); });
   }
 
-  /** iPhone assistant devices connected to this server (each can be cut off). */
   function iosDevices() {
     var box = document.getElementById('iosDevices');
     if (!box) return;
@@ -1411,7 +1591,7 @@
     document.body.appendChild(s);
     orbMountAll();
 
-    document.getElementById('orbYes').onclick = function () { Voice.unlock(); orbHide(false); orbStart(orb.tx); };
+    document.getElementById('orbYes').onclick = function () { Voice.unlock(); orbHide(false); askInCard(orb.tx, true); };
     document.getElementById('orbNo').onclick = function () { orbHide(true); };
     document.getElementById('orbClose').onclick = orbCloseStage;
     var pb = document.getElementById('orbPip');
@@ -1670,7 +1850,7 @@
       if (why) toast(why);
     };
 
-    var q = (tx.direction === 'in' ? 'واریز ' : 'برداشت ') + spokenToman(tx.amount) +
+    var q = (tx.wallet_name ? tx.wallet_name + '، ' : '') + (tx.direction === 'in' ? 'واریز ' : 'برداشت ') + spokenToman(tx.amount) +
       (tx.bank_time ? '، ساعت ' + tx.bank_time : '') + '. بابت چی بود؟';
 
     speak(q).then(function () {
@@ -1692,7 +1872,11 @@
             return api('confirm', { body: { id: tx.id, description: g.description, party: g.party || '', category_id: g.category_id || '', note: '' } }).then(function (r) {
               if (g.party && !state.parties.some(function (p) { return p.name === g.party; })) state.parties.push({ name: g.party, last_category_id: g.category_id });
               toast('ثبت شد' + (r.synced ? ' و به حسابداری رفت' : ''));
-              api('pending').then(function (p) { setBadge(p.items.length); if (location.hash === '#/' || location.hash === '') viewMoney(); }).catch(function () {});
+              api('pending').then(function (p) {
+                setBadge(p.items.length);
+                if (location.hash === '#/' || location.hash === '') viewMoney();
+                else if (/^#\/card\/\d+/.test(location.hash)) viewCard(location.hash.split('/')[2], location.hash.split('/')[3] || '');
+              }).catch(function () {});
               return speak('ثبت شد.').then(function () { return finish('✅ ثبت شد'); });
             });
           };
@@ -1851,7 +2035,7 @@
       });
       var chip = function (k, label) { return '<button type="button" class="chip' + (money.filter === k ? ' on' : '') + '" data-f="' + k + '">' + label + '</button>'; };
       var first = pending[0];
-      document.getElementById('money').innerHTML =
+      document.getElementById('money').innerHTML = cardsStack(wallets) +
         '<div class="lcard pend">' +
           '<div class="grow"><h3>' + (first ? 'بابت چی بود؟' : 'همه‌چیز ثبت شده') + '</h3>' +
           '<p>' + (first ? faDigits(pending.length) + ' تراکنش بانک منتظر توضیح توست.' : 'تراکنش بانکی بدون توضیح نداری.') + '</p>' +
@@ -1904,7 +2088,7 @@
           Voice.unlock();
           var id = a.getAttribute('data-id') || (first && String(first.id));
           var tx = items.concat(pending).filter(function (t) { return String(t.id) === id; })[0];
-          if (tx) orbStart(tx);
+          if (tx) askInCard(tx, true);
         };
       });
     });
@@ -2021,6 +2205,7 @@
     else if (tab === 'person-edit') p = viewPersonEdit(decodeURIComponent(parts[1] || ''));
     else if (tab === 'otp') p = viewOtp();
     else if (tab === 'orb') p = openOrbFor(+parts[1]);
+    else if (tab === 'card') p = viewCard(parts[1], parts[2]);
     else if (tab === 'reconcile') p = viewReconcile();
     else if (tab === 'settings') p = viewSettings();
     else if (tab === 'acc') p = viewAccounting();

@@ -50,9 +50,9 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   // opened from a push notification: only the orb, full screen
   await page.evaluate(() => { location.hash = '#/orb/2'; });
   await page.waitForTimeout(1500);
-  const siri = await page.evaluate(() => ({ mode: document.body.classList.contains('siri-mode'), open: document.getElementById('orbStage').classList.contains('open'),
-    line: document.getElementById('orbLine').textContent, third: document.getElementById('orbStage').getBoundingClientRect().height < innerHeight * 0.45 }));
-  check('notification opens the orb in the bottom third', siri.mode && siri.open && siri.third && siri.line.includes('برداشت'), JSON.stringify(siri));
+  const siri = await page.evaluate(() => ({ card: /^#\/card\/1/.test(location.hash), panel: !!document.querySelector('.wc.big'), open: document.getElementById('orbStage').classList.contains('open'),
+    line: document.getElementById('orbLine').textContent }));
+  check('notification opens the card panel and the orb asks there', siri.card && siri.panel && siri.open && siri.line.includes('برداشت'), JSON.stringify(siri));
   await page.screenshot({ path: OUT + '/app-siri.png' });
   const pip = await page.evaluate(() => { const b = document.getElementById('orbPip'); return b && !b.hidden; });
   check('float (picture-in-picture) button where the browser supports it', pip);
@@ -63,20 +63,23 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.waitForTimeout(1800);
   check('closing the orb closes the floating window too', await page.evaluate(() => !document.pictureInPictureElement));
   await page.waitForTimeout(600);
-  check('closing the orb goes back to the list', await page.evaluate(() => !document.body.classList.contains('siri-mode') && location.hash === '#/'));
-  // the page that was open stays exactly as it was behind the orb
-  await page.evaluate(() => { location.hash = '#/settings'; });
-  await page.waitForTimeout(800);
-  const before = await page.evaluate(() => document.getElementById('app').innerHTML.length);
-  await page.evaluate(() => { location.hash = '#/orb/2'; });
+  check('closing the orb stays on the card panel', await page.evaluate(() => !document.body.classList.contains('siri-mode') && /^#\/card\/1/.test(location.hash) && !!document.querySelector('.wc.big')));
+  // home: the cards stacked like Apple Wallet, one per bank
+  await page.evaluate(() => { location.hash = '#/'; });
   await page.waitForTimeout(1200);
-  const under = await page.evaluate(() => ({ app: getComputedStyle(document.getElementById('app')).visibility, tabs: getComputedStyle(document.getElementById('tabbar')).visibility,
-    bg: getComputedStyle(document.body).backgroundColor, same: document.getElementById('app').innerHTML.length }));
-  check('only the orb: no app page or tabs behind it', under.app === 'hidden' && under.tabs === 'hidden' && under.same === before, JSON.stringify(under));
-  await page.screenshot({ path: OUT + '/app-siri-settings.png' });
-  await page.click('#orbClose');
+  const stack = await page.$$eval('.wstack .wc', xs => xs.map(x => x.textContent));
+  check('home: Wallet stack of Mellat, Blu, Melli, Saderat + cash', stack.length === 5 && ['ملت', 'بلو', 'ملی', 'صادرات'].every(b => stack.some(t => t.includes(b))), JSON.stringify(stack));
+  await page.screenshot({ path: OUT + '/app-cards.png', fullPage: true });
+  await page.click('.wst-item:nth-child(3)', { position: { x: 60, y: 24 } });
+  await page.waitForTimeout(1200);
+  check('tapping a card opens its panel', await page.evaluate(() => /^#\/card\/\d+$/.test(location.hash) && !!document.querySelector('.cp-seg')));
+  await page.click('.cp-seg button[data-tab="otp"]');
   await page.waitForTimeout(500);
-  check('back on the same page', await page.evaluate(() => location.hash === '#/settings'));
+  check('the card panel has its own «رمز پویا» section behind a PIN', await page.evaluate(() => /\/otp$/.test(location.hash) && !!document.getElementById('pinf')));
+  await page.screenshot({ path: OUT + '/app-card-otp.png' });
+  await page.click('.cp-seg button[data-tab="set"]');
+  await page.waitForTimeout(500);
+  check('card settings: bank, last 4 digits, color', await page.evaluate(() => !!document.querySelector('#cardf select[name=bank]') && !!document.querySelector('#cardf input[name=card]')));
   // the whole accounting panel inside the app, signed in with the app password
   await page.goto('http://127.0.0.1:8834/app/#/');
   await page.waitForTimeout(1200);
@@ -105,18 +108,13 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('#tabbar a[data-tab="home"]');
   await page.waitForTimeout(800);
   check('back to deposits/withdrawals', await page.isVisible('#homeOrb'));
-  // cold start from the notification (app was closed): just the orb, nothing of the app
-  const cold = page;
-  await cold.goto('about:blank');
-  await cold.goto('http://127.0.0.1:8834/app/#/orb/2');
-  await cold.waitForTimeout(1800);
-  const c = await cold.evaluate(() => ({ mode: document.body.classList.contains('siri-mode'), empty: document.getElementById('app').innerHTML.trim() === '',
-    open: document.getElementById('orbStage').classList.contains('open') }));
-  check('cold start: only the orb is drawn', c.mode && c.empty && c.open, JSON.stringify(c));
-  await cold.screenshot({ path: OUT + '/app-siri.png' });
-  await cold.click('#orbClose');
-  await cold.waitForTimeout(800);
-  check('after it closes (where the window cannot close) the list appears', (await cold.$$('.txlist .item')).length > 0);
+  // cold start from the notification (app was closed): straight to the card's panel, the orb asking
+  await page.goto('about:blank');
+  await page.goto('http://127.0.0.1:8834/app/#/orb/2');
+  await page.waitForTimeout(2000);
+  const c = await page.evaluate(() => ({ hash: location.hash, panel: !!document.querySelector('.wc.big'), open: document.getElementById('orbStage').classList.contains('open') }));
+  check('cold start: the card panel with the orb', /^#\/card\/1/.test(c.hash) && c.panel && c.open, JSON.stringify(c));
+  await page.screenshot({ path: OUT + '/app-card-orb.png' });
   check('no JavaScript errors', errors.length === 0, JSON.stringify(errors.slice(0, 5)));
   await browser.close();
   srv.kill();
