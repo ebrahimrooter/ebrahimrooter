@@ -35,6 +35,7 @@ main{max-width:1380px;margin:0 auto;padding:18px 16px 40px;display:grid;grid-tem
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .chip{font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;cursor:pointer}
 .chip:hover{border-color:var(--leaf)}
+.chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
 textarea,input{width:100%;font:inherit;border:1px solid #cbd8d4;border-radius:12px;padding:10px 12px;background:#f8faf9}
 textarea{min-height:110px;direction:rtl;resize:vertical}
 .log{font-size:12.5px;max-height:160px;overflow:auto;background:#0d1a12;color:#cdeccd;border-radius:12px;padding:10px;margin-top:10px;direction:ltr;text-align:left;white-space:pre-wrap}
@@ -85,7 +86,13 @@ textarea{min-height:110px;direction:rtl;resize:vertical}
     <div class="card">
       <h2>📡 شبیه‌ساز ESP32 + SIM800</h2>
       <div class="esp"><span class="led"></span><b>دستگاه پیامک: فعال</b><span class="muted">· آنتن ۲۲ از ۳۱ · سیم‌کارت ثبت شده</span></div>
-      <p class="muted">یک پیامک بانک بفرست؛ مثل وقتی که ESP32 آن را به سرور می‌فرستد. بعد orb در گوشی و ربات بله می‌پرسند «بابت چی بود؟».</p>
+      <p class="muted">بانک را انتخاب کن و یک پیامک بفرست؛ مثل وقتی که ESP32 آن را به سرور می‌فرستد. گوشی به پنل همان کارت می‌رود و orb آنجا می‌پرسد «بابت چی بود؟». رمز پویا هم فقط در پنل همان کارت دیده می‌شود.</p>
+      <div class="chips" id="bankChips">
+        <button class="chip on" type="button" data-bank="mellat">بانک ملت</button>
+        <button class="chip" type="button" data-bank="melli">بانک ملی</button>
+        <button class="chip" type="button" data-bank="saderat">بانک صادرات</button>
+        <button class="chip" type="button" data-bank="blu">بلو بانک</button>
+      </div>
       <div class="chips">
         <button class="chip" type="button" data-sms="in">واریز ۲٬۷۵۰٬۰۰۰ تومان</button>
         <button class="chip" type="button" data-sms="out">برداشت ۸۹۰٬۰۰۰ تومان</button>
@@ -95,7 +102,7 @@ textarea{min-height:110px;direction:rtl;resize:vertical}
       <textarea id="sms"></textarea>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn" id="send" type="button">ارسال پیامک به سرور</button>
-        <span class="muted" style="align-self:center">فرستنده: <b>Bank Mellat</b> · <span class="ltr">POST api.php?r=ingest</span></span>
+        <span class="muted" style="align-self:center">فرستنده: <b id="sender" class="ltr">Bank Mellat</b> · <span class="ltr">POST api.php?r=ingest</span></span>
       </div>
       <div class="log" id="log">ESP32 ready. Waiting for SMS…</div>
     </div>
@@ -145,15 +152,32 @@ textarea{min-height:110px;direction:rtl;resize:vertical}
   var jdate = function () {
     try { return new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch (e) { return '1405/07/18'; }
   };
-  var SMS = {
-    in: function () { return 'بانک ملت\nواریز:27,500,000\nحساب:0123456789\nمانده:1,090,200,000\n' + jdate() + '-' + now(); },
-    out: function () { return 'بانک ملت\nبرداشت:8,900,000\nحساب:0123456789\nمانده:1,081,300,000\n' + jdate() + '-' + now(); },
-    big: function () { return 'بانک ملت\nواریز:120,000,000\nحساب:0123456789\nمانده:1,201,300,000\n' + jdate() + '-' + now(); },
-    otp: function () { return 'بانک ملت\nرمز پویا: 482913\nمبلغ: 1,500,000\nپذیرنده: فروشگاه نمونه\nاعتبار ۲ دقیقه'; }
+  var BANK = 'mellat';
+  var SENDER = { mellat: 'Bank Mellat', melli: 'Bank Melli', saderat: 'SADERAT', blu: 'blubank' };
+  var FMT = {
+    mellat: function (d, a, b) { return 'بانک ملت\n' + (d === 'in' ? 'واریز' : 'برداشت') + ':' + a + '\nحساب:0123456789\nمانده:' + b + '\n' + jdate() + '-' + now(); },
+    melli: function (d, a, b) { return 'بانک ملی ایران\n' + (d === 'in' ? 'واریز به' : 'برداشت از') + ' حساب 0101234567001\nمبلغ: ' + a + ' ریال\nمانده: ' + b + '\n' + jdate() + ' ' + now(); },
+    saderat: function (d, a, b) { return 'بانک صادرات\n' + (d === 'in' ? 'واریز به' : 'برداشت از') + ' حساب 0201234\nمبلغ ' + a + ' ریال\nمانده ' + b + '\n' + jdate() + ' ' + now(); },
+    blu: function (d, a, b) { return 'بلو\n' + (d === 'in' ? 'واریز به حساب' : 'خرید با کارت') + ': ' + a + ' ریال\nمانده: ' + b + ' ریال\n' + jdate() + ' ' + now(); }
   };
+  var SMS = {
+    in: function () { return FMT[BANK]('in', '27,500,000', '1,090,200,000'); },
+    out: function () { return FMT[BANK]('out', '8,900,000', '1,081,300,000'); },
+    big: function () { return FMT[BANK]('in', '120,000,000', '1,201,300,000'); },
+    otp: function () { return { mellat: 'بانک ملت', melli: 'بانک ملی ایران', saderat: 'بانک صادرات', blu: 'بلو' }[BANK] + '\nرمز پویا: ' + (100000 + Math.floor(Math.random() * 899999)) + '\nمبلغ: 1,500,000\nپذیرنده: فروشگاه نمونه\nاعتبار ۲ دقیقه'; }
+  };
+  var lastKind = 'out';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-bank]'), function (b) {
+    b.onclick = function () {
+      BANK = b.getAttribute('data-bank');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-bank]'), function (x) { x.classList.toggle('on', x === b); });
+      $('sender').textContent = SENDER[BANK];
+      $('sms').value = SMS[lastKind]();
+    };
+  });
   $('sms').value = SMS.out();
   Array.prototype.forEach.call(document.querySelectorAll('[data-sms]'), function (b) {
-    b.onclick = function () { $('sms').value = SMS[b.getAttribute('data-sms')](); };
+    b.onclick = function () { lastKind = b.getAttribute('data-sms'); $('sms').value = SMS[lastKind](); };
   });
   Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) {
     b.onclick = function () { app.src = 'app/index.html' + b.getAttribute('data-go'); };
@@ -195,7 +219,7 @@ textarea{min-height:110px;direction:rtl;resize:vertical}
     var tx = p[p.length - 1];
     waiting = tx.id;
     bot((tx.direction === 'in' ? '🟢 واریز ' : '🔴 برداشت ') + T.toman(tx.amount) + '\n🕓 ' + tx.bank_date + ' ' + (tx.bank_time || '') +
-      (tx.balance ? ' · مانده: ' + T.toman(tx.balance) : '') + '\nبابت چی بود؟ بنویس.',
+      (tx.balance ? ' · مانده: ' + T.toman(tx.balance) : '') + (tx.wallet_name ? ' · 💳 ' + tx.wallet_name : '') + '\nبابت چی بود؟ بنویس.',
       [['⏭ بعداً', function () { me('⏭ بعداً'); waiting = null; bot('باشد، بعداً می‌پرسم.'); }],
        ['🚫 نادیده بگیر', function () { me('🚫 نادیده'); ignore(tx.id); }]]);
   }
@@ -243,16 +267,17 @@ textarea{min-height:110px;direction:rtl;resize:vertical}
   $('send').onclick = function () {
     var text = $('sms').value.trim();
     if (!text) return;
-    log('AT+CMGL="REC UNREAD" → 1 message from "Bank Mellat"');
+    log('AT+CMGL="REC UNREAD" → 1 message from "' + SENDER[BANK] + '"  (in ALLOWED_SENDERS)');
     log('POST api.php?r=ingest  X-Device-Token: ••••  (' + text.length + ' chars)');
-    var r = T.ingest(text);
+    var r = T.ingest(text, SENDER[BANK]);
     if (!r.ok) { log('server: ' + r.error); return; }
     if (r.otp) {
       log('server: 200 {"otp":true}');
-      bot('🔐 رمز یکبار مصرف رسید · ۲ دقیقه در اپ قابل دیدن است');
+      bot('🔐 رمز یکبار مصرف «' + r.wallet_name + '» رسید · در پنل همین کارت ← «رمز پویا»');
+      app.src = 'app/index.html#/card/' + r.wallet_id + '/otp';
       return;
     }
-    log('server: 200 {"transaction_id":' + r.transaction_id + '}  → notifications');
+    log('server: 200 {"transaction_id":' + r.transaction_id + ',"wallet_id":' + r.wallet_id + '}  → card «' + r.transaction.wallet_name + '», notifications');
     app.src = 'app/index.html#/orb/' + r.transaction_id;     // like tapping the notification
     askNext();
   };

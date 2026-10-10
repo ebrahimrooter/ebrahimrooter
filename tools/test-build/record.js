@@ -62,7 +62,7 @@ async function get(url, headers) {
 
   // ---- bank / phone app API
   const B = { 'X-App-Token': 'demo12345' };
-  for (const r of ['me', 'pending', 'categories', 'parties', 'people', 'wallets', 'settings', 'senders', 'otp_count', 'reconciliations',
+  for (const r of ['me', 'pending', 'categories', 'parties', 'people', 'wallets', 'banks', 'settings', 'senders', 'otp_count', 'reconciliations',
     'backups', 'assistant_devices', 'report']) await get('/api.php?r=' + r, B);
   const iso = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
   const all = await get('/api.php?r=list&from=' + iso(400) + '&to=' + iso(0), B);
@@ -82,7 +82,7 @@ async function get(url, headers) {
   await page.fill('#t', 'demo12345');
   await page.click('#f button');
   await page.waitForTimeout(2500);
-  for (const h of ['#/', '#/settings', '#/people', '#/history', '#/reconcile', '#/manual', '#/otp']) {
+  for (const h of ['#/', '#/settings', '#/people', '#/history', '#/reconcile', '#/manual', '#/otp', '#/card/1', '#/card/4']) {
     await page.goto(BASE + '/app/' + h); await page.waitForTimeout(1500);
   }
   await page.goto(BASE + '/acc/');

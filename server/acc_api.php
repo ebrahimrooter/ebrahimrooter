@@ -960,6 +960,7 @@ function acc_account_out(array $a)
 
 function r_accounts()
 {
+    acc_bank_ensure_accounts();   // every bank card shows up with its own account
     return array_map('acc_account_out', acc_all('SELECT * FROM acc_cash_accounts ORDER BY id'));
 }
 

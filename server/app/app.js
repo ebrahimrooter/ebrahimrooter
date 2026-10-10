@@ -1133,6 +1133,7 @@
   /** The orb asks about a transaction inside its card's panel. */
   function askInCard(tx, startNow) {
     if (tx.wallet_id) {
+      cardState.tab = 'tx';
       history.replaceState(null, '', '#/card/' + tx.wallet_id);   // no hashchange: the voice session keeps going
       lastHash = location.hash;
       viewCard(tx.wallet_id);

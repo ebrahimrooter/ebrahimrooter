@@ -32,7 +32,8 @@
   }
   function rerenderList() {
     var h = location.hash.replace(/^#\/?/, '');
-    var onList = /\/app\//.test(location.pathname) && (h === '' || h === 'history') && !document.body.classList.contains('siri-mode');
+    var onList = /\/app\//.test(location.pathname) && (h === '' || h === 'history' || /^card\/\d+$/.test(h)) && !document.body.classList.contains('siri-mode')
+      && !(document.getElementById('orbStage') || { classList: { contains: function () { return false; } } }).classList.contains('open');
     if (onList) window.dispatchEvent(new HashChangeEvent('hashchange'));
   }
   window.addEventListener('storage', function (e) { if (e.key === KEY) changedElsewhere(); });
@@ -91,10 +92,36 @@
 
   /* ------------------------------------------------------------ bank / phone app */
   function cats() { return ((S.bank.categories || {}).json || {}).items || []; }
+  // the four bank cards + cash, as the server keeps them (server/lib.php BA_BANKS)
+  var BANKS = {
+    mellat: { name: 'بانک ملت', color: '#c8102e', sender: /mellat|700717/i, body: /بانک\s*ملت|mellat/i },
+    blu: { name: 'بلو بانک', color: '#1688f0', sender: /\bblu|blubank/i, body: /^\s*بلو(\s|$)|بلو\s*بانک|بلوبانک|\bblu\b/i },
+    melli: { name: 'بانک ملی', color: '#0b3a74', sender: /melli|\bbmi\b/i, body: /بانک\s*ملی|ملی\s*ایران|\bbmi\b|melli/i },
+    saderat: { name: 'بانک صادرات', color: '#0e5e8c', sender: /saderat|\bbsi\b/i, body: /بانک\s*صادرات|صادرات\s*ایران|saderat/i }
+  };
+  function detectBank(sender, body) {
+    var k;
+    for (k in BANKS) if (sender && BANKS[k].sender.test(sender)) return k;
+    for (k in BANKS) if (BANKS[k].body.test(body)) return k;
+    return 'mellat';
+  }
   function wallets() {
     var w = clone((((S.bank.report || {}).json || {}).wallets) || ((S.bank.wallets || {}).json || {}).items || []);
-    w.forEach(function (x) { x.balance = (x.balance || 0) + (S.delta[x.id] || 0); });
+    (S.walletsAdded || []).forEach(function (x) { w.push(clone(x)); });
+    var now = Date.now();
+    w.forEach(function (x) {
+      Object.assign(x, (S.walletEdits || {})[x.id] || {});
+      x.balance = (x.balance || 0) + (S.delta[x.id] || 0);
+      x.pending = S.txs.filter(function (t) { return t.status === 'pending' && +t.wallet_id === +x.id; }).length;
+      x.otps = S.log.filter(function (l) { return l.kind === 'otp' && +l.wallet_id === +x.id && now - l.at < OTP_LIFE; }).length;
+    });
     return w;
+  }
+  var OTP_LIFE = 300000;
+  function walletFor(bank, account) {
+    var mine = wallets().filter(function (w) { return w.bank === bank; });
+    var four = String(account || '').slice(-4);
+    return mine.filter(function (w) { return four && w.card && String(w.card).slice(-4) === four; })[0] || mine[0] || wallets()[0];
   }
   function txList(from, to) {
     return S.txs.filter(function (t) { var d = t.occurred_at.slice(0, 10); return (!from || d >= from) && (!to || d <= to); })
@@ -102,28 +129,35 @@
   }
   function findTx(id) { id = +id; return S.txs.filter(function (t) { return +t.id === id; })[0]; }
 
-  /** A bank SMS as the ESP32 would send it → a transaction waiting for «بابت چی بود؟». */
-  function ingest(sms) {
+  /** A bank SMS as the ESP32 would send it → a transaction on that bank's card, waiting for «بابت چی بود؟». */
+  function ingest(sms, sender) {
     var t = norm(sms);
-    var m = t.match(/(واریز|برداشت|انتقال|خرید)\s*[:：]?\s*([\d,٬]+)/);
-    if (!m) {
-      var otp = t.match(/(رمز|کد)[^\d]{0,20}(\d{5,8})/);
-      if (otp) { S.log.push({ at: Date.now(), kind: 'otp', text: sms }); save('otp'); return { ok: true, otp: otp[2] }; }
-      return { ok: false, error: 'در این پیامک واریز یا برداشتی پیدا نشد' };
+    var bank = detectBank(sender || '', t);
+    var acct = (t.match(/(?:حساب|کارت)\s*[:：]?\s*(\d{4,})/) || [])[1] || '';
+    var w = walletFor(bank, acct);
+    var dirm = t.match(/(واریز|برداشت|انتقال|خرید)/);
+    var amt = t.match(/مبلغ\s*[:：]?\s*([\d,٬]{4,})/) || t.match(/(?:واریز|برداشت|انتقال|خرید)[^\d\n]{0,12}([\d,٬]{4,})(?!\d)/) || t.match(/([\d,٬]{4,})\s*(?:ریال|تومان)/);
+    var otp = t.match(/(رمز|کد)[^\d]{0,20}(\d{5,8})/);
+    if (otp && /رمز|کد/.test(t.slice(0, 40)) && /پویا|یکبار|یک بار|کد/.test(t)) {
+      var oa = (t.match(/مبلغ\s*[:：]?\s*([\d,٬]+)/) || [])[1], om = (t.match(/پذیرنده\s*[:：]?\s*([^\n]+?)(?:\s+اعتبار|$)/) || [])[1];
+      S.log.push({ at: Date.now(), kind: 'otp', text: sms, wallet_id: w.id, code: otp[2], amount: oa ? +oa.replace(/[,٬]/g, '') : null, merchant: om || null });
+      save('otp');
+      return { ok: true, otp: otp[2], wallet_id: w.id, wallet_name: w.name };
     }
-    var dir = m[1] === 'واریز' ? 'in' : 'out';
-    var amount = parseInt(m[2].replace(/[,٬]/g, ''), 10);
-    var bal = (t.match(/مانده\s*[:：]?\s*([\d,٬]+)/) || [])[1];
+    if (!dirm || !amt) return { ok: false, error: 'در این پیامک واریز یا برداشتی پیدا نشد' };
+    var dir = dirm[1] === 'واریز' ? 'in' : 'out';
+    var amount = parseInt(amt[1].replace(/[,٬]/g, ''), 10);
+    var bal = (t.match(/(?:مانده|موجودی)\s*[:：]?\s*([\d,٬]+)/) || [])[1];
     var now = new Date();
     var tx = { id: ++S.next, sms_id: null, source: 'sms', direction: dir, amount: amount, balance: bal ? parseInt(bal.replace(/[,٬]/g, ''), 10) : null,
-      account: '0123456789', bank_date: jalali(now), bank_time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+      account: acct || null, bank_date: jalali(now), bank_time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
       occurred_at: iso(now) + ' ' + now.toTimeString().slice(0, 8), status: 'pending', description: null, party: null, category_id: null,
-      category_name: null, wallet_id: 1, wallet_name: 'بانک ملت', sms_text: sms };
+      category_name: null, wallet_id: w.id, wallet_name: w.name, sms_text: sms };
     S.txs.push(tx);
-    S.delta[1] = (S.delta[1] || 0) + (dir === 'in' ? amount : -amount);
+    S.delta[w.id] = (S.delta[w.id] || 0) + (dir === 'in' ? amount : -amount);
     S.log.push({ at: Date.now(), kind: 'sms', text: sms, tx: tx.id });
     save('tx');
-    return { ok: true, transaction_id: tx.id, transaction: tx };
+    return { ok: true, transaction_id: tx.id, transaction: tx, wallet_id: w.id };
   }
 
   function guess(text, direction) {
@@ -220,6 +254,18 @@
         return json(rep);
       }
       case 'wallets': return json({ ok: true, items: wallets() });
+      case 'banks': return json({ ok: true, items: Object.keys(BANKS).map(function (k) { return { id: k, name: BANKS[k].name, color: BANKS[k].color }; }) });
+      case 'wallet_save': {
+        var wid = +b.id, edit = { name: b.name, kind: b.kind || 'bank', bank: b.bank || null, card: b.card || null, color: b.color || null };
+        if (b.opening_toman !== undefined && b.opening_toman !== '') edit.opening = +b.opening_toman * 10;
+        if (!wid) {
+          S.walletsAdded = S.walletsAdded || [];
+          wid = wallets().reduce(function (m, x) { return Math.max(m, +x.id); }, 0) + 1;
+          S.walletsAdded.push(Object.assign({ id: wid, balance: edit.opening || 0, is_sms: 1 }, edit));
+        } else { S.walletEdits = S.walletEdits || {}; S.walletEdits[wid] = Object.assign(S.walletEdits[wid] || {}, edit); }
+        save('wallet');
+        return json({ ok: true, id: wid });
+      }
       case 'confirm': {
         var c = confirmTx(b.id, b.description, b.party, b.category_id);
         return c ? json({ ok: true, item: c, synced: false }) : json({ ok: false, error: 'پیدا نشد' }, 404);
@@ -257,8 +303,15 @@
       case 'backup_download': return text('نسخه‌ی تست: فایل پشتیبان واقعی روی سرور ساخته می‌شود.', 'application/octet-stream');
       case 'push_key': return json({ ok: false, error: 'نوتیف واقعی در نسخه‌ی تست نیست؛ از شبیه‌ساز ESP32 استفاده کن.' }, 501);
       case 'tts': case 'say': case 'transcribe': return json({ ok: false, error: 'در نسخه‌ی تست صدای مرورگر استفاده می‌شود' }, 501);
-      case 'otp': return json({ ok: true, items: S.log.filter(function (l) { return l.kind === 'otp'; }).map(function (l, i) { return { id: i + 1, code: (norm(l.text).match(/(\d{5,8})/) || [])[1], received_at: new Date(l.at).toISOString().slice(0, 19).replace('T', ' '), text: l.text }; }) });
-      case 'otp_count': return json({ ok: true, count: S.log.filter(function (l) { return l.kind === 'otp'; }).length });
+      case 'otp': {
+        var nowMs = Date.now();
+        return json({ ok: true, items: S.log.filter(function (l) { return l.kind === 'otp' && nowMs - l.at < OTP_LIFE && (!P.wallet_id || +l.wallet_id === +P.wallet_id); })
+          .reverse().map(function (l, i) {
+            return { id: i + 1, code: l.code || (norm(l.text).match(/(\d{5,8})/) || [])[1], amount: l.amount || null, merchant: l.merchant || null, wallet_id: l.wallet_id,
+              seconds_left: Math.max(0, Math.round((OTP_LIFE - (nowMs - l.at)) / 1000)), received_at: new Date(l.at).toISOString().slice(0, 19).replace('T', ' '), text: l.text };
+          }) });
+      }
+      case 'otp_count': return json({ ok: true, count: S.log.filter(function (l) { return l.kind === 'otp' && Date.now() - l.at < OTP_LIFE && (!P.wallet_id || +l.wallet_id === +P.wallet_id); }).length });
     }
     if (method === 'GET') {
       var s = snap('bank', r.key, r.head);
@@ -341,6 +394,7 @@
     guess: guess,
     pending: function () { return S.txs.filter(function (t) { return t.status === 'pending'; }).sort(function (a, b) { return a.id - b.id; }); },
     wallets: wallets,
+    detectBank: detectBank,
     state: function () { return S; },
     reset: function () { S = fresh(); save('reset'); },
     toman: toman
