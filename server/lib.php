@@ -187,6 +187,23 @@ function ba_db() {
         $pdo->exec("ALTER TABLE parties ADD COLUMN opening INTEGER NOT NULL DEFAULT 0");   // + they owe me, - I owe them
     }
 
+    // Bank cards (کارت‌ها): every bank account is a wallet with its bank, card digits and colour.
+    if (!in_array('bank', $cols('wallets'), true)) {
+        $pdo->exec('ALTER TABLE wallets ADD COLUMN bank TEXT');
+        $pdo->exec('ALTER TABLE wallets ADD COLUMN card TEXT');
+        $pdo->exec('ALTER TABLE wallets ADD COLUMN color TEXT');
+        $pdo->exec("UPDATE wallets SET bank = 'cash' WHERE kind = 'cash'");
+        foreach (BA_BANKS as $code => $b) {
+            $pdo->prepare("UPDATE wallets SET bank = ?, color = COALESCE(color, ?) WHERE bank IS NULL AND kind = 'bank' AND name LIKE ?")
+                ->execute([$code, $b['color'], '%' . $b['word'] . '%']);
+        }
+        $pdo->exec('DROP TABLE IF EXISTS _cards_seed');   // marker: seed the cards below once
+        $pdo->exec('CREATE TEMP TABLE _cards_seed (x)');
+    }
+    if (!in_array('wallet_id', $cols('otps'), true)) {
+        $pdo->exec('ALTER TABLE otps ADD COLUMN wallet_id INTEGER');
+    }
+
     if ($fresh_categories) {
         $seed = [
             // name, direction, keywords, kind
@@ -209,8 +226,23 @@ function ba_db() {
             $ins->execute([$row[0], $row[1], $row[2], $i, $row[3]]);
         }
     }
-    if (!$pdo->query('SELECT COUNT(*) FROM wallets')->fetchColumn()) {
-        $pdo->exec("INSERT INTO wallets (id, name, kind, is_sms) VALUES (1, 'بانک ملت', 'bank', 1), (2, 'صندوق (نقد)', 'cash', 0)");
+    $fresh_wallets = !$pdo->query('SELECT COUNT(*) FROM wallets')->fetchColumn();
+    if ($fresh_wallets) {
+        $pdo->exec("INSERT INTO wallets (id, name, kind, is_sms, bank, color) VALUES (1, 'بانک ملت', 'bank', 1, 'mellat', '" . BA_BANKS['mellat']['color'] . "'),
+            (2, 'صندوق (نقد)', 'cash', 0, 'cash', '#5b6b64')");
+    }
+    // the four cards, once (a card deleted later is not brought back)
+    $seeding = $fresh_wallets || (int)$pdo->query("SELECT COUNT(*) FROM sqlite_temp_master WHERE name = '_cards_seed'")->fetchColumn();
+    if ($seeding) {
+        $has = $pdo->prepare('SELECT 1 FROM wallets WHERE bank = ?');
+        $add = $pdo->prepare("INSERT INTO wallets (name, kind, is_sms, bank, color) VALUES (?, 'bank', 1, ?, ?)");
+        foreach (BA_BANKS as $code => $b) {
+            $has->execute([$code]);
+            if (!$has->fetchColumn()) {
+                $add->execute([$b['name'], $code, $b['color']]);
+            }
+        }
+        $pdo->exec('DROP TABLE IF EXISTS _cards_seed');
     }
     return $pdo;
 }
@@ -352,8 +384,15 @@ function ba_parse_sms($text) {
     $direction = null;
     $amount = null;
 
+    // 0) "مبلغ: 2000000-" wins when present: in Melli / Saderat SMS the keyword is
+    //    followed by an account number ("انتقال از:0101234567001", "برداشت از حساب:0219…")
+    if (preg_match('/مبلغ\s*(?:تراکنش)?\s*[:：]?\s*([+\-]?)\s*(\d+)\s*([+\-]?)/u', $t, $m)) {
+        $amount = (int)$m[2];
+        $sign = $m[1] !== '' ? $m[1] : $m[3];
+        $direction = $sign === '+' ? 'in' : ($sign === '-' ? 'out' : null);
+    }
     // 1) keyword directly followed by the amount: "برداشت:1250000" / "مبلغ: 250000-"
-    if (preg_match('/(' . $in_words . '|' . $out_words . '|مبلغ)\s*[:：]?\s*([+\-]?)\s*(\d+)\s*([+\-]?)/u', $t, $m)) {
+    if ($amount === null && preg_match('/(' . $in_words . '|' . $out_words . '|مبلغ)\s*[:：]?\s*([+\-]?)\s*(\d+)\s*([+\-]?)/u', $t, $m)) {
         $amount = (int)$m[3];
         $sign = $m[2] !== '' ? $m[2] : $m[4];
         if ($sign === '+') {
@@ -364,6 +403,16 @@ function ba_parse_sms($text) {
             $direction = 'in';
         } elseif (preg_match('/^(' . $out_words . ')$/u', $m[1])) {
             $direction = 'out';
+        }
+    }
+    // 1b) "خرید با کارت: 320000 ریال" (Blu): the first amount in rial / toman that is not the balance
+    if ($amount === null && preg_match_all('/(\d+)\s*(ریال|تومان)/u', $t, $all, PREG_OFFSET_CAPTURE)) {
+        foreach ($all[1] as $k => $num) {
+            $before = mb_strcut($t, max(0, $num[1] - 40), min(40, $num[1]), 'UTF-8');
+            if (!preg_match('/مانده|موجودی/u', $before)) {
+                $amount = (int)$num[0] * ($all[2][$k][0] === 'تومان' ? 10 : 1);
+                break;
+            }
         }
     }
     // 2) direction from anywhere in the text ("مبلغ" gave no hint)
@@ -419,6 +468,68 @@ function ba_parse_sms($text) {
         'bank_date' => $jdate,
         'bank_time' => $time,
     ];
+}
+
+/** The banks whose SMS are read (ESP32) and shown as cards. */
+const BA_BANKS = [
+    'mellat' => ['name' => 'بانک ملت', 'word' => 'ملت', 'color' => '#c8102e',
+        'sender' => '/mellat|700717/i', 'body' => '/بانک\s*ملت|^\s*ملت\b|mellat/iu'],
+    'blu' => ['name' => 'بلو بانک', 'word' => 'بلو', 'color' => '#1688f0',
+        'sender' => '/\bblu|blubank/i', 'body' => '/^\s*بلو\b|بلو\s*بانک|بلوبانک|\bblu\b/iu'],
+    'melli' => ['name' => 'بانک ملی', 'word' => 'ملی', 'color' => '#0b3a74',
+        'sender' => '/melli|\bbmi\b/i', 'body' => '/بانک\s*ملی|ملی\s*ایران|\bbmi\b|melli/iu'],
+    'saderat' => ['name' => 'بانک صادرات', 'word' => 'صادرات', 'color' => '#0e5e8c',
+        'sender' => '/saderat|\bbsi\b/i', 'body' => '/صادرات|saderat|\bbsi\b/iu'],
+];
+
+/** Which bank sent this SMS (sender ID first, then the text): 'mellat' | 'melli' | 'saderat' | 'blu' | null. */
+function ba_detect_bank($sender, $body) {
+    $s = strtolower(preg_replace('/\s+/', '', (string)$sender));
+    foreach (BA_BANKS as $code => $b) {
+        if ($s !== '' && preg_match($b['sender'], $s)) {
+            return $code;
+        }
+    }
+    $t = ba_normalize((string)$body);
+    foreach (BA_BANKS as $code => $b) {
+        if (preg_match($b['body'], $t)) {
+            return $code;
+        }
+    }
+    return null;
+}
+
+/**
+ * The card (wallet) an SMS belongs to: same bank, and when one bank has
+ * several cards, the one whose number ends like the account in the SMS.
+ * A bank seen for the first time gets its card. Unknown bank: the first SMS wallet.
+ */
+function ba_wallet_for($bank, $account = null, $create = true) {
+    $db = ba_db();
+    if ($bank) {
+        $q = $db->prepare('SELECT id, card FROM wallets WHERE bank = ? ORDER BY id');
+        $q->execute([$bank]);
+        $rows = $q->fetchAll();
+        $digits = preg_replace('/\D/', '', (string)$account);
+        if (count($rows) > 1 && strlen($digits) >= 4) {
+            foreach ($rows as $r) {
+                $c = preg_replace('/\D/', '', (string)$r['card']);
+                if ($c !== '' && substr($digits, -4) === substr($c, -4)) {
+                    return (int)$r['id'];
+                }
+            }
+        }
+        if ($rows) {
+            return (int)$rows[0]['id'];
+        }
+        if ($create && isset(BA_BANKS[$bank])) {
+            $db->prepare("INSERT INTO wallets (name, kind, is_sms, bank, color) VALUES (?, 'bank', 1, ?, ?)")
+                ->execute([BA_BANKS[$bank]['name'], $bank, BA_BANKS[$bank]['color']]);
+            return (int)$db->lastInsertId();
+        }
+        return null;
+    }
+    return $create ? (int)($db->query('SELECT id FROM wallets WHERE is_sms = 1 ORDER BY id LIMIT 1')->fetchColumn() ?: 1) : null;
 }
 
 /**
@@ -538,10 +649,16 @@ function ba_otp_purge() {
     ba_db()->prepare('DELETE FROM otps WHERE expires_at < ?')->execute([time()]);
 }
 
-/** Active OTPs, decrypted. Only called after the OTP PIN was checked. */
-function ba_otp_active() {
+/** Active OTPs, decrypted (of one card if given). Only called after the OTP PIN was checked. */
+function ba_otp_active($wallet_id = null) {
     ba_otp_purge();
-    $rows = ba_db()->query('SELECT * FROM otps ORDER BY id DESC')->fetchAll();
+    if ($wallet_id) {
+        $q = ba_db()->prepare('SELECT o.*, w.name AS wallet_name FROM otps o LEFT JOIN wallets w ON w.id = o.wallet_id WHERE o.wallet_id = ? ORDER BY o.id DESC');
+        $q->execute([(int)$wallet_id]);
+        $rows = $q->fetchAll();
+    } else {
+        $rows = ba_db()->query('SELECT o.*, w.name AS wallet_name FROM otps o LEFT JOIN wallets w ON w.id = o.wallet_id ORDER BY o.id DESC')->fetchAll();
+    }
     $out = [];
     foreach ($rows as $r) {
         $out[] = [
@@ -549,6 +666,8 @@ function ba_otp_active() {
             'code' => ba_unseal($r['code_enc']),
             'amount' => $r['amount'] !== null ? (int)$r['amount'] : null,
             'merchant' => $r['merchant'],
+            'wallet_id' => $r['wallet_id'] !== null ? (int)$r['wallet_id'] : null,
+            'wallet_name' => $r['wallet_name'],
             'created_at' => $r['created_at'],
             'seconds_left' => max(0, (int)$r['expires_at'] - time()),
         ];
@@ -596,10 +715,12 @@ function ba_ingest_otp($sender, $body, $modem_time, $otp, $prev) {
 
     $sms_id = $store('[رمز یکبار مصرف]', 'otp');
     $ttl = max(30, min(600, $otp['ttl'] ?: 180));
-    $db->prepare('INSERT INTO otps (sms_id, created_at, expires_at, code_enc, amount, merchant) VALUES (?, ?, ?, ?, ?, ?)')
-        ->execute([$sms_id, $now, time() + $ttl, ba_seal($otp['code']), $otp['amount'], $otp['merchant']]);
+    $wallet = ba_wallet_for(ba_detect_bank($sender, ($prev['body'] ?? '') . "\n" . $body), null, false);
+    $db->prepare('INSERT INTO otps (sms_id, created_at, expires_at, code_enc, amount, merchant, wallet_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$sms_id, $now, time() + $ttl, ba_seal($otp['code']), $otp['amount'], $otp['merchant'], $wallet]);
     return ['sms_id' => $sms_id, 'transaction' => null, 'duplicate' => false,
-        'otp' => ['id' => (int)$db->lastInsertId(), 'amount' => $otp['amount'], 'merchant' => $otp['merchant'], 'ttl' => $ttl, 'code' => $otp['code']]];
+        'otp' => ['id' => (int)$db->lastInsertId(), 'amount' => $otp['amount'], 'merchant' => $otp['merchant'], 'ttl' => $ttl, 'code' => $otp['code'],
+            'wallet_id' => $wallet]];
 }
 
 /**
@@ -684,7 +805,7 @@ function ba_ingest_sms($sender, $body, $modem_time = null) {
         $dedup .= '|' . $sms_row_for_tx;   // not enough to identify it; never treat as duplicate
     }
     try {
-        $wallet = (int)($db->query('SELECT id FROM wallets WHERE is_sms = 1 ORDER BY id LIMIT 1')->fetchColumn() ?: 1);
+        $wallet = ba_wallet_for(ba_detect_bank($sender, $text), $parsed['account']);
         $db->prepare("INSERT INTO transactions (sms_id, source, direction, amount, balance, account, bank_date, bank_time, occurred_at, dedup_key, wallet_id)
             VALUES (?, 'sms', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             ->execute([$sms_row_for_tx, $parsed['direction'], $parsed['amount'], $parsed['balance'], $parsed['account'],
@@ -1449,9 +1570,14 @@ function ba_wallets() {
             + COALESCE((SELECT SUM(CASE WHEN t.direction = 'out' THEN t.amount ELSE -t.amount END) FROM transactions t
                 WHERE t.counter_wallet_id = w.id AND t.status = 'confirmed'), 0) AS balance,
             (SELECT t.balance FROM transactions t WHERE t.wallet_id = w.id AND t.balance IS NOT NULL
-                ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1) AS bank_balance
-        FROM wallets w ORDER BY w.id")->fetchAll();
+                ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1) AS bank_balance,
+            (SELECT COUNT(*) FROM transactions t WHERE t.wallet_id = w.id AND t.status = 'pending') AS pending,
+            (SELECT COUNT(*) FROM otps o WHERE o.wallet_id = w.id AND o.expires_at >= " . time() . ") AS otps
+        FROM wallets w ORDER BY w.kind = 'cash', w.id")->fetchAll();
     foreach ($rows as &$r) {
+        $r['pending'] = (int)$r['pending'];
+        $r['otps'] = (int)$r['otps'];
+        $r['color'] = $r['color'] ?: (BA_BANKS[$r['bank'] ?? '']['color'] ?? '#2c3e50');
         $r['balance'] = (int)$r['balance'];
         $r['opening'] = (int)$r['opening'];
         $r['bank_balance'] = $r['bank_balance'] !== null ? (int)$r['bank_balance'] : null;

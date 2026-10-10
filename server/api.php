@@ -135,13 +135,21 @@ if ($route === 'ingest') {
     $res = ba_ingest_sms($sender, $text, $in['modem_time'] ?? null);
     if (!empty($res['otp'])) {
         $o = $res['otp'];
-        $info = ($o['amount'] ? ' · ' . ba_toman($o['amount']) : '') . ($o['merchant'] ? ' · ' . $o['merchant'] : '');
+        // the code is seen in that card's own «رمز پویا» section
+        $card = '';
+        if (!empty($o['wallet_id'])) {
+            $q = ba_db()->prepare('SELECT name FROM wallets WHERE id = ?');
+            $q->execute([$o['wallet_id']]);
+            $card = (string)$q->fetchColumn();
+        }
+        $hash = !empty($o['wallet_id']) ? '#/card/' . $o['wallet_id'] . '/otp' : '#/otp';
+        $info = ($card !== '' ? ' · 💳 ' . $card : '') . ($o['amount'] ? ' · ' . ba_toman($o['amount']) : '') . ($o['merchant'] ? ' · ' . $o['merchant'] : '');
         $msg = !empty($cfg['otp_to_bale'])
             ? "🔐 رمز یکبار مصرف: {$o['code']}{$info}\n⏳ " . ceil($o['ttl'] / 60) . ' دقیقه اعتبار'
             : "🔐 رمز یکبار مصرف رسید{$info}\n⏳ " . ceil($o['ttl'] / 60) . ' دقیقه در اپ قابل دیدن است'
-                . (!empty($cfg['app_url']) ? "\n" . rtrim($cfg['app_url'], '/') . '/#/otp' : '');
-        out_then(['ok' => true, 'otp' => true], function () use ($msg, $info) {
-            wp_notify_all(['title' => '🔐 رمز یکبار مصرف رسید', 'body' => ltrim($info, ' ·') ?: 'برای دیدن، اپ را باز کن', 'url' => '#/otp', 'tag' => 'otp']);
+                . (!empty($cfg['app_url']) ? "\n" . rtrim($cfg['app_url'], '/') . '/' . $hash : '');
+        out_then(['ok' => true, 'otp' => true, 'wallet_id' => $o['wallet_id'] ?? null], function () use ($msg, $info, $hash) {
+            wp_notify_all(['title' => '🔐 رمز یکبار مصرف رسید', 'body' => ltrim($info, ' ·') ?: 'برای دیدن، اپ را باز کن', 'url' => $hash, 'tag' => 'otp']);
             ba_notify($msg);
         });
     }
@@ -445,8 +453,9 @@ case 'bale_forget_chat':
     out(['ok' => true]);
 
 case 'otp':
+    // ?wallet_id=: only the codes of that card (the card's «رمز پویا» section)
     require_otp_pin($cfg);
-    out(['ok' => true, 'items' => ba_otp_active()]);
+    out(['ok' => true, 'items' => ba_otp_active((int)($_GET['wallet_id'] ?? 0) ?: null)]);
 
 case 'otp_clear':
     require_post();
@@ -460,7 +469,10 @@ case 'otp_clear':
 
 case 'otp_count':
     // No PIN: only says whether something is waiting, never the code.
-    out(['ok' => true, 'count' => (int)$db->query('SELECT COUNT(*) FROM otps')->fetchColumn()]);
+    $wid = (int)($_GET['wallet_id'] ?? 0);
+    $q = $db->prepare('SELECT COUNT(*) FROM otps' . ($wid ? ' WHERE wallet_id = ?' : ''));
+    $q->execute($wid ? [$wid] : []);
+    out(['ok' => true, 'count' => (int)$q->fetchColumn()]);
 
 case 'senders':
     // Every sender ID seen, so the owner can tick which ones are the bank.
@@ -559,12 +571,25 @@ case 'wallet_save':
     }
     $kind = ($in['kind'] ?? '') === 'cash' ? 'cash' : 'bank';
     $opening = rial_from($in, 'opening_rial', 'opening_toman');
+    // card: bank (reads its SMS), last digits of the card / account, colour
+    $bank = $kind === 'cash' ? 'cash' : (isset(BA_BANKS[$in['bank'] ?? '']) ? $in['bank'] : null);
+    $card = preg_replace('/[^\d]/', '', ba_normalize((string)($in['card'] ?? ''))) ?: null;
+    $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($in['color'] ?? '')) ? $in['color'] : (BA_BANKS[$bank]['color'] ?? null);
+    $sms = $bank && isset(BA_BANKS[$bank]) ? 1 : 0;
     if (!empty($in['id'])) {
-        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ? WHERE id = ?')->execute([$name, $kind, $opening, (int)$in['id']]);
+        $db->prepare('UPDATE wallets SET name = ?, kind = ?, opening = ?, bank = COALESCE(?, bank), card = ?, color = COALESCE(?, color),
+            is_sms = MAX(is_sms, ?) WHERE id = ?')->execute([$name, $kind, $opening, $bank, $card, $color, $sms, (int)$in['id']]);
+        $id = (int)$in['id'];
     } else {
-        $db->prepare('INSERT INTO wallets (name, kind, opening) VALUES (?, ?, ?)')->execute([$name, $kind, $opening]);
+        $db->prepare('INSERT INTO wallets (name, kind, opening, bank, card, color, is_sms) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$name, $kind, $opening, $bank, $card, $color, $sms]);
+        $id = (int)$db->lastInsertId();
     }
-    out(['ok' => true]);
+    out(['ok' => true, 'id' => $id]);
+
+case 'banks':
+    // the banks the SMS reader knows (for the card form)
+    out(['ok' => true, 'items' => array_map(fn($c, $b) => ['code' => $c, 'name' => $b['name'], 'color' => $b['color']], array_keys(BA_BANKS), BA_BANKS)]);
 
 case 'report':
     $from = valid_date($_GET['from'] ?? date('Y-m-d', strtotime('-30 days')));

@@ -208,8 +208,24 @@ function r_bank_transactions()
     return ['rows' => $rows, 'total_in' => $in, 'total_out' => $out, 'pending' => $pending];
 }
 
+/** Every card (wallet) has its own account in the books, also before its first transaction. */
+function acc_bank_ensure_accounts()
+{
+    if (!acc_bank_settings()['enabled']) {
+        return;
+    }
+    foreach (ba_db()->query('SELECT id FROM wallets ORDER BY id')->fetchAll() as $w) {
+        try {
+            acc_bank_account((int)$w['id']);
+        } catch (Throwable $e) {
+            error_log('card account: ' . $e->getMessage());
+        }
+    }
+}
+
 function r_bank_meta()
 {
+    acc_bank_ensure_accounts();
     $db = ba_db();
     return ['categories' => $db->query('SELECT * FROM categories ORDER BY sort_order, id')->fetchAll(),
         'wallets' => $db->query('SELECT * FROM wallets ORDER BY id')->fetchAll(),

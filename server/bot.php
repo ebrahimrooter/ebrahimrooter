@@ -36,7 +36,7 @@ function bot_remember_message($result, $tx_id) {
 /** Asks about one transaction. */
 function bot_ask($tx) {
     $verb = $tx['direction'] === 'in' ? '🟢 واریز' : '🔴 برداشت';
-    $text = $verb . ' ' . ba_toman($tx['amount']) . "\n🕓 " . bot_when($tx)
+    $text = $verb . ' ' . ba_toman($tx['amount']) . (!empty($tx['wallet_name']) ? ' · 💳 ' . $tx['wallet_name'] : '') . "\n🕓 " . bot_when($tx)
         . ($tx['balance'] !== null ? "\nمانده: " . ba_toman($tx['balance']) : '')
         . "\n\nبابت چی بود؟ بنویس یا ویس بفرست.";
     $res = ba_notify($text, [[
