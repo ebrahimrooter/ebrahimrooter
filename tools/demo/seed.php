@@ -56,3 +56,10 @@ api('POST', '/invoices', ['kind' => 'sale_proforma', 'person_id' => $people['ع�
 api('POST', '/cheques', ['number' => '788120', 'direction' => 'payable', 'person_id' => $people['بذر سبز'], 'amount' => 30000000, 'due_date' => '1405/07/15', 'date' => $d(7, 5), 'account_id' => $bank]);
 api('POST', '/loans', ['direction' => 'received', 'account_id' => $bank, 'amount' => 200000000, 'interest_total' => 36000000, 'installments' => 12, 'start_date' => '1405/08/01', 'description' => 'وام بانک ملت']);
 api('POST', '/guarantees', ['person_id' => $people['فروشگاه نور'], 'kind' => 'سفته', 'number' => 'S-1201', 'amount' => 100000000, 'due_date' => '1406/01/01']);
+// «کالا و انبار» of the phone apps: a second warehouse, a transfer, an item running low and one out of stock
+$farm = api('POST', '/warehouses', ['name' => 'انبار مزرعه'])['id'];
+api('POST', '/warehouse-docs', ['kind' => 'transfer', 'warehouse_id' => 1, 'to_warehouse_id' => $farm, 'date' => $d(7, 11), 'description' => 'ارسال به مزرعه',
+    'items' => [['product_id' => $prod['کود NPK'], 'qty' => 20], ['product_id' => $prod['لوله آبیاری قطره‌ای'], 'qty' => 60]]]);
+$p1 = api('POST', '/products', ['name' => 'سم حشره‌کش', 'code' => '1006', 'buy_price' => 520000, 'sale_price' => 700000, 'reorder_point' => 10, 'unit' => 'لیتر'])['id'];
+api('POST', '/warehouse-docs', ['kind' => 'receipt', 'warehouse_id' => 1, 'date' => $d(7, 11), 'description' => 'خرید نقدی', 'items' => [['product_id' => $p1, 'qty' => 6, 'price' => 520000]]]);
+api('POST', '/products', ['name' => 'نایلون گلخانه', 'code' => '1007', 'buy_price' => 2400000, 'sale_price' => 3100000, 'reorder_point' => 3, 'unit' => 'رول']);

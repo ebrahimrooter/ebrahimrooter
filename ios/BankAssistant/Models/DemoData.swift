@@ -1,7 +1,7 @@
 import Foundation
 
 /// Sample books for previews and simulator screenshots: launch with `-demo`
-/// (optionally `-tab report|accounting|profile`). Never used otherwise.
+/// (optionally `-tab report|stock|accounting|profile`). Never used otherwise.
 enum Demo {
     static let enabled = ProcessInfo.processInfo.arguments.contains("-demo")
 
@@ -10,6 +10,7 @@ enum Demo {
         guard let i = a.firstIndex(of: "-tab"), i + 1 < a.count else { return .home }
         switch a[i + 1] {
         case "report": return .report
+        case "stock": return .stock
         case "accounting": return .accounting
         case "profile": return .profile
         default: return .home

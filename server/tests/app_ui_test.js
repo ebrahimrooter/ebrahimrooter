@@ -30,7 +30,7 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   check('home shows the orb', await page.isVisible('#homeOrb .orb'));
   check('orb drawn by thinking-orbs (canvas)', await page.isVisible('#homeOrb .orb canvas'));
   const tabs = await page.$$eval('#tabbar a', as => as.map(a => a.textContent.trim()));
-  check('three tabs: deposits/withdrawals, accounting, settings', tabs.length === 3, JSON.stringify(tabs));
+  check('four tabs: deposits/withdrawals, accounting, goods & warehouse, settings', tabs.length === 4 && tabs.some(t => t.includes('کالا و انبار')), JSON.stringify(tabs));
   const rows = await page.$$eval('.txlist .item', xs => xs.map(x => x.textContent));
   check('both transactions listed', rows.length === 2, JSON.stringify(rows));
   check('pending marked', rows.some(r => r.includes('بی‌جواب')));
@@ -80,6 +80,10 @@ const check = (n, ok, extra = '') => { console.log((ok ? '  ok   ' : '  FAIL ') 
   await page.click('.cp-seg button[data-tab="set"]');
   await page.waitForTimeout(500);
   check('card settings: bank, last 4 digits, color', await page.evaluate(() => !!document.querySelector('#cardf select[name=bank]') && !!document.querySelector('#cardf input[name=card]')));
+  // «کالا و انبار»: every product with its stock (empty books here: the list says so)
+  await page.click('#tabbar a[data-tab="stock"]');
+  await page.waitForTimeout(1200);
+  check('goods & warehouse tab opens', await page.evaluate(() => location.hash === '#/stock' && !!document.querySelector('.st-sum') && !!document.getElementById('stList')));
   // the whole accounting panel inside the app, signed in with the app password
   await page.goto('http://127.0.0.1:8834/app/#/');
   await page.waitForTimeout(1200);

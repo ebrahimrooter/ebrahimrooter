@@ -1,9 +1,9 @@
 import AVFoundation
 import SwiftUI
 
-enum AppTab: Hashable { case home, report, accounting, profile }
+enum AppTab: Hashable { case home, report, stock, accounting, profile }
 
-/// The four screens with the light pill tab bar (black circle on the current one)
+/// The five screens with the light pill tab bar (black circle on the current one)
 /// and the voice orb in the middle.
 struct MainTabView: View {
     var onUnpair: () -> Void
@@ -19,6 +19,7 @@ struct MainTabView: View {
                 switch tab {
                 case .home: HomeView(tab: $tab)
                 case .report: ReportView(tab: $tab)
+                case .stock: StockView()
                 case .profile: ProfileView(onUnpair: onUnpair)
                 case .accounting: Color.clear
                 }
@@ -93,10 +94,11 @@ struct TabBar: View {
             item(.home, "house")
             item(.report, "chart.bar")
             orb
+            item(.stock, "shippingbox")
             item(.accounting, "safari")
             item(.profile, "person")
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 8)
         .frame(height: 74)
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 30, topTrailingRadius: 30, style: .continuous)
@@ -155,6 +157,7 @@ struct TabBar: View {
         switch t {
         case .home: return "خانه"
         case .report: return "گزارش"
+        case .stock: return "کالا و انبار"
         case .accounting: return "حسابداری"
         case .profile: return "تنظیمات"
         }

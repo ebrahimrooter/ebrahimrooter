@@ -373,3 +373,28 @@ body.siri-mode .accframe { visibility: hidden; }
 .cp-seg { grid-template-columns: 1fr 1fr 1fr; }
 .cp-seg button { font-size: 13px; }
 .cp-pend { margin-bottom: 12px; }
+
+/* ---------- کالا و انبار ---------- */
+.st-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.st-sum > div { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.st-sum span { color: var(--muted); font-size: 13px; }
+.st-sum b { font-size: 18px; }
+.st-sum .warn b { color: #b7791f; }
+.st-sum .bad b { color: var(--out, #d64545); }
+.st-whs { overflow-x: auto; flex-wrap: nowrap; margin-bottom: 12px; padding-bottom: 2px; }
+.st-whs .chip { white-space: nowrap; }
+#stQ { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+.st-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.st-item:last-child { border-bottom: 0; }
+.st-ic { width: 42px; height: 42px; flex: none; border-radius: 14px; display: grid; place-items: center; font-weight: 800;
+  background: color-mix(in srgb, var(--in, #1f8f45) 12%, transparent); color: var(--in, #1f8f45); }
+.st-low .st-ic { background: #fff3d6; color: #b7791f; }
+.st-out .st-ic { background: #fde3e3; color: #d64545; }
+.st-item .it { font-weight: 700; }
+.st-wh { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.st-wh span { font-size: 12px; background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 99px; padding: 2px 8px; }
+.st-q { display: flex; flex-direction: column; align-items: flex-end; text-align: left; min-width: 72px; }
+.st-q b { font-size: 20px; line-height: 1.1; }
+.st-q small { font-size: 12px; }
+.pill.st-low { background: #fff3d6; color: #8a5a00; }
+.pill.st-out { background: #fde3e3; color: #a52a2a; }

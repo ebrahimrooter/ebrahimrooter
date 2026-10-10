@@ -320,6 +320,9 @@ if (strpos($route, 'assistant_') === 0 && $route !== 'assistant_pair' && $route 
                 require_once __DIR__ . '/assistant_app.php';
                 aa_manual($in);
                 out(['ok' => true]);
+            case 'assistant_inventory':
+                require_once __DIR__ . '/inventory.php';
+                out(['ok' => true] + inv_list(1));
             case 'assistant_acc_session':
                 require_once __DIR__ . '/assistant_app.php';
                 out(['ok' => true] + aa_acc_session($device));
@@ -562,6 +565,11 @@ case 'bill_delete':
 
 case 'wallets':
     out(['ok' => true, 'items' => ba_wallets()]);
+
+case 'inventory':
+    // «کالا و انبار»: every product of the books with its stock, per warehouse
+    require_once __DIR__ . '/inventory.php';
+    out(['ok' => true] + inv_list((int)($_GET['company'] ?? 1)));
 
 case 'wallet_save':
     require_post();

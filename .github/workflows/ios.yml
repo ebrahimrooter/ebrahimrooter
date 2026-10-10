@@ -34,6 +34,7 @@ jobs:
           shot 2-home -demo
           shot 3-report -demo -tab report
           shot 4-profile -demo -tab profile
+          shot 11-stock -demo -tab stock
           shot 5-assistant -demo -sheet assistant
           shot 6-confirm -demo -sheet tx
           shot 7-manual -demo -sheet manual

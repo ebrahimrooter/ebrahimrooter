@@ -1275,6 +1275,72 @@
     };
   }
 
+  /* ---------- «کالا و انبار»: every product and how much is in stock, per warehouse (server/inventory.php) ---------- */
+
+  var stockState = { wh: 0, filter: 'all', q: '' };
+
+  function qtyFa(n) { return faDigits(Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 3 }).replace(/,/g, '٬')); }
+
+  function viewStock() {
+    app.innerHTML = '<h1>کالا و انبار</h1><p class="muted">در حال بارگذاری…</p>';
+    return api('inventory').then(function (d) {
+      var hidden = store('ba_hide') === '1';
+      var money = function (r) { return hidden ? '••••' : toman(r); };
+      var qtyIn = function (it) {
+        if (!stockState.wh) return it.qty;
+        var w = it.warehouses.filter(function (x) { return +x.warehouse_id === +stockState.wh; })[0];
+        return w ? w.qty : 0;
+      };
+      var draw = function () {
+        var q = norm(stockState.q).toLowerCase();
+        var list = d.items.filter(function (it) {
+          if (stockState.wh && !it.warehouses.some(function (x) { return +x.warehouse_id === +stockState.wh; })) return false;
+          if (stockState.filter === 'low' && it.status !== 'low') return false;
+          if (stockState.filter === 'out' && it.status !== 'out') return false;
+          if (q && (norm(it.name) + ' ' + it.code + ' ' + it.barcode + ' ' + norm(it.group)).toLowerCase().indexOf(q) === -1) return false;
+          return true;
+        });
+        document.getElementById('stList').innerHTML = list.length ? list.map(function (it) {
+          var qty = qtyIn(it);
+          var pill = it.status === 'out' ? '<span class="pill st-out">تمام شده</span>' : it.status === 'low' ? '<span class="pill st-low">رو به اتمام</span>' : '';
+          return '<div class="st-item st-' + it.status + '"><div class="st-ic">' + esc((it.name || '؟').slice(0, 1)) + '</div>' +
+            '<div class="grow"><div class="it">' + esc(it.name) + ' ' + pill + '</div>' +
+            '<div class="muted">' + (it.code ? 'کد ' + esc(faDigits(it.code)) : '') + (it.group ? ' · ' + esc(it.group) : '') +
+            (it.reorder_point ? ' · نقطه‌ی سفارش ' + qtyFa(it.reorder_point) : '') + '</div>' +
+            (!stockState.wh && it.warehouses.length > 1 ? '<div class="st-wh">' + it.warehouses.map(function (w) { return '<span>' + esc(w.name) + ': <b>' + qtyFa(w.qty) + '</b></span>'; }).join('') + '</div>'
+              : it.warehouses.length === 1 && !stockState.wh ? '<div class="st-wh"><span>' + esc(it.warehouses[0].name) + '</span></div>' : '') +
+            '</div><div class="st-q"><b>' + qtyFa(qty) + '</b><small>' + esc(it.unit) + '</small>' +
+            (it.cost ? '<small class="muted">' + money(Math.max(0, qty) * it.cost) + '</small>' : '') + '</div></div>';
+        }).join('') : '<p class="muted">کالایی با این شرط‌ها نیست.</p>';
+        document.getElementById('stCount').textContent = faDigits(list.length) + ' کالا';
+      };
+      var t = d.totals;
+      app.innerHTML = '<h1>کالا و انبار</h1>' +
+        '<div class="st-sum"><div><span>کالاها</span><b>' + faDigits(t.count) + '</b></div><div><span>ارزش موجودی</span><b>' + money(t.value) + '</b></div>' +
+        '<div class="' + (t.low ? 'warn' : '') + '"><span>رو به اتمام</span><b>' + faDigits(t.low || 0) + '</b></div><div class="' + (t.out ? 'bad' : '') + '"><span>تمام شده</span><b>' + faDigits(t.out || 0) + '</b></div></div>' +
+        '<div class="row chips st-whs"><button type="button" class="chip' + (!stockState.wh ? ' on' : '') + '" data-wh="0">همه‌ی انبارها</button>' +
+        d.warehouses.map(function (w) { return '<button type="button" class="chip' + (+stockState.wh === w.id ? ' on' : '') + '" data-wh="' + w.id + '">' + esc(w.name) + ' (' + faDigits(w.count) + ')</button>'; }).join('') + '</div>' +
+        '<div class="wcard"><input id="stQ" type="search" placeholder="جستجوی نام، کد یا بارکد" value="' + esc(stockState.q) + '">' +
+        '<div class="row chips">' + ['all', 'low', 'out'].map(function (k) {
+          return '<button type="button" class="chip' + (stockState.filter === k ? ' on' : '') + '" data-sf="' + k + '">' + { all: 'همه', low: 'رو به اتمام', out: 'تمام شده' }[k] + '</button>';
+        }).join('') + '<span class="muted" id="stCount" style="margin-inline-start:auto;align-self:center"></span></div>' +
+        '<div class="list" id="stList"></div></div>' +
+        '<p class="muted">موجودی با رسید و حواله‌ی انبار و فاکتورها در «حسابداری ← انبار» تغییر می‌کند.</p>';
+      Array.prototype.forEach.call(app.querySelectorAll('[data-wh]'), function (b) {
+        b.onclick = function () { stockState.wh = +b.getAttribute('data-wh'); viewStock(); };
+      });
+      Array.prototype.forEach.call(app.querySelectorAll('[data-sf]'), function (b) {
+        b.onclick = function () {
+          stockState.filter = b.getAttribute('data-sf');
+          Array.prototype.forEach.call(app.querySelectorAll('[data-sf]'), function (x) { x.classList.toggle('on', x === b); });
+          draw();
+        };
+      });
+      document.getElementById('stQ').oninput = function (e) { stockState.q = e.target.value; draw(); };
+      draw();
+    });
+  }
+
   /* ---------- backups of all the books (server/backup.php) ---------- */
 
   function backupSettings() {
@@ -2210,6 +2276,7 @@
     else if (tab === 'reconcile') p = viewReconcile();
     else if (tab === 'settings') p = viewSettings();
     else if (tab === 'acc') p = viewAccounting();
+    else if (tab === 'stock') p = viewStock();
     else p = viewMoney();
     Promise.resolve(p).catch(function (e) { app.innerHTML = '<div class="card">خطا: ' + esc(e.message) + '</div>'; });
     window.scrollTo(0, 0);
