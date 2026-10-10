@@ -658,8 +658,8 @@ case 'interpret':
     out(['ok' => true, 'guess' => ba_interpret((string)($in['text'] ?? ''), ($in['direction'] ?? '') === 'in' ? 'in' : 'out')]);
 
 case 'pending':
-    $rows = $db->query("SELECT t.*, s.body AS sms_text FROM transactions t LEFT JOIN sms_raw s ON s.id = t.sms_id
-        WHERE t.status = 'pending' ORDER BY t.occurred_at, t.id")->fetchAll();
+    $rows = $db->query("SELECT t.*, s.body AS sms_text, w.name AS wallet_name FROM transactions t LEFT JOIN sms_raw s ON s.id = t.sms_id
+        LEFT JOIN wallets w ON w.id = t.wallet_id WHERE t.status = 'pending' ORDER BY t.occurred_at, t.id")->fetchAll();
     out(['ok' => true, 'items' => $rows]);
 
 case 'transaction':

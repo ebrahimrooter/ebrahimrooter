@@ -2,7 +2,7 @@
  * Bank SMS -> Bale bot, directly from the ESP32 over the SIM card's own
  * internet (SIM800 GPRS). No computer, no Wi-Fi, no server.
  *
- * - Only SMS from ALLOWED_SENDER (e.g. "Bank Mellat") are sent to Bale;
+ * - Only SMS from the banks in ALLOWED_SENDERS (Mellat, Melli, Saderat, Blu) are sent to Bale;
  *   anything else is deleted from the SIM.
  * - An SMS is deleted from the SIM only after Bale accepted it, so nothing
  *   is lost while there is no signal / no credit.
@@ -26,8 +26,18 @@ const char *BALE_TOKEN    = "PUT-YOUR-BOT-TOKEN-HERE";
 // Leave empty the first time; the device will tell you the number.
 const char *BALE_CHAT_ID  = "";
 
-// Only SMS from this sender are forwarded (case and spaces don't matter).
-const char *ALLOWED_SENDER = "Bank Mellat";
+// SMS from these banks go on; anything else (operator ads, …) is deleted from
+// the SIM. A sender matches when it contains one of these (case, spaces and
+// dashes don't matter). Add the exact sender your SIM shows for a bank if it
+// is missing. Leave the list with only "" to send everything.
+// Which card an SMS belongs to is decided on the server (Mellat, Melli,
+// Saderat, Blu: each has its own card and its own account in the books).
+const char *ALLOWED_SENDERS[] = {
+  "Bank Mellat", "Mellat", "700717",           // بانک ملت
+  "Bank Melli", "Melli", "BMI",                 // بانک ملی
+  "Bank Saderat", "Saderat", "BSI",             // بانک صادرات
+  "blu", "blubank",                             // بلو بانک
+};
 // One-time passwords from the bank (رمز پویا) also go to Bale. Set to
 // false if you don't want codes in a chat history; they are then deleted.
 const bool FORWARD_OTP = true;
@@ -175,6 +185,16 @@ String normalizeSender(const String &s) {
     out += (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
   }
   return out;
+}
+
+/** Is this SMS from one of ALLOWED_SENDERS? */
+bool senderAllowed(const String &sender) {
+  String s = normalizeSender(sender);
+  for (size_t i = 0; i < sizeof(ALLOWED_SENDERS) / sizeof(ALLOWED_SENDERS[0]); i++) {
+    String a = normalizeSender(ALLOWED_SENDERS[i]);
+    if (a.length() == 0 || s.indexOf(a) >= 0) return true;
+  }
+  return false;
 }
 
 // Persian digits and separators -> ASCII digits only, e.g. "12,345,670" -> 12345670.
@@ -412,15 +432,14 @@ void checkInbox() {
   }
   if (used == 0) return;
   bool haveChat = strlen(BALE_CHAT_ID) > 0;
-  String allowed = normalizeSender(ALLOWED_SENDER);
   int handled = 0;
   for (int idx = 1; idx <= MAX_SMS_SLOTS && handled < used; idx++) {
     String sender, text, when;
     if (!readSms(idx, sender, text, when)) continue;
     handled++;
     Serial.printf("\nSMS #%d from %s at %s\n%s\n", idx, sender.c_str(), when.c_str(), text.c_str());
-    if (normalizeSender(sender) != allowed) {
-      Serial.println("  not from " + String(ALLOWED_SENDER) + " -> deleted");
+    if (!senderAllowed(sender)) {
+      Serial.println("  not from a bank in ALLOWED_SENDERS -> deleted");
       at("AT+CMGD=" + String(idx));
       continue;
     }

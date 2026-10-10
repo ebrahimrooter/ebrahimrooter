@@ -3,7 +3,7 @@
  * internet (SIM800 GPRS). Fully automatic: no computer, no Wi-Fi, no taps.
  * The program on the host asks "what was it for?" in Bale and records it.
  *
- * - Each SMS (from ALLOWED_SENDER) is POSTed to SERVER_URL?r=ingest and
+ * - Each SMS (from a bank in ALLOWED_SENDERS) is POSTed to SERVER_URL?r=ingest and
  *   deleted from the SIM only after the host accepted it, so nothing is
  *   lost while there is no signal / credit / the host is down.
  * - Every 10 minutes a heartbeat (signal, SIM queue) goes to ?r=heartbeat:
@@ -22,9 +22,18 @@
 const char *SERVER_URL   = "https://example.com/bank/api.php";   // from install.php
 const char *DEVICE_TOKEN = "from-install.php";
 
-// Only SMS from this sender go to the host; others are deleted from the SIM.
-// "" = send everything (the host can still filter in Settings > SMS senders).
-const char *ALLOWED_SENDER = "Bank Mellat";
+// SMS from these banks go on; anything else (operator ads, …) is deleted from
+// the SIM. A sender matches when it contains one of these (case, spaces and
+// dashes don't matter). Add the exact sender your SIM shows for a bank if it
+// is missing. Leave the list with only "" to send everything.
+// Which card an SMS belongs to is decided on the server (Mellat, Melli,
+// Saderat, Blu: each has its own card and its own account in the books).
+const char *ALLOWED_SENDERS[] = {
+  "Bank Mellat", "Mellat", "700717",           // بانک ملت
+  "Bank Melli", "Melli", "BMI",                 // بانک ملی
+  "Bank Saderat", "Saderat", "BSI",             // بانک صادرات
+  "blu", "blubank",                             // بلو بانک
+};
 
 // Internet of the SIM card (APN): Hamrah-e Aval "mcinet", Irancell "mtnirancell", Rightel "rightel"
 const char *APN       = "mcinet";
@@ -158,6 +167,16 @@ String normalizeSender(const String &s) {
     out += (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
   }
   return out;
+}
+
+/** Is this SMS from one of ALLOWED_SENDERS? */
+bool senderAllowed(const String &sender) {
+  String s = normalizeSender(sender);
+  for (size_t i = 0; i < sizeof(ALLOWED_SENDERS) / sizeof(ALLOWED_SENDERS[0]); i++) {
+    String a = normalizeSender(ALLOWED_SENDERS[i]);
+    if (a.length() == 0 || s.indexOf(a) >= 0) return true;
+  }
+  return false;
 }
 
 String urlEncode(const String &s) {
@@ -349,7 +368,6 @@ void checkInbox() {
     return;
   }
   if (used == 0) return;
-  String allowed = normalizeSender(ALLOWED_SENDER);
   int handled = 0;
   for (int idx = 1; idx <= MAX_SMS_SLOTS && handled < used; idx++) {
     String senderHex, textHex, when;
@@ -357,8 +375,8 @@ void checkInbox() {
     handled++;
     String sender = ucs2ToUtf8(senderHex);
     Serial.printf("\nSMS #%d from %s at %s\n%s\n", idx, sender.c_str(), when.c_str(), ucs2ToUtf8(textHex).c_str());
-    if (allowed.length() && normalizeSender(sender) != allowed) {
-      Serial.println("  not from " + String(ALLOWED_SENDER) + " -> deleted");
+    if (!senderAllowed(sender)) {
+      Serial.println("  not from a bank in ALLOWED_SENDERS -> deleted");
       at("AT+CMGD=" + String(idx));
       continue;
     }

@@ -90,7 +90,18 @@ int main() {
   quiet(); runLoop(12000); loud();
   CHECK("sent after fixing the token", m.slots.empty());
 
-  printf("\n== 6. plain http and custom port ==\n");
+  printf("\n== 6. four banks: Melli, Saderat, Blu also go on; each lands on its own card ==\n");
+  m.deliver("Bank Melli", "بانک ملی ایران\nواریز به حساب 0101234567001\nمبلغ: 7,000,000 ریال\nمانده: 20,000,000\n1405/07/10 14:00");
+  m.deliver("SADERAT", "بانک صادرات\nبرداشت از حساب 0201234\nمبلغ 650,000 ریال\n1405/07/10 14:05");
+  m.deliver("blubank", "بلو\nخرید با کارت: 320,000 ریال\nمانده: 4,180,000 ریال");
+  m.deliver("MCI", "هدیه همراه اول");
+  quiet(); runLoop(30000); loud();
+  pend = appApi("pending");
+  CHECK("Melli, Saderat and Blu SMS forwarded, operator SMS deleted", m.slots.empty() && count(pend, "هدیه") == 0);
+  CHECK("Melli deposit on the Melli card", pend.find("\"amount\":7000000") != std::string::npos && pend.find("\"wallet_name\":\"بانک ملی\"") != std::string::npos);
+  CHECK("Saderat and Blu on their cards", pend.find("\"wallet_name\":\"بانک صادرات\"") != std::string::npos && pend.find("\"wallet_name\":\"بلو بانک\"") != std::string::npos);
+
+  printf("\n== 7. plain http and custom port ==\n");
   SERVER_URL = "http://example.com:8080/x/api.php";
   parseServerUrl();
   CHECK("http://host:8080/x/api.php parsed", !srvHttps && srvHost == "example.com" && srvPort == 8080 && srvPath == "/x/api.php");

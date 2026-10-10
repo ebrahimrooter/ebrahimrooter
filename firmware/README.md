@@ -128,7 +128,7 @@ READY. Send an SMS to this SIM from your phone
    ```cpp
    const char *SERVER_URL     = "https://دامنه‌ات/bank/api.php";   // از install.php
    const char *DEVICE_TOKEN   = "...";                            // از install.php
-   const char *ALLOWED_SENDER = "Bank Mellat";
+   const char *ALLOWED_SENDERS[] = { "Bank Mellat", "Bank Melli", "Bank Saderat", "blu", … };  // ملت، ملی، صادرات، بلو
    const char *APN            = "mcinet";        // ایرانسل: mtnirancell
    ```
 3. Upload کن. Serial Monitor:
@@ -169,7 +169,7 @@ READY. Send an SMS to this SIM from your phone
 ```cpp
 const char *BALE_TOKEN     = "توکن ربات";
 const char *BALE_CHAT_ID   = "";             // فعلاً خالی بماند
-const char *ALLOWED_SENDER = "Bank Mellat";   // فقط پیامک‌های این فرستنده
+const char *ALLOWED_SENDERS[] = { "Bank Mellat", "Bank Melli", "Bank Saderat", "blu", … };   // فقط پیامک این بانک‌ها
 const bool  FORWARD_OTP    = true;           // رمز پویا هم فرستاده شود؟
 const char *APN            = "mcinet";       // همراه اول: mcinet | ایرانسل: mtnirancell | رایتل: rightel
 ```
@@ -319,3 +319,11 @@ ESP32:  🟢 واریز 5,000 تومان ... ✍️ بابت چی بود؟   [�
 ```
 firmware/host-test/run.sh
 ```
+
+
+## چهار بانک (ملت، ملی، صادرات، بلو)
+
+هر دو فریمور (`gprs_forwarder` و `bale_direct`) پیامک هر چهار بانک را می‌فرستند؛ فهرست فرستنده‌ها در `ALLOWED_SENDERS` بالای فایل است
+(بزرگی/کوچکی حروف و فاصله مهم نیست و کافی است نام فرستنده شامل یکی از آن‌ها باشد). اگر سیم‌کارتت فرستنده‌ی بانکی را با نام دیگری نشان می‌دهد
+(در Serial Monitor می‌بینی: `SMS #3 from ...`)، همان را به فهرست اضافه کن. سرور تشخیص می‌دهد پیامک مال کدام بانک است و آن را روی کارت همان بانک
+ثبت می‌کند؛ اگر از یک بانک چند کارت داری، چهار رقم آخر کارت/حساب در تنظیمات کارت تعیین می‌کند به کدام برود. رمز پویای هر بانک هم فقط در پنل کارت خودش دیده می‌شود.
