@@ -16,6 +16,7 @@ file_put_contents("$S/config.php", "<?php return ['app_token' => 'apppass123', '
 file_put_contents("$tmp/bale.php", <<<'PHP'
 <?php
 $f = $_FILES['document'] ?? null;
+if ($f) copy($f['tmp_name'], __DIR__ . '/up-' . basename($f['name']));
 file_put_contents(__DIR__ . '/bale.jsonl', json_encode(['path' => $_SERVER['REQUEST_URI'], 'chat' => $_POST['chat_id'] ?? '', 'caption' => $_POST['caption'] ?? '',
     'file' => $f ? $f['name'] : null, 'size' => $f ? $f['size'] : 0], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
 header('Content-Type: application/json');
@@ -55,8 +56,31 @@ check('backup made from the app', $c === 200 && $b['encrypted'] === true && in_a
 usleep(300000);
 $sent = array_values(array_filter(array_map(fn($l) => json_decode($l, true), file("$tmp/bale.jsonl", FILE_IGNORE_NEW_LINES) ?: []),
     fn($x) => strpos($x['path'], 'sendDocument') !== false));
-check('sent to the owner\'s Bale chat as a document', count($sent) === 1 && strpos($sent[0]['path'], '/botT/sendDocument') === 0
-    && $sent[0]['chat'] === '42' && $sent[0]['file'] === $b['name'] && $sent[0]['size'] === $b['size'] && $b['sent_to_bale'], json_encode($sent, JSON_UNESCAPED_UNICODE));
+$bkp = array_values(array_filter($sent, fn($x) => substr((string)$x['file'], -4) === '.bkp'));
+$xl = array_values(array_filter($sent, fn($x) => substr((string)$x['file'], -5) === '.xlsx'));
+check('sent to the owner\'s Bale chat as a document', count($bkp) === 1 && strpos($bkp[0]['path'], '/botT/sendDocument') === 0
+    && $bkp[0]['chat'] === '42' && $bkp[0]['file'] === $b['name'] && $bkp[0]['size'] === $b['size'] && $b['sent_to_bale'], json_encode($sent, JSON_UNESCAPED_UNICODE));
+check('...and the books as an Excel file', count($xl) === 1 && $xl[0]['chat'] === '42' && !empty($b['excel_to_bale']) && strpos($xl[0]['caption'], 'اکسل') !== false, json_encode($sent, JSON_UNESCAPED_UNICODE));
+$xfile = "$tmp/up-" . ($xl[0]['file'] ?? 'none');
+check('Excel file locked (an Office encrypted file, no readable workbook inside)', is_file($xfile) && strncmp((string)file_get_contents($xfile), "\xD0\xCF\x11\xE0", 4) === 0
+    && strpos((string)file_get_contents($xfile), 'worksheet') === false);
+$py = "import sys, io, msoffcrypto, openpyxl\nf = msoffcrypto.OfficeFile(open(sys.argv[1], 'rb'))\ntry:\n    f.load_key(password='wrong', verify_password=True); print('WRONG-OK')\nexcept Exception: pass\nf = msoffcrypto.OfficeFile(open(sys.argv[1], 'rb')); f.load_key(password=sys.argv[2], verify_password=True)\nb = io.BytesIO(); f.decrypt(b, verify_integrity=True)\nwb = openpyxl.load_workbook(b)\nws = wb['تراکنش‌های بانک']\nprint('|'.join(wb.sheetnames)); print(ws.cell(2, 6).value)\n";
+file_put_contents("$tmp/x.py", $py);
+$r = (string)shell_exec('python3 ' . escapeshellarg("$tmp/x.py") . ' ' . escapeshellarg($xfile) . ' secret-pass 2>&1');
+if (strpos($r, 'No module named') !== false) {
+    echo "  skip Excel content check (pip install msoffcrypto-tool openpyxl)\n";
+} else {
+    check('Excel opens only with the backup password; every part of the books inside', strpos($r, 'WRONG-OK') === false
+        && strpos($r, 'کارت‌ها|تراکنش‌های بانک|طرف‌حساب‌ها|اشخاص|کالا و انبار|فاکتورها|اسناد حسابداری|تراز آزمایشی|صندوق و بانک|چک‌ها') !== false
+        && preg_match('/^300000$/m', $r), $r);
+}
+[$c, $x2] = http($A . 'backup_excel', null, $H, true);
+check('Excel download in the app (locked too)', $c === 200 && strncmp($x2, "\xD0\xCF\x11\xE0", 4) === 0);
+check('Excel needs the app password', http($A . 'backup_excel')[0] === 401);
+@unlink("$tmp/bale.jsonl");
+exec('php -r ' . escapeshellarg('chdir("' . $S . '"); require "bot.php"; bot_handle_update(["message" => ["chat" => ["id" => 42], "text" => "/excel"]]);'));
+usleep(300000);
+check('/excel in Bale sends the workbook now', strpos((string)@file_get_contents("$tmp/bale.jsonl"), '.xlsx') !== false);
 $body = file_get_contents("$S/data/backups/{$b['name']}");
 check('encrypted: no database text inside', strpos($body, 'SQLite format') === false && strpos(@gzdecode(substr($body, 6)) ?: '', 'SQLite') === false);
 [$c, $dl] = http($A . 'backup_download&name=' . $b['name'], null, $H, true);

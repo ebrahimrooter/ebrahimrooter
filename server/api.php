@@ -885,6 +885,25 @@ case 'backup_now':
     unset($b['file']);
     out(['ok' => true] + $b);
 
+case 'backup_excel':
+    // the books as Excel, downloaded in the app (locked with backup_password when it is set)
+    require_once __DIR__ . '/backup_excel.php';
+    [$xp, $xn] = backup_excel_file((string)($cfg['backup_password'] ?? ''));
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $xn . '"');
+    header('Content-Length: ' . filesize($xp));
+    readfile($xp);
+    @unlink($xp);
+    exit;
+
+case 'backup_excel_bale':
+    require_post();
+    require_once __DIR__ . '/backup.php';
+    if ((string)($cfg['backup_password'] ?? '') === '') {
+        fail('اول در config.php یک backup_password بگذار؛ فایل حساب‌ها بدون رمز به بله فرستاده نمی‌شود.');
+    }
+    out(['ok' => backup_excel_to_bale((string)$cfg['backup_password'])]);
+
 case 'backup_download':
     require_once __DIR__ . '/backup.php';
     $path = backup_path($_GET['name'] ?? '');

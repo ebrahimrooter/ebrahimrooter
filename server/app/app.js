@@ -1325,7 +1325,11 @@
         (d.to_bale ? ' و فایلش به چت بله‌ی تو فرستاده می‌شود' : '') + '. ' +
         (d.encrypted ? 'فایل‌ها با رمز پشتیبان قفل‌اند.' : '<span class="warn">رمز پشتیبان (backup_password) گذاشته نشده؛ فایل‌ها رمز ندارند.</span>') + '</p>' +
         (last ? '<p>آخرین پشتیبان: <b class="num">' + esc(last.at) + '</b> · ' + size(last.size) + (last.bale ? ' · در بله ✅' : '') + '</p>' : '<p class="muted">هنوز پشتیبانی گرفته نشده.</p>') +
-        '<div class="btns"><button class="btn" type="button" id="bkNow">پشتیبان بگیر</button></div>' +
+        '<div class="btns"><button class="btn" type="button" id="bkNow">پشتیبان بگیر</button>' +
+        '<button class="btn ghost" type="button" id="bkXlsx">⬇ اکسل حساب‌ها</button>' +
+        (d.to_bale && d.encrypted ? '<button class="btn ghost" type="button" id="bkXlsxBale">📊 اکسل به بله</button>' : '') + '</div>' +
+        '<p class="muted">فایل اکسل همه‌ی حساب‌ها را دارد (کارت‌ها، تراکنش‌ها، اشخاص، کالا و انبار، فاکتورها، اسناد، تراز، چک‌ها)' +
+        (d.encrypted ? ' و با همان رمز پشتیبان باز می‌شود.' : '.') + ' هر شب همراه پشتیبان به بله هم می‌رود.</p>' +
         (d.items.length ? '<div class="list" style="margin-top:8px">' + d.items.map(function (b) {
           return '<div class="item"><div class="grow"><div class="num">' + esc(b.at) + '</div><div class="muted">' + size(b.size) + (b.encrypted ? ' · رمزدار' : '') + '</div></div>' +
             '<button class="btn ghost" type="button" data-bk="' + esc(b.name) + '">دانلود</button></div>';
@@ -1335,6 +1339,30 @@
         this.disabled = true;
         api('backup_now', { body: {} }).then(function (b) { toast('پشتیبان گرفته شد' + (b.sent_to_bale ? ' و به بله رفت' : '')); backupSettings(); },
           function (e) { toast(e.message); backupSettings(); });
+      };
+      var save = function (blob, name) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      };
+      document.getElementById('bkXlsx').onclick = function () {
+        var b = this;
+        b.disabled = true;
+        fetch(API + '?r=backup_excel', { headers: { 'X-App-Token': token() } })
+          .then(function (r) {
+            if (!r.ok) throw new Error('ساخته نشد (' + r.status + ')');
+            var m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+            return r.blob().then(function (blob) { save(blob, m ? m[1] : 'hesab.xlsx'); });
+          }).catch(function (e) { toast(e.message); }).then(function () { b.disabled = false; });
+      };
+      var xb = document.getElementById('bkXlsxBale');
+      if (xb) xb.onclick = function () {
+        xb.disabled = true;
+        api('backup_excel_bale', { body: {} }).then(function (r) { toast(r.ok ? 'اکسل به بله رفت' : 'فرستاده نشد'); },
+          function (e) { toast(e.message); }).then(function () { xb.disabled = false; });
       };
       Array.prototype.forEach.call(box.querySelectorAll('[data-bk]'), function (btn) {
         btn.onclick = function () {

@@ -9,6 +9,7 @@
  *   'backup_keep'     => 14,       // how many daily backups stay on the server
  *   'backup_to_bale'  => true,     // also send the file to bale_chat_id
  *   'backup_password' => '',       // encrypt (AES-256-GCM); without it you cannot restore!
+ *   'backup_excel'    => true,     // also send the books as an Excel workbook (locked with the same password)
  *
  *   php cron.php backup                       one now
  *   php cron.php restore FILE [PASSWORD]      put a backup back (the current data is kept aside)
@@ -88,6 +89,10 @@ function backup_create($reason = 'manual')
             $caption = '🗄 پشتیبان حساب‌ها · ' . ba_fa_datetime() . ' · ' . round($info['size'] / 1024) . ' KB · رمزدار';
             $info['sent_to_bale'] = (bool)ba_bale_upload('sendDocument', ['chat_id' => $cfg['bale_chat_id'], 'caption' => $caption],
                 'document', $out, 'application/octet-stream', $fname);
+            // the same books as an Excel workbook, locked with the same password (Excel asks for it)
+            if ($cfg['backup_excel'] ?? true) {
+                $info['excel_to_bale'] = backup_excel_to_bale($password);
+            }
         } else {
             // all the books in plain form never leave the server for a chat app
             ba_notify('🗄 پشتیبان روی سرور ساخته شد، ولی به بله فرستاده نشد چون رمز ندارد. در config.php یک backup_password بگذار.');
@@ -96,6 +101,30 @@ function backup_create($reason = 'manual')
     ba_kv_set('backup:last', ['name' => $fname, 'at' => date('Y-m-d H:i:s'), 'size' => $info['size'],
         'encrypted' => $info['encrypted'], 'bale' => $info['sent_to_bale'], 'reason' => $reason]);
     return $info;
+}
+
+/** Excel copy of the books to the owner's Bale chat. Returns true when Bale took it. */
+function backup_excel_to_bale($password, $caption = null)
+{
+    $cfg = ba_config();
+    if ((string)$password === '' || empty($cfg['bale_chat_id']) || !ba_bale_enabled()) {
+        return false;
+    }
+    require_once __DIR__ . '/backup_excel.php';
+    try {
+        [$path, $name] = backup_excel_file($password);
+    } catch (Throwable $e) {
+        error_log('excel backup: ' . $e->getMessage());
+        ba_notify('📊 فایل اکسل حساب‌ها ساخته نشد: ' . ba_public_error($e));
+        return false;
+    }
+    try {
+        return (bool)ba_bale_upload('sendDocument', ['chat_id' => $cfg['bale_chat_id'],
+            'caption' => $caption ?? ('📊 حساب‌ها به‌صورت اکسل · ' . ba_fa_datetime() . "\nبا رمز پشتیبان باز می‌شود (Excel / LibreOffice / WPS).")],
+            'document', $path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $name);
+    } finally {
+        @unlink($path);
+    }
 }
 
 function ba_fa_datetime()

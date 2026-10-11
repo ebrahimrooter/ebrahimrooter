@@ -386,7 +386,7 @@ function bot_help() {
         . "• برای جواب به سؤال قدیمی‌تر، روی همان پیام Reply کن\n"
         . "• «بعدی» = بعداً، «نادیده» = حساب نکن\n"
         . "/pending سؤال بعدی\n/report گزارش مغایرت ۷ روز اخیر\n/today خلاصه امروز\n"
-        . "/people طلب و بدهی اشخاص\n/p نام — ریز حساب یک نفر";
+        . "/people طلب و بدهی اشخاص\n/p نام — ریز حساب یک نفر\n/excel همه‌ی حساب‌ها به‌صورت فایل اکسل";
 }
 
 function bot_report() {
@@ -523,6 +523,19 @@ function bot_handle_update(array $u) {
     }
     if ($text === '/today') {
         bot_today();
+        return;
+    }
+    if ($text === '/excel' || $text === 'اکسل') {
+        $pw = (string)(ba_config()['backup_password'] ?? '');
+        if ($pw === '') {
+            ba_notify('📊 برای فایل اکسل اول در config.php یک backup_password بگذار (فایل با همان رمز قفل می‌شود).');
+            return;
+        }
+        require_once __DIR__ . '/backup.php';
+        ba_notify('📊 در حال ساختن فایل اکسل حساب‌ها…');
+        if (!backup_excel_to_bale($pw)) {
+            ba_notify('فایل اکسل فرستاده نشد؛ چند دقیقه بعد دوباره امتحان کن.');
+        }
         return;
     }
     if ($text === '/people') {

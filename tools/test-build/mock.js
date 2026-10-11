@@ -300,6 +300,8 @@
         save();
         return json({ ok: true, name: name, size: e.size, databases: ['bank.sqlite'], encrypted: true, sent_to_bale: true });
       }
+      case 'backup_excel': return text('نسخه‌ی تست: فایل اکسل واقعی روی سرور ساخته می‌شود.', 'application/octet-stream');
+      case 'backup_excel_bale': return json({ ok: true });
       case 'backup_download': return text('نسخه‌ی تست: فایل پشتیبان واقعی روی سرور ساخته می‌شود.', 'application/octet-stream');
       case 'push_key': return json({ ok: false, error: 'نوتیف واقعی در نسخه‌ی تست نیست؛ از شبیه‌ساز ESP32 استفاده کن.' }, 501);
       case 'tts': case 'say': case 'transcribe': return json({ ok: false, error: 'در نسخه‌ی تست صدای مرورگر استفاده می‌شود' }, 501);

@@ -59,8 +59,10 @@ return [
     // Backups of all the books every night at 3 (data/backups, and as a file in your Bale chat).
     // backup_password encrypts them (AES-256-GCM). Keep it somewhere safe: without it no restore.
     // Without a password the backup stays on the server only (never sent to Bale).
+    // backup_excel: the books also as an Excel workbook in Bale, locked with the same password.
     //   php cron.php backup    /    php cron.php restore FILE PASSWORD
     'backup_password' => '',
+    'backup_excel' => true,
     'backup_keep' => 14,
     'backup_to_bale' => true,
 
