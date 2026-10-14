@@ -181,6 +181,7 @@ Authorization: Bearer 3f…a9
 
 ```bash
 brew install xcodegen
+sh tools/voice-model/fetch.sh ios     # صدای فارسی داخل اپ (۶۳ مگ؛ یک بار)
 cd ios
 # در project.yml: DEVELOPMENT_TEAM و bundle idها (ir.example.bankassistant → شناسه‌ی خودت)
 # در Resources/BankAssistant.entitlements: applinks:دامنه‌ی خودت
@@ -189,7 +190,9 @@ open BankAssistant.xcodeproj
 ```
 در Xcode: هدف BankAssistant ← Signing ← تیم را انتخاب کن (برای هدف AssistantWidgets هم) ← آیفون را با کابل وصل کن ← Run. بار اول روی گوشی: Settings ← General ← VPN & Device Management ← به اپ اعتماد کن (اگر حساب رایگان است). Developer Mode را در Settings ← Privacy & Security روشن کن.
 
-روی سرور (یک بار): صدای محلی باید نصب باشد (`voice/install.sh`، همان که در deploy-vps.sh اجرا می‌شود) و برای Universal Link گزینه‌ی `--ios-app-id`.
+صدای فارسی: اپ خودش فارسی حرف می‌زند (Piper داخل اپ، بدون سرور؛ Xcode بسته‌ی sherpa-onnx را خودش دانلود می‌کند). برای «فهمیدن حرف تو» آیفون فارسی بلد نیست: یا صدای محلی سرور، یا تایپ.
+
+روی سرور (برای تبدیل صدا به متن): صدای محلی باید نصب باشد (`voice/install.sh`، همان که در deploy-vps.sh اجرا می‌شود) و برای Universal Link گزینه‌ی `--ios-app-id`.
 
 اتصال: PWA روی همان گوشی ← تنظیمات ← «اپ دستیار آیفون» ← «اتصال اپ آیفون» ← «وصل کردن اپ روی همین گوشی».
 
