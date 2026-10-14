@@ -54,4 +54,9 @@ class Dual(ThreadingHTTPServer):
         self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         super().server_bind()
 
-Dual(('::', int(sys.argv[1]) if len(sys.argv) > 1 else 8841), H).serve_forever()
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8841
+try:
+    srv = Dual(('::', PORT), H)
+except OSError:   # no IPv6 on this machine
+    srv = ThreadingHTTPServer(('0.0.0.0', PORT), H)
+srv.serve_forever()
