@@ -34,6 +34,11 @@ class Prefs(context: Context) {
         get() = plain.getBoolean("auto_ask", true)
         set(v) = plain.edit().putBoolean("auto_ask", v).apply()
 
+    /** Listen with the phone's own Persian recognizer (no server); off = always the server's. */
+    var phoneListen: Boolean
+        get() = plain.getBoolean("phone_listen", true)
+        set(v) = plain.edit().putBoolean("phone_listen", v).apply()
+
     var orbX: Int
         get() = plain.getInt("orb_x", -1)
         set(v) = plain.edit().putInt("orb_x", v).apply()

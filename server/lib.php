@@ -1296,6 +1296,7 @@ function ba_num_words($n) {
 function ba_speech_text($text) {
     static $months = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
     $s = ba_normalize((string)$text, true);                                   // Persian/Arabic digits -> ASCII
+    $s = preg_replace('/(?<=\d)[٬،](?=\d{3})/u', ',', $s);                    // ۷٬۰۰۰٬۰۰۰ -> 7,000,000
     $s = preg_replace('~https?://\S+~u', ' ', $s);
     $s = preg_replace('~(^|\s)/[a-z_]+\b~u', ' ', $s);                        // /pending, /p ...
     $s = preg_replace('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}\x{20E3}\x{2190}-\x{21FF}\x{2500}-\x{257F}]/u', ' ', $s);

@@ -28,6 +28,10 @@ const check = (n, ok, x = '') => { console.log((ok ? '  ok   ' : '  FAIL ') + n 
       pair: code => { __calls.push('pair:' + code); st.paired = /^[A-Z2-9]{8}$/.test(code); save(); setTimeout(() => window.onAndroidPaired(st.paired, ''), 10); },
       startOrb: () => { __calls.push('start'); st.on = true; save(); setTimeout(() => window.onAndroidOrb(), 10); },
       stopOrb: () => { __calls.push('stop'); st.on = false; save(); setTimeout(() => window.onAndroidOrb(), 10); },
+      localVoice: () => true, canListen: () => true,
+      speak: (id, text) => { __calls.push('speak:' + text); setTimeout(() => window.onAndroidSpoken(id, true), 20); },
+      listen: id => { __calls.push('listen'); setTimeout(() => window.onAndroidHeard(id, 'سلام'), 20); },
+      stopSpeaking: () => {},
       talk: () => __calls.push('talk'), unpair: () => {}, changeServer: () => __calls.push('server'),
     };
   });
@@ -55,6 +59,10 @@ const check = (n, ok, x = '') => { console.log((ok ? '  ok   ' : '  FAIL ') + n 
   await p.waitForTimeout(400);
   calls = await p.evaluate(() => __calls);
   check('auto-ask off, talk, stop reach the native side', calls.includes('auto:false') && calls.includes('talk') && calls.includes('stop'), JSON.stringify(calls));
+  const heard = await p.evaluate(() => BAVoice.speak('آزمایش').then(() => BAVoice.listen(3000)));
+  calls = await p.evaluate(() => __calls);
+  check('voice: speaks with the app (no server) and listens with the phone', heard === 'سلام' && calls.includes('speak:آزمایش') && calls.includes('listen'), heard + ' ' + JSON.stringify(calls));
+  check('settings: voice from the app itself', (await p.textContent('#permBox')).includes('از خود اپ'));
   check('orb shown as off', (await p.textContent('#andBox')).includes('خاموش است'));
   // Android browser without the app: download card
   const c2 = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36' });

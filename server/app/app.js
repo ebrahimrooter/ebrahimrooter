@@ -120,7 +120,7 @@
       speechSynthesis.onvoiceschanged = pick;
     },
     canListen: function () {
-      return (this.SR && !this.srBroken) || this.canRecord();
+      return this.androidListen() || (this.SR && !this.srBroken) || this.canRecord();
     },
     canRecord: function () {
       return !!(state.me && state.me.stt && window.MediaRecorder && navigator.mediaDevices);
@@ -163,8 +163,28 @@
         });
     },
 
-    /** Speaks: server voice if set up, else the phone's Persian voice, else a chime (the text is on screen). */
+    /** Inside the Android app: its own Persian voice / the phone's recognizer, no server needed. */
+    native: function (method, arg) {
+      var A = window.AndroidOrb;
+      return new Promise(function (resolve) {
+        var id = 'v' + Date.now() + Math.random().toString(36).slice(2, 6);
+        Voice.waits[id] = resolve;
+        setTimeout(function () { if (Voice.waits[id]) { delete Voice.waits[id]; resolve(null); } }, method === 'speak' ? 45000 : 20000);
+        try { method === 'speak' ? A.speak(id, arg) : A.listen(id); } catch (e) { delete Voice.waits[id]; resolve(null); }
+      });
+    },
+    waits: {},
+    androidVoice: function () { try { return !!(window.AndroidOrb && AndroidOrb.localVoice && AndroidOrb.localVoice()); } catch (e) { return false; } },
+    androidListen: function () { try { return !!(window.AndroidOrb && AndroidOrb.canListen && AndroidOrb.canListen()) && !Voice.androidListenBroken; } catch (e) { return false; } },
+
+    /** Speaks: the Android app's own voice, else the server voice if set up, else the phone's Persian voice, else a chime. */
     speak: function (text) {
+      if (Voice.androidVoice()) {
+        return Voice.native('speak', text).then(function (ok) { if (!ok) return Voice.speakServerOrLocal(text); });
+      }
+      return Voice.speakServerOrLocal(text);
+    },
+    speakServerOrLocal: function (text) {
       if (state.me && state.me.tts && !Voice.ttsBroken) {
         return Voice.speakServer(text).catch(function () { Voice.ttsBroken = true; return Voice.speakLocal(text); });
       }
@@ -186,6 +206,13 @@
 
     /** Resolves with what was said ('' for silence). maxMs caps a recording. */
     listen: function (maxMs) {
+      if (this.androidListen()) {
+        return this.native('listen').then(function (t) {
+          if (t !== null && t !== undefined) return t;
+          Voice.androidListenBroken = true;           // no Persian recognizer on this phone: the old way
+          return Voice.listen(maxMs);
+        });
+      }
       if (this.isIOS && this.canRecord()) return this.listenRecord(maxMs);
       if (this.SR && !this.srBroken) {
         return this.listenBrowser(maxMs).catch(function (err) {
@@ -254,6 +281,11 @@
   };
 
   var audioCtx;
+  window.BAVoice = Voice;   // for the tests
+  window.onAndroidSpoken = window.onAndroidHeard = function (id, v) {
+    var f = Voice.waits[id];
+    if (f) { delete Voice.waits[id]; f(v); }
+  };
 
   /** 0.1 s of silence as a WAV data URL (used to unlock audio on iOS). */
   function silentWav() {
@@ -1508,17 +1540,17 @@
     };
     var iosBrowser = Voice.isIOS && !Perm.standalone();
     var n = Perm.notif(), me = state.me || {};
-    var hasPersianVoice = !!Voice.faVoice;
+    var hasPersianVoice = !!Voice.faVoice, appVoice = Voice.androidVoice(), appEar = Voice.androidListen();
     box.innerHTML =
       (iosBrowser ? row('📲', 'نصب روی صفحه اصلی', false, '', 'برای نوتیف لازم است: در Safari دکمه‌ی Share ← <b>Add to Home Screen</b>، بعد اپ را از آیکنش باز کن.') : '') +
       row('🔔', 'نوتیف (حتی وقتی اپ بسته است)', n === 'granted' && store('ba_push_ok') === '1',
         n === 'denied' ? '<span class="out">رد شده</span>' : '<button class="btn" type="button" id="pNotif"' + (iosBrowser ? ' disabled' : '') + '>اجازه بده</button>',
         n === 'denied' ? 'Settings گوشی ← Notifications ← دستیار بانک' : '') +
       row('🎙', 'میکروفون', Perm.mic(), '<button class="btn" type="button" id="pMic">اجازه بده</button>') +
-      row('🗣', 'صدای فارسی دستیار', me.tts || hasPersianVoice, '<span class="muted">زنگ + متن</span>',
-        me.tts ? 'از سرور' : hasPersianVoice ? 'صدای خود گوشی' : 'گوشی صدای فارسی ندارد؛ برای حرف زدن orb، صدای محلی سرور را نصب کن (voice/install.sh)') +
-      row('👂', 'فهمیدن حرف تو', me.stt || (Voice.SR && !Voice.isIOS), '<span class="muted">تایپ</span>',
-        me.stt ? 'از سرور' : Voice.SR && !Voice.isIOS ? 'خود مرورگر' : 'برای آیفون، تبدیل صدای محلی سرور را نصب کن (voice/install.sh)؛ تا آن موقع فرم باز می‌شود') +
+      row('🗣', 'صدای فارسی دستیار', appVoice || me.tts || hasPersianVoice, '<span class="muted">زنگ + متن</span>',
+        appVoice ? 'از خود اپ (بدون سرور)' : me.tts ? 'از سرور' : hasPersianVoice ? 'صدای خود گوشی' : 'گوشی صدای فارسی ندارد؛ برای حرف زدن orb، صدای محلی سرور را نصب کن (voice/install.sh)') +
+      row('👂', 'فهمیدن حرف تو', appEar || me.stt || (Voice.SR && !Voice.isIOS), '<span class="muted">تایپ</span>',
+        appEar ? 'تشخیص گفتار خود گوشی' : me.stt ? 'از سرور' : Voice.SR && !Voice.isIOS ? 'خود مرورگر' : 'برای آیفون، تبدیل صدای محلی سرور را نصب کن (voice/install.sh)؛ تا آن موقع فرم باز می‌شود') +
       (n === 'granted' && store('ba_push_ok') === '1' ? '<div class="btns"><button class="btn ghost" type="button" id="pTest">نوتیف آزمایشی</button></div>' : '');
     var bind = function (id, fn) {
       var b = document.getElementById(id);

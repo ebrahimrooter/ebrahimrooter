@@ -14,6 +14,13 @@ adb shell settings put system screen_off_timeout 600000
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard || true
 
+# Persian voice inside the app (no server): number rules and the Piper model
+adb logcat -c
+adb shell am start -W -n $PKG/.MainActivity --ez voice_test true
+for i in $(seq 1 40); do adb logcat -d -s VOICE_TEST:* | grep -q "speech_text=" && break; sleep 2; done
+adb logcat -d -s VOICE_TEST:* | tee "$OUT/voice-test.txt"
+adb shell am force-stop $PKG
+
 # first run: the server address
 adb shell am start -W -n $PKG/.MainActivity
 shot a1-setup 5
@@ -40,3 +47,6 @@ shot a6-app-after 3
 adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys activity services $PKG | grep -i -E "OrbService|isForeground" | head -5
 adb logcat -d -s AndroidRuntime:E | tail -30
+
+# fail the job when the in-app voice does not work
+grep -q "speech_text=5/5" "$OUT/voice-test.txt" && grep -q "tts=ok" "$OUT/voice-test.txt" || { echo "VOICE TEST FAILED"; exit 1; }

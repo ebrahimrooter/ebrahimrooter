@@ -11,9 +11,13 @@ android {
         applicationId = "ir.example.bankassistant"
         minSdk = 26                // floating orb: TYPE_APPLICATION_OVERLAY
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+        // the app's own Persian voice (sherpa-onnx): phones are arm, x86_64 for the emulator
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
+    // the voice model is read straight from the APK
+    androidResources { noCompress += listOf("onnx") }
 
     // One fixed key so a new APK installs over the old one (sideloaded app, not Play Store).
     // The key is never in the repository: CI writes it from the ANDROID_KEYSTORE_B64 secret,
@@ -46,6 +50,8 @@ android {
 }
 
 dependencies {
+    // sherpa-onnx (offline speech engine, Apache-2.0): tools/voice-model/fetch.sh android puts it in libs/
+    implementation(files("libs/sherpa-onnx.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")

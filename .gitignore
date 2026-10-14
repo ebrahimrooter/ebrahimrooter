@@ -17,3 +17,8 @@ server/config.php.*
 server/data/*.sqlite*
 server/data/backups/
 server/data/acc_uploads/
+# the app's Persian voice and its engine: tools/voice-model/fetch.sh (too big for git)
+android/app/src/main/assets/fa-voice/
+android/app/src/main/assets/speech_cases.json
+android/app/libs/
+ios/BankAssistant/Resources/FaVoice/

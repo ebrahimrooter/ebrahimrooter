@@ -33,6 +33,16 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>برای شنیدن فرمان صوتی شما (مثل «فروش امروز چقدر بوده؟») به میکروفون نیاز است. صدا فقط به سرور حسابداری خودتان فرستاده می‌شود.</string>
+	<!-- the local version: http to the computer on the same Wi-Fi (the code allows only private addresses) -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>برای وصل شدن به برنامه‌ی حسابداری روی کامپیوتر خودتان در همین Wi-Fi.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>برای فهمیدن فرمان صوتی شما روی خود گوشی، وقتی سرور تبدیل صدا ندارد.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<!-- bankassistant://listen and bankassistant://pair?code=… from the phone web app -->

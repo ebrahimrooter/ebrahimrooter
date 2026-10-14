@@ -7,16 +7,17 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import kotlin.coroutines.resume
 
-/** Plays the server's mp3 answer; `level` follows the voice for the orb (when allowed). */
+/** Plays an answer (the app's own WAV voice or the server's mp3); `level` follows the voice for the orb. */
 class Speaker(private val dir: File) {
     @Volatile var level = 0f
         private set
     private var player: MediaPlayer? = null
     private var viz: Visualizer? = null
 
-    suspend fun play(mp3: ByteArray) {
+    suspend fun play(audio: ByteArray) {
         stop()
-        val f = File(dir, "say-${System.nanoTime()}.mp3").apply { writeBytes(mp3) }
+        val ext = if (audio.size > 4 && String(audio, 0, 4, Charsets.US_ASCII) == "RIFF") "wav" else "mp3"
+        val f = File(dir, "say-${System.nanoTime()}.$ext").apply { writeBytes(audio) }
         try {
             suspendCancellableCoroutine { cont ->
                 val p = MediaPlayer()

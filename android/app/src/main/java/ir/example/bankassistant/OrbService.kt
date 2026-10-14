@@ -111,6 +111,7 @@ class OrbService : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         recorder = Recorder(cacheDir)
         speaker = Speaker(cacheDir)
+        LocalVoice.warmUp(this)
         channels()
     }
 
@@ -365,17 +366,36 @@ class OrbService : Service() {
                     next = null
                 } else {
                     set(Phase.LISTENING, "بگو؛ مثلاً «فروش امروز چقدر بود؟»")
-                    val levelJob = scope.launch { while (isActive) { orb.level = recorder.level; cardOrb.level = recorder.level; delay(50) } }
-                    val wav = try { withContext(Dispatchers.IO) { recorder.record() } } finally { levelJob.cancel() }
-                    if (wav == null) {
-                        silent++
-                        if (silent >= 2) { endSession("چیزی نشنیدم؛ بسته شد"); return }
-                        set(Phase.IDLE, "چیزی نشنیدم؛ دوباره بگو.")
-                        continue
+                    // 1) the phone's own Persian recognizer (no server); 2) the server's speech-to-text
+                    val phone = if (prefs.phoneListen && PhoneListen.available(this@OrbService))
+                        PhoneListen.listen(this@OrbService) { l -> orb.level = l; cardOrb.level = l } else null
+                    orb.level = 0f; cardOrb.level = 0f
+                    if (phone != null) {
+                        if (phone.isBlank()) {
+                            silent++
+                            if (silent >= 2) { endSession("چیزی نشنیدم؛ بسته شد"); return }
+                            set(Phase.IDLE, "چیزی نشنیدم؛ دوباره بگو.")
+                            continue
+                        }
+                        heard = phone
+                    } else {
+                        val levelJob = scope.launch { while (isActive) { orb.level = recorder.level; cardOrb.level = recorder.level; delay(50) } }
+                        val wav = try { withContext(Dispatchers.IO) { recorder.record() } } finally { levelJob.cancel() }
+                        if (wav == null) {
+                            silent++
+                            if (silent >= 2) { endSession("چیزی نشنیدم؛ بسته شد"); return }
+                            set(Phase.IDLE, "چیزی نشنیدم؛ دوباره بگو.")
+                            continue
+                        }
+                        set(Phase.PROCESSING, "در حال فکر کردن…")
+                        heard = try {
+                            withContext(Dispatchers.IO) { api.transcribe(wav) }
+                        } catch (e: ApiException) {
+                            if (e.code == 401) throw e
+                            throw ApiException("تشخیص گفتار فارسی روی این گوشی نیست (برنامه‌ی Google را نصب و به‌روز کن) و سرور هم صدای فارسی ندارد.", 0)
+                        } finally { wav.delete() }
                     }
                     silent = 0
-                    set(Phase.PROCESSING, "در حال فکر کردن…")
-                    heard = try { withContext(Dispatchers.IO) { api.transcribe(wav) } } finally { wav.delete() }
                     if (heard.isBlank()) { set(Phase.IDLE, "نفهمیدم؛ دوباره بگو."); continue }
                     if (isGoodbye(heard)) { endSession("خداحافظ"); return }
                     say("«$heard»")
@@ -383,7 +403,10 @@ class OrbService : Service() {
                 set(Phase.PROCESSING, if (first != null && heard == first) "دارم تراکنش‌های بانک را نگاه می‌کنم؛ چند لحظه صبر کن." else "«$heard»\nچند لحظه صبر کن…")
                 val r = withContext(Dispatchers.IO) { api.ask(heard) }
                 set(Phase.SPEAKING, r.reply)
-                val audio = runCatching { withContext(Dispatchers.IO) { api.speak(r.reply) } }.getOrNull()
+                // the app's own Persian voice first; the server's only when the app has none
+                val audio = withContext(Dispatchers.IO) {
+                    LocalVoice.wav(this@OrbService, r.reply) ?: runCatching { api.speak(r.reply) }.getOrNull()
+                }
                 if (audio != null) {
                     val levelJob = scope.launch { while (isActive) { orb.level = speaker.level; cardOrb.level = speaker.level; delay(50) } }
                     try { speaker.play(audio) } finally { levelJob.cancel() }

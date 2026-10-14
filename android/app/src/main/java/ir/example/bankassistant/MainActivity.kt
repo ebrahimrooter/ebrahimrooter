@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -37,6 +38,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -50,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private var web: WebView? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val speaker by lazy { Speaker(cacheDir) }   // the web app's answers in the app's own voice
     private var pendingWebPermission: PermissionRequest? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var startOrbWhenAllowed = false
@@ -78,12 +81,41 @@ class MainActivity : AppCompatActivity() {
         })
         // emulator screenshots (debug builds only): adb shell am start … --es demo_token PASS --ez demo_orb true
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("demo_orb", false) == true) OrbService.start(this)
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("voice_test", false) == true) voiceTest()
+        LocalVoice.warmUp(this)
+    }
+
+    /**
+     * Debug builds: checks the app's own Persian voice on the emulator (CI greps the log):
+     * the number-to-words rules against the server's output, and one spoken sentence.
+     */
+    private fun voiceTest() {
+        scope.launch(Dispatchers.IO) {
+            var same = 0
+            var total = 0
+            runCatching {
+                val cases = JSONArray(assets.open("speech_cases.json").bufferedReader().readText())
+                total = cases.length()
+                for (i in 0 until total) {
+                    val c = cases.getJSONObject(i)
+                    val got = SpeechText.forSpeech(c.getString("in"))
+                    if (got == c.getString("out")) same++ else Log.w("VOICE_TEST", "diff: " + got + " | want: " + c.getString("out"))
+                }
+            }
+            val t = System.currentTimeMillis()
+            val wav = runCatching { LocalVoice.wav(this@MainActivity, "بانک ملی، واریز ۷٬۰۰۰٬۰۰۰ تومان. بابت چی بود؟") }.getOrNull()
+            val ms = System.currentTimeMillis() - t
+            Log.i("VOICE_TEST", "speech_text=$same/$total bundled=${LocalVoice.bundled(this@MainActivity)} " +
+                "tts=${if (wav != null && wav.size > 44 + 22050) "ok" else "fail"} bytes=${wav?.size ?: 0} ms=$ms " +
+                "phone_listen=${PhoneListen.available(this@MainActivity)}")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (BuildConfig.DEBUG && intent.getBooleanExtra("demo_orb", false)) OrbService.start(this)
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("voice_test", false)) voiceTest()
     }
 
     override fun onResume() {
@@ -277,6 +309,37 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface fun unpair() = runOnUiThread {
             OrbService.stop(this@MainActivity)
             prefs.unpair()
+        }
+
+        /** The app's own Persian voice is there (then the web app needs no server voice). */
+        @JavascriptInterface fun localVoice() = LocalVoice.bundled(this@MainActivity)
+
+        /** Says [text] in the app's voice; then window.onAndroidSpoken(id, ok). */
+        @JavascriptInterface fun speak(id: String, text: String) {
+            scope.launch {
+                val wav = withContext(Dispatchers.IO) { runCatching { LocalVoice.wav(this@MainActivity, text) }.getOrNull() }
+                if (wav != null) runCatching { speaker.play(wav) }
+                web?.evaluateJavascript("window.onAndroidSpoken && window.onAndroidSpoken(${JSONObject.quote(id)}, ${wav != null})", null)
+            }
+        }
+
+        @JavascriptInterface fun stopSpeaking() = runOnUiThread { speaker.stop() }
+
+        /** The phone's Persian recognizer can listen (no server needed). */
+        @JavascriptInterface fun canListen() = PhoneListen.available(this@MainActivity)
+
+        /** Listens once; then window.onAndroidHeard(id, text) — text null when it could not listen. */
+        @JavascriptInterface fun listen(id: String) = runOnUiThread {
+            if (!hasMic()) {
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, null)", null)
+                return@runOnUiThread
+            }
+            scope.launch {
+                val heard = PhoneListen.listen(this@MainActivity)
+                web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, " +
+                    (if (heard == null) "null" else JSONObject.quote(heard)) + ")", null)
+            }
         }
 
         @JavascriptInterface fun changeServer() = runOnUiThread {

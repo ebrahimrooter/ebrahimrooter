@@ -61,10 +61,21 @@ final class APIClient: @unchecked Sendable {
         server = nil
     }
 
+    /// https anywhere; plain http only to a computer on the same Wi-Fi
+    /// (192.168.x, 10.x, 172.16–31.x, name.local, localhost) — the local version.
+    static func allowed(_ url: URL) -> Bool {
+        if url.scheme == "https" { return true }
+        guard url.scheme == "http", let h = url.host?.lowercased() else { return false }
+        if h == "localhost" || h.hasSuffix(".local") { return true }
+        let p = h.split(separator: ".").compactMap { Int($0) }
+        guard p.count == 4, h.split(separator: ".").count == 4, p.allSatisfy({ (0...255).contains($0) }) else { return false }
+        return p[0] == 10 || p[0] == 127 || (p[0] == 192 && p[1] == 168) || (p[0] == 172 && (16...31).contains(p[1]))
+    }
+
     /// One-time code from the phone web app → device token in the Keychain.
     func pair(server: URL, code: String, deviceName: String) async throws {
-        guard server.scheme == "https" || server.host == "localhost" || server.host?.hasPrefix("192.168.") == true else {
-            throw APIError.server("آدرس سرور باید https باشد.")
+        guard Self.allowed(server) else {
+            throw APIError.server("آدرس سرور باید https باشد (یا IP کامپیوتر روی همان Wi-Fi، مثل http://192.168.1.5:8080).")
         }
         let r: RedeemReply = try await json(server, route: "assistant_redeem", body: ["code": code, "device_name": deviceName], token: nil)
         try KeychainStore.set(r.token, for: tokenKey)
@@ -74,8 +85,8 @@ final class APIClient: @unchecked Sendable {
     /// Sign in with the app password (no phone web app needed). The password is
     /// sent once over HTTPS and never stored; only the device token is kept.
     func login(server: URL, password: String, deviceName: String) async throws {
-        guard server.scheme == "https" || server.host == "localhost" || server.host?.hasPrefix("192.168.") == true else {
-            throw APIError.server("آدرس سرور باید https باشد.")
+        guard Self.allowed(server) else {
+            throw APIError.server("آدرس سرور باید https باشد (یا IP کامپیوتر روی همان Wi-Fi، مثل http://192.168.1.5:8080).")
         }
         let r: RedeemReply = try await json(server, route: "assistant_login", body: ["password": password, "device_name": deviceName], token: nil)
         try KeychainStore.set(r.token, for: tokenKey)

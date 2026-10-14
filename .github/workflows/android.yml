@@ -1,7 +1,7 @@
 name: Android app build
 on:
   push:
-    paths: ["android/**", "server/app/**", "server/api.php", "server/assistant*.php", "tools/android-shots.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "server/app/**", "server/api.php", "server/assistant*.php", "tools/android-shots.sh", "tools/voice-model/**", ".github/workflows/android.yml"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -29,6 +29,8 @@ jobs:
           else
             echo "::warning::ANDROID_KEYSTORE_B64 secret missing: the APK is built but not published (it would not install over the real app)"
           fi
+      - name: Persian voice model (Piper «amir», sherpa-onnx)
+        run: sh tools/voice-model/fetch.sh android
       - name: Build the APKs
         env:
           BANK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -61,7 +63,7 @@ jobs:
           mkdir -p server/app/android android/screenshots
           # only an APK signed with the real key is published
           if [ "${SIGNED:-0}" = 1 ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
-          cp shots/*.png android/screenshots/ || true
+          cp shots/*.png shots/voice-test.txt android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add server/app/android/bank-assistant.apk android/screenshots
