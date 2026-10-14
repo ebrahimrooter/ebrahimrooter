@@ -17,12 +17,12 @@ load /acc/vendor/fonts/vazirmatn-arabic-700-normal.woff2
 page: DOMContentLoaded
 page: bale → getMe
 page: bale → getUpdates
-bale getMe failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x6000010b11d0 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <576F79ED-A660-4DF8-9EEB-68199511F697>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
-    "LocalDataTask <576F79ED-A660-4DF8-9EEB-68199511F697>.<1>"
-), NSLocalizedDescription=The request timed out., NSErrorFailingURLStringKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, NSErrorFailingURLKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, _kCFStreamErrorDomainKey=4}
-bale getMe -> 51 bytes
-bale getUpdates failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x600000cb27f0 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <F86E96B2-ECA6-41C5-AD39-1AF3CEED9EDD>.<2>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
-    "LocalDataTask <F86E96B2-ECA6-41C5-AD39-1AF3CEED9EDD>.<2>"
+bale getUpdates failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x600000ddfab0 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <EF1C4E57-2C95-42D7-BB5F-CEC34AB0CBBA>.<2>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalDataTask <EF1C4E57-2C95-42D7-BB5F-CEC34AB0CBBA>.<2>"
 ), NSLocalizedDescription=The request timed out., NSErrorFailingURLStringKey=http://localhost:8841/bot123456789:test-token-abcdef/getUpdates, NSErrorFailingURLKey=http://localhost:8841/bot123456789:test-token-abcdef/getUpdates, _kCFStreamErrorDomainKey=4}
 bale getUpdates -> 51 bytes
+bale getMe failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x600000de8990 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <912549B4-5E38-43E7-8CF7-27BB9C3CBB42>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalDataTask <912549B4-5E38-43E7-8CF7-27BB9C3CBB42>.<1>"
+), NSLocalizedDescription=The request timed out., NSErrorFailingURLStringKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, NSErrorFailingURLKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, _kCFStreamErrorDomainKey=4}
+bale getMe -> 51 bytes
 page: sync failed: The request timed out.
