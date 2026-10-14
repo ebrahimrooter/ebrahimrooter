@@ -5,6 +5,8 @@
   'use strict';
 
   var API = '../api.php';
+  // the app without a server (local/engine.js answers api.php; the bank SMS come from Bale)
+  var LOCAL = !!window.BA_LOCAL;
   var TOKEN_KEY = 'ba_token';
   var app = document.getElementById('app');
   var state = { me: null, cats: [], parties: [], wallets: [] };
@@ -54,6 +56,20 @@
   }
 
   var toastTimer;
+  /** Saves / shares a file: the Android & iPhone apps hand it to the phone, a browser downloads it. */
+  function saveBlob(blob, name) {
+    if (window.BA_LOCAL && BA_LOCAL.saveFile) {
+      return blob.arrayBuffer().then(function (buf) { return BA_LOCAL.saveFile(name, blob.type || 'application/octet-stream', new Uint8Array(buf)); });
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 30000);
+    return Promise.resolve();
+  }
+
   function toast(msg) {
     // Dynamic Island–style (vendor/island.js); the plain bar only if it is missing
     if (window.Island) {
@@ -686,7 +702,7 @@
             (t.status !== 'confirmed' ? ' · <span class="pill ' + t.status + '">' + (t.status === 'pending' ? 'بی‌جواب' : 'نادیده') + '</span>' : '') +
             '</div></div><b class="' + t.direction + ' num">' + (t.direction === 'in' ? '+' : '−') + toman(t.amount) + '</b></a>';
         }).join('') : '<p class="muted">در این بازه چیزی ثبت نشده.</p>') + '</div>' +
-        '<a class="btn ghost block" href="#" id="csvBtn">⬇ خروجی اکسل (CSV)</a>';
+        '<a class="btn ghost block" href="#" id="csvBtn">' + (LOCAL ? '⬇ خروجی اکسل' : '⬇ خروجی اکسل (CSV)') + '</a>';
       document.getElementById('days').onchange = function () { store('ba_days', this.value); viewHistory(); };
       // the file comes with the app password in a header (never in the address: logs, history)
       document.getElementById('csvBtn').onclick = function (e) {
@@ -695,13 +711,7 @@
           if (!res.ok) throw new Error('دانلود نشد (' + res.status + ')');
           return res.blob();
         }).then(function (b) {
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(b);
-          a.download = 'bank-transactions.csv';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(function () { URL.revokeObjectURL(a.href); }, 30000);
+          return saveBlob(b, LOCAL ? BA_LOCAL.excelName() : 'bank-transactions.csv');
         }).catch(function (er) { toast(er.message); });
       };
     });
@@ -1006,8 +1016,7 @@
     var kindSelect = function (k) {
       return '<select name="kind" style="width:auto">' + ['pl', 'party', 'transfer'].map(function (x) { return '<option value="' + x + '"' + (k === x ? ' selected' : '') + '>' + kindLabel[x] + '</option>'; }).join('') + '</select>';
     };
-    app.innerHTML = '<h1>تنظیمات</h1>' +
-      '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
+    app.innerHTML = '<h1>تنظیمات</h1>' + (LOCAL ? localIntro() : '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
       '<div class="btns"><a class="btn ghost" href="#/acc">رفتن به حسابداری</a><a class="btn plain" href="../acc/" target="_blank" rel="noopener">پنل در مرورگر</a></div></div>' +
       (IS_ANDROID ? androidCard() : (
       '<h2>اپ دستیار آیفون</h2><div class="card" id="iosBox"><p class="muted">اپ همراه «دستیار حسابداری» (پوشه‌ی ios/) با صدا به سؤال‌های حسابداری جواب می‌دهد و وقتی به صفحه‌ی اصلی گوشی بروی، وضعیتش در Dynamic Island و صفحه‌ی قفل می‌ماند. رمز این اپ به آن داده نمی‌شود؛ با یک کد یک‌بارمصرف وصل می‌شود.</p>' +
@@ -1016,10 +1025,10 @@
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_next</div>' +
       '<div class="sms num" style="user-select:all">' + esc(new URL(API, location.href).href) + '?r=siri_answer</div>' +
       '<p class="muted">بعد بگو «Hey Siri, Bank» یا با دو ضربه به پشت گوشی (Back Tap) اجرایش کن.</p></div>'
-      )) +
+      ))) +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
       '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
-      '<h2>پشتیبان‌گیری</h2><div class="card" id="bkBox"><p class="muted">…</p></div>' +
+      '<h2>' + (LOCAL ? 'اکسل و پشتیبان' : 'پشتیبان‌گیری') + '</h2><div class="card" id="bkBox"><p class="muted">…</p></div>' +
       voiceInfo() +
       '<div class="btns"><button class="btn ghost" id="testVoice">آزمایش صدا و میکروفون</button></div>' +
       '<h2>فرستنده‌های پیامک</h2><p class="muted">شناسه‌ای که پیامک بانک با آن می‌آید (مثلاً یک نام انگلیسی) را تیک بزن؛ بقیه پیامک‌ها دیگر ذخیره نمی‌شوند. اگر هیچ‌کدام تیک نخورد، همه بررسی می‌شوند.</p>' +
@@ -1078,11 +1087,65 @@
       var list = Array.prototype.map.call(app.querySelectorAll('#slist input:checked'), function (i) { return i.value; });
       api('senders_save', { body: { senders: list } }).then(function () { toast(list.length ? 'فقط این فرستنده‌ها بررسی می‌شوند' : 'همه فرستنده‌ها بررسی می‌شوند'); });
     };
-    baleSettings();
     renderPerms(document.getElementById('permBox'));
     settingsTail();
+    if (LOCAL) { localBaleSettings(); localBackupSettings(); return; }
+    baleSettings();
     backupSettings();
     if (IS_ANDROID) androidSettings(); else iosSettings();
+  }
+
+  /* ------------- the app without a server: Bale card, Excel and backup ------------- */
+
+  function localIntro() {
+    return '<h2>نسخه‌ی بدون سرور</h2><div class="card"><p>همه‌چیز روی همین گوشی است. پیامک‌های بانک را ESP32 به چت ربات بله‌ات می‌فرستد؛ ' +
+      'زیر هر پیامک در بله دکمه‌ی <b>«✍️ ثبت در حسابداری»</b> را بزن (یا روی آن Reply کن و بنویس بابت چی بود) تا این اپ بخواندش، روی کارتش ثبت کند و بپرسد.</p>' +
+      '<p class="muted">ربات بله پیام‌های خودش را نمی‌بیند؛ برای همین آن یک ضربه در بله لازم است. اپ هر بار که باز است، هر ۲۰ ثانیه بله را می‌خواند.</p></div>';
+  }
+
+  function localBaleSettings() {
+    var box = document.getElementById('bale');
+    if (!box) return;
+    api('settings').then(function (st) {
+      box.innerHTML = '<p>🤖 ربات: <b class="num">' + esc(st.bot || '—') + '</b></p>' +
+        '<p>💬 چت تو: ' + (st.chat_id ? '<b class="num">' + esc(st.chat_id) + '</b> ✅' : '<span class="warn">هنوز وصل نیست: در بله به ربات بفرست <b class="num">/start</b></span>') + '</p>' +
+        '<p class="muted">آخرین خواندن از بله: <span class="num">' + esc(st.last_sync || '—') + '</span>' + (st.last_error ? ' · <span class="warn">' + esc(st.last_error) + '</span>' : '') + '</p>' +
+        '<label class="check"><input type="checkbox" id="lDaily"' + (st.daily_excel ? ' checked' : '') + '> هر روز یک بار، فایل اکسل حساب‌ها به چت بله برود</label>' +
+        '<div class="btns"><button class="btn" type="button" id="lSync">همین حالا از بله بخوان</button></div>' +
+        '<p class="muted">در فریمور ESP32 (firmware/bale_direct) همان توکن ربات و عدد chat id بالا را بگذار.</p>';
+      document.getElementById('lSync').onclick = function () {
+        var b = this;
+        b.disabled = true;
+        api('local_sync', { body: {} }).then(function (d) { toast(d.new ? faDigits(d.new) + ' پیامک جدید' : 'پیام تازه‌ای در بله نبود'); localBaleSettings(); },
+          function (e) { toast(e.message); }).then(function () { b.disabled = false; });
+      };
+      document.getElementById('lDaily').onchange = function () { api('local_settings', { body: { daily_excel: this.checked } }); };
+    }, function (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; });
+  }
+
+  function localBackupSettings() {
+    var box = document.getElementById('bkBox');
+    if (!box) return;
+    box.innerHTML = '<p class="muted">فایل اکسل: خلاصه، کارت‌ها، همه‌ی تراکنش‌ها (با متن پیامک)، طرف‌حساب‌ها؛ مبلغ‌ها به تومان.</p>' +
+      '<div class="btns"><button class="btn" type="button" id="lXlsx">⬇ اکسل حساب‌ها</button><button class="btn ghost" type="button" id="lXlsxBale">📊 اکسل به بله</button></div>' +
+      '<p class="muted">پشتیبان کامل (برای بردن به گوشی دیگر یا بعد از نصب دوباره):</p>' +
+      '<div class="btns"><button class="btn ghost" type="button" id="lBk">⬇ فایل پشتیبان</button><label class="btn plain" style="cursor:pointer">برگرداندن از فایل<input type="file" id="lRestore" accept=".json,application/json" hidden></label></div>';
+    document.getElementById('lXlsx').onclick = function () {
+      BA_LOCAL.saveFile(BA_LOCAL.excelName(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', BA_LOCAL.excelBytes())
+        .then(function () { toast('فایل اکسل آماده شد'); }, function (e) { toast(e.message); });
+    };
+    document.getElementById('lXlsxBale').onclick = function () {
+      var b = this;
+      b.disabled = true;
+      api('backup_excel_bale', { body: {} }).then(function () { toast('اکسل به بله رفت'); }, function (e) { toast(e.message); }).then(function () { b.disabled = false; });
+    };
+    document.getElementById('lBk').onclick = function () { api('local_backup', { body: {} }).then(function () { toast('فایل پشتیبان آماده شد'); }, function (e) { toast(e.message); }); };
+    document.getElementById('lRestore').onchange = function () {
+      var f = this.files[0];
+      if (!f || !confirm('همه‌ی اطلاعات این گوشی با این فایل جایگزین شود؟')) return;
+      f.text().then(function (txt) { return api('local_restore', { body: { data: txt } }); })
+        .then(function () { toast('برگردانده شد'); location.hash = '#/'; boot(); }, function (e) { toast(e.message); });
+    };
   }
 
   function iosSettings() {
@@ -1222,6 +1285,7 @@
       otp.pin = '';
       box.innerHTML = '<div class="card"><p class="muted">رمزهای پویای «' + esc(w.name) + '» که روی سیم‌کارت دستگاه می‌آیند، رمزشده و فقط چند دقیقه اینجا می‌مانند. رمز کارت‌های دیگر در پنل خودشان است.</p>' +
         (state.me && !state.me.otp_ready ? '<p class="warn">اول otp_pin را در config.php سرور بگذار.</p>' : '') +
+        (LOCAL ? '<p class="muted">در نسخه‌ی بدون سرور، رمزهای پویا در خود چت بله می‌آیند (ESP32 آن‌ها را بدون دکمه می‌فرستد). اینجا فقط رمزهایی است که در بله Reply کرده باشی. بار اول هر PIN چهار رقمی که بزنی، PIN همین گوشی می‌شود.</p>' : '') +
         '<form id="pinf"><label for="pin">PIN رمزها</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" required>' +
         '<div class="btns"><button class="btn">باز کن</button></div></form></div>';
       document.getElementById('pinf').onsubmit = function (e) {

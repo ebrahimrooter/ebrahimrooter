@@ -407,3 +407,7 @@ body.siri-mode .accframe { visibility: hidden; }
 .st-q small { font-size: 12px; }
 .pill.st-low { background: #fff3d6; color: #8a5a00; }
 .pill.st-out { background: #fde3e3; color: #a52a2a; }
+
+/* the app without a server (local/engine.js): no accounting panel / stock (they live on a server) */
+html.local .tabbar a[data-tab="acc"], html.local .tabbar a[data-tab="stock"],
+html.local a.tile.t-more, html.local a.dcard[href="#/acc"] { display: none !important; }

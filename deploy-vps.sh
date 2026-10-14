@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Bank assistant - full install on a fresh Ubuntu 22.04/24.04 VPS, in one go:
 # Apache + PHP, the app in /var/www/html/bank, HTTPS (Let's Encrypt),
-# config.php with fresh passwords, cron jobs and the local Persian voice.
+# config.php with fresh passwords and cron jobs. The phone apps speak and understand
+# Persian by themselves, so the server's own voice is optional (--voice).
 #
 #   sudo bash deploy-vps.sh --domain bank.example.ir
 #
@@ -16,7 +17,10 @@
 #                     so the app always gets HTTPS (passwords never travel in plain text).
 #   --no-https        really stay on plain http (not recommended)
 #   --email ADDR      for Let's Encrypt expiry notices (optional)
-#   --no-voice        skip the local STT/TTS (faster-whisper + Piper)
+#   --voice           also install the server's Persian STT/TTS (faster-whisper + Piper,
+#                     ~4 GB RAM): only for voice messages in the Bale bot and the web
+#                     app in a browser; the Android / iPhone apps don't need it
+#   --no-voice        (the default) skip it
 #   --stt-model NAME  passed to voice/install.sh (default large-v3-turbo)
 #   --models-from DIR passed to voice/install.sh (models copied, no download)
 #   --ios-app-id ID   TEAMID.bundle.id of the iPhone assistant app (ios/): serves
@@ -30,7 +34,7 @@ WEB=/var/www/html/bank
 DOMAIN=
 NO_HTTPS=0
 EMAIL=
-VOICE=1
+VOICE=0
 VOICE_ARGS=()
 IOS_APP_ID=
 
@@ -39,9 +43,10 @@ while [ $# -gt 0 ]; do
     --domain) DOMAIN="$2"; shift 2;;
     --email) EMAIL="$2"; shift 2;;
     --no-voice) VOICE=0; shift;;
+    --voice) VOICE=1; shift;;
     --no-https) NO_HTTPS=1; shift;;
     --ios-app-id) IOS_APP_ID="$2"; shift 2;;
-    --stt-model|--models-from|--tts-voice) VOICE_ARGS+=("$1" "$2"); shift 2;;
+    --stt-model|--models-from|--tts-voice) VOICE=1; VOICE_ARGS+=("$1" "$2"); shift 2;;
     -h|--help) sed -n '2,22p' "$0"; exit 0;;
     *) echo "unknown option: $1" >&2; exit 1;;
   esac

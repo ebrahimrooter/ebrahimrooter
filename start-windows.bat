@@ -61,7 +61,7 @@ rem Local Persian voice (installed by voice\install-windows.ps1), in its own win
 if exist "%VOICEPY%" (
   start "Bank assistant - voice STT-TTS" "%VOICEPY%" voice\voice_service.py serve
 ) else (
-  echo  Persian voice not installed. For voice: powershell -ExecutionPolicy Bypass -File voice\install-windows.ps1
+  echo  Server voice not installed (not needed: the phone apps speak Persian themselves).
 )
 
 rem Scheduled jobs + Bale bot in their own window

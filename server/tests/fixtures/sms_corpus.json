@@ -1,0 +1,829 @@
+{
+    "today": [
+        1405,
+        7,
+        22
+    ],
+    "cases": [
+        {
+            "text": "{name} مانده {balance} ریال - {company}",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "مشتری الف مانده ",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": " ریال - شرکت من",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "نام,موبایل,نوع,مانده\nوارداتی یک,09120001111,مشتری,500\nمشتری الف,,,\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,200,000\nحساب:1234\nمانده:5,000,000",
+            "sms": {
+                "direction": "out",
+                "amount": 1200000,
+                "balance": 5000000,
+                "account": "1234",
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "علی رضایی 33,000 تومان به ما بدهکار است",
+            "sms": {
+                "direction": "out",
+                "amount": 330000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "خرید این ماه",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "برداشت 120,000 تومان",
+            "sms": {
+                "direction": "out",
+                "amount": 120000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "خرید گازوئیل",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nواریز:2,500,000\nحساب:1234\nمانده:12,500,000\n",
+            "sms": {
+                "direction": "in",
+                "amount": 2500000,
+                "balance": 12500000,
+                "account": "1234",
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "خرید ۳ کیسه برنج ۴۵۰ هزار تومان",
+            "sms": {
+                "direction": "out",
+                "amount": 3,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nواریز:3,000,000\nحساب:1234",
+            "sms": {
+                "direction": "in",
+                "amount": 3000000,
+                "balance": null,
+                "account": "1234",
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:500,000\nحساب:1234",
+            "sms": {
+                "direction": "out",
+                "amount": 500000,
+                "balance": null,
+                "account": "1234",
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,250,000\nحساب:1234\nمانده:8,420,000\n0707-14:25",
+            "sms": {
+                "direction": "out",
+                "amount": 1250000,
+                "balance": 8420000,
+                "account": "1234",
+                "bank_date": "1405\/07\/07",
+                "bank_time": "14:25"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملی ایران\nانتقال از:0101234567001\nمبلغ:2,000,000-\nمانده:15,300,000\n1405\/07\/18-10:12",
+            "sms": {
+                "direction": "out",
+                "amount": 2000000,
+                "balance": 15300000,
+                "account": null,
+                "bank_date": "1405\/07\/18",
+                "bank_time": "10:12"
+            },
+            "otp": null,
+            "bank": "melli"
+        },
+        {
+            "text": "بانك ملي ايران\nواریز:۵٬۰۰۰٬۰۰۰+\nبه:...5521\nمانده:۲۰٬۳۰۰٬۰۰۰\n1405\/07\/18-11:00",
+            "sms": {
+                "direction": "in",
+                "amount": 5000000,
+                "balance": 20300000,
+                "account": null,
+                "bank_date": "1405\/07\/18",
+                "bank_time": "11:00"
+            },
+            "otp": null,
+            "bank": "melli"
+        },
+        {
+            "text": "بانک صادرات ایران\nبرداشت از حساب:0219876543\nمبلغ: 750,000 ریال\nمانده: 4,250,000\n1405\/07\/18 12:40",
+            "sms": {
+                "direction": "out",
+                "amount": 750000,
+                "balance": 4250000,
+                "account": "0219876543",
+                "bank_date": "1405\/07\/18",
+                "bank_time": "12:40"
+            },
+            "otp": null,
+            "bank": "saderat"
+        },
+        {
+            "text": "بلو\nواریز\n2,500,000 ریال\nبه حساب شما\nموجودی: 12,500,000 ریال\n1405\/07\/18 13:05",
+            "sms": {
+                "direction": "in",
+                "amount": 2500000,
+                "balance": 12500000,
+                "account": null,
+                "bank_date": "1405\/07\/18",
+                "bank_time": "13:05"
+            },
+            "otp": null,
+            "bank": "blu"
+        },
+        {
+            "text": "blu bank\nخرید با کارت: 320,000 ریال\nموجودی: 12,180,000 ریال\n1405\/07\/18 13:30",
+            "sms": {
+                "direction": "out",
+                "amount": 320000,
+                "balance": 12180000,
+                "account": "320000",
+                "bank_date": "1405\/07\/18",
+                "bank_time": "13:30"
+            },
+            "otp": null,
+            "bank": "blu"
+        },
+        {
+            "text": "بانک ملت\nخرید:90,000\nفروشگاه بلوار کشاورز\nمانده:8,330,000\n0707-15:10",
+            "sms": {
+                "direction": "out",
+                "amount": 90000,
+                "balance": 8330000,
+                "account": null,
+                "bank_date": "1405\/07\/07",
+                "bank_time": "15:10"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملی ایران\nرمز دوم پویا: 584213\nمبلغ: 1,200,000 ریال\nپذیرنده: فروشگاه نمونه\nاعتبار 2 دقیقه",
+            "sms": null,
+            "otp": {
+                "code": "584213",
+                "amount": 1200000,
+                "merchant": "فروشگاه نمونه"
+            },
+            "bank": "melli"
+        },
+        {
+            "text": "بانک ملی ایران\nبرداشت:400,000\nکارت:7788\nمانده:900,000\n1405\/07\/18-16:00",
+            "sms": {
+                "direction": "out",
+                "amount": 400000,
+                "balance": 900000,
+                "account": "7788",
+                "bank_date": "1405\/07\/18",
+                "bank_time": "16:00"
+            },
+            "otp": null,
+            "bank": "melli"
+        },
+        {
+            "text": "iPhone: Melli's «رمز پویا» with the PIN",
+            "sms": null,
+            "otp": {
+                "code": null,
+                "amount": null,
+                "merchant": null
+            },
+            "bank": "melli"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,250,000\nحساب:1234\nمانده:8,420,000\n1405\/07\/07-14:25",
+            "sms": {
+                "direction": "out",
+                "amount": 1250000,
+                "balance": 8420000,
+                "account": "1234",
+                "bank_date": "1405\/07\/07",
+                "bank_time": "14:25"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "ملت\nواریز:۵,۰۰۰,۰۰۰\nبه:12345678\nمانده:۱۳,۴۲۰,۰۰۰\n0707-09:10",
+            "sms": {
+                "direction": "in",
+                "amount": 5000000,
+                "balance": 13420000,
+                "account": null,
+                "bank_date": "1405\/07\/07",
+                "bank_time": "09:10"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "حساب 1234\nمبلغ:250,000-\nمانده:100,000\n05\/07\/03 10:00",
+            "sms": {
+                "direction": "out",
+                "amount": 250000,
+                "balance": 100000,
+                "account": "1234",
+                "bank_date": "1405\/07\/03",
+                "bank_time": "10:00"
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "مبلغ 300000+ به حساب 99 واریز شد",
+            "sms": {
+                "direction": "in",
+                "amount": 300000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "حساب1234567890\nواریز50,000\nمانده12,345,670\n05\/07\/10-00:40",
+            "sms": {
+                "direction": "in",
+                "amount": 50000,
+                "balance": 12345670,
+                "account": "1234567890",
+                "bank_date": "1405\/07\/10",
+                "bank_time": "00:40"
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "رمز پویا: 123456 \n بانک ملت",
+            "sms": null,
+            "otp": {
+                "code": "123456",
+                "amount": null,
+                "merchant": null
+            },
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,000,000\nحساب:1234\nمانده:9,000,000\n1405\/07\/01-10:00",
+            "sms": {
+                "direction": "out",
+                "amount": 1000000,
+                "balance": 9000000,
+                "account": "1234",
+                "bank_date": "1405\/07\/01",
+                "bank_time": "10:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "مانده:12,000,000\n1405\/07\/02-11:30",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nبرداشت:2,000,000\nحساب:1234\nمانده:9,500,000\n1405\/07\/03-09:00",
+            "sms": {
+                "direction": "out",
+                "amount": 2000000,
+                "balance": 9500000,
+                "account": "1234",
+                "bank_date": "1405\/07\/03",
+                "bank_time": "09:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "﻿ردیف,تاریخ,شرح,برداشت,واریز,مانده\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "1,1405\/07\/01,انتقال,\"1,000,000\",0,\"9,000,000\"\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "2,1405\/07\/02,واریز,0,\"3,000,000\",\"12,000,000\"\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "3,1405\/07\/02,کارمزد,\"500,000\",0,\"11,500,000\"\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "4,1405\/07\/03,انتقال,\"2,000,000\",0,\"9,500,000\"\n",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "حواله به علی رضایی بابت خرید بذر",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "\"بابت خرید\" beats \"حواله\" -> purchase",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "واریز از طرف شرکت پارس بابت فروش",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nبرداشت:4,000,000\nحساب:1234\nمانده:5,500,000\n1405\/07\/04-12:00",
+            "sms": {
+                "direction": "out",
+                "amount": 4000000,
+                "balance": 5500000,
+                "account": "1234",
+                "bank_date": "1405\/07\/04",
+                "bank_time": "12:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:100,000\nحساب:1234\nمانده:5,400,000\n1405\/07\/05-08:00",
+            "sms": {
+                "direction": "out",
+                "amount": 100000,
+                "balance": 5400000,
+                "account": "1234",
+                "bank_date": "1405\/07\/05",
+                "bank_time": "08:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nواریز:900,000\nحساب:1234\nمانده:6,300,000\n1405\/07\/05-09:00",
+            "sms": {
+                "direction": "in",
+                "amount": 900000,
+                "balance": 6300000,
+                "account": "1234",
+                "bank_date": "1405\/07\/05",
+                "bank_time": "09:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "واریز نود هزار تومان",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "🔴 برداشت ۲,۵۰۰,۰۰۰ تومان\n🕓 1405\/07\/06 18:40\nبابت چی بود؟ \/pending",
+            "sms": {
+                "direction": "out",
+                "amount": 2500000,
+                "balance": null,
+                "account": null,
+                "bank_date": "1405\/07\/06",
+                "bank_time": "18:40"
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "برداشت دو میلیون و پانصد هزار تومان. شش مهر هزار و چهارصد و پنج ساعت هجده و چهل دقیقه. بابت چی بود؟",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nرمز پویا: 48213967\nمبلغ: 1,250,000 ریال\nپذیرنده: فروشگاه نمونه\nمهلت: 120 ثانیه",
+            "sms": null,
+            "otp": {
+                "code": "48213967",
+                "amount": 1250000,
+                "merchant": "فروشگاه نمونه"
+            },
+            "bank": "mellat"
+        },
+        {
+            "text": "OTP with \"مبلغ\" is NOT a withdrawal",
+            "sms": null,
+            "otp": {
+                "code": null,
+                "amount": null,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "رمز پویا خرید به مبلغ 350,000 ریال: 772911",
+            "sms": {
+                "direction": "out",
+                "amount": 350000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": {
+                "code": "772911",
+                "amount": 350000,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "کد تایید شما 55123 می باشد\nاعتبار 2 دقیقه",
+            "sms": null,
+            "otp": {
+                "code": "55123",
+                "amount": null,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "کد تایید + ttl in minutes",
+            "sms": null,
+            "otp": {
+                "code": null,
+                "amount": null,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "کارت 6104****1234\nرمز دوم پویا: 902211",
+            "sms": null,
+            "otp": {
+                "code": "902211",
+                "amount": null,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nرمز پویا خرید\nمبلغ: 90,000 ریال\nپذیرنده: کافه",
+            "sms": {
+                "direction": "out",
+                "amount": 90000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": {
+                "code": null,
+                "amount": 90000,
+                "merchant": "کافه"
+            },
+            "bank": "mellat"
+        },
+        {
+            "text": "رمز: 3341907\nمهلت 3 دقیقه",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nبرداشت:10,000\nحساب:1234\nمانده:6,290,000\n1405\/07\/05-10:00",
+            "sms": {
+                "direction": "out",
+                "amount": 10000,
+                "balance": 6290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/05",
+                "bank_time": "10:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "INSERT INTO bills (date, party, type, amount, description, created_at) VALUES ('2026-09-26', 'حسن کریمی', 'purchase', 20000000, 'خرید بذر', '')",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nواریز:40,000,000\nحساب:1234\nمانده:46,290,000\n1405\/07\/06-10:00",
+            "sms": {
+                "direction": "in",
+                "amount": 40000000,
+                "balance": 46290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/06",
+                "bank_time": "10:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:20,000,000\nحساب:1234\nمانده:26,290,000\n1405\/07\/06-11:00",
+            "sms": {
+                "direction": "out",
+                "amount": 20000000,
+                "balance": 26290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/06",
+                "bank_time": "11:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:5,000,000\nحساب:1234\nمانده:21,290,000\n1405\/07\/06-12:00",
+            "sms": {
+                "direction": "out",
+                "amount": 5000000,
+                "balance": 21290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/06",
+                "bank_time": "12:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,000,000\nحساب:1234\nمانده:20,290,000\n1405\/07\/06-13:00",
+            "sms": {
+                "direction": "out",
+                "amount": 1000000,
+                "balance": 20290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/06",
+                "bank_time": "13:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملت\nبرداشت:3,000,000\nحساب:1234\nمانده:17,290,000\n1405\/07\/07-09:00",
+            "sms": {
+                "direction": "out",
+                "amount": 3000000,
+                "balance": 17290000,
+                "account": "1234",
+                "bank_date": "1405\/07\/07",
+                "bank_time": "09:00"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "\/مانده حساب رضا: 2,300,000 تومان بدهکار\/u",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "\/رضا: .*بدهکار\/u",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "🟢 واریز 5,000 تومان\nمانده: 1,234,567 تومان\n──────────\nحساب1234567890\nواریز50,000\nمانده12,345,670\n05\/07\/10-00:40\n──────────\n✍️ بابت چی بود؟ دکمه را بزن یا روی همین پیام Reply کن و بنویس.",
+            "sms": {
+                "direction": "in",
+                "amount": 5000,
+                "balance": 1234567,
+                "account": "1234567890",
+                "bank_date": "1405\/07\/10",
+                "bank_time": "00:40"
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "مانده12,345,670",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "برداشت 30,000",
+            "sms": {
+                "direction": "out",
+                "amount": 30000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "برداشت300,000",
+            "sms": {
+                "direction": "out",
+                "amount": 300000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "مانده12,045,670",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "مانده12,395,670",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "🔐 رمز یکبار مصرف\n──────────\nبانک ملت\nرمز پویا: 48213967\nمبلغ: 1,250,000 ریال",
+            "sms": null,
+            "otp": {
+                "code": "48213967",
+                "amount": 1250000,
+                "merchant": null
+            },
+            "bank": "mellat"
+        },
+        {
+            "text": "خرید سوخت تراکتور",
+            "sms": null,
+            "otp": null,
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nبرداشت:1,250,000\nمانده:45,000,000\n0707-14:25",
+            "sms": {
+                "direction": "out",
+                "amount": 1250000,
+                "balance": 45000000,
+                "account": null,
+                "bank_date": "1405\/07\/07",
+                "bank_time": "14:25"
+            },
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "بانک ملی ایران\nانتقال از:0101234567001\nمبلغ:2,000,000-\nمانده:12,500,000\n1405\/07\/18 09:12",
+            "sms": {
+                "direction": "out",
+                "amount": 2000000,
+                "balance": 12500000,
+                "account": null,
+                "bank_date": "1405\/07\/18",
+                "bank_time": "09:12"
+            },
+            "otp": null,
+            "bank": "melli"
+        },
+        {
+            "text": "بلو\nخرید با کارت: 320,000 ریال\nموجودی: 1,200,000 ریال\n12:40",
+            "sms": {
+                "direction": "out",
+                "amount": 320000,
+                "balance": 1200000,
+                "account": "320000",
+                "bank_date": null,
+                "bank_time": "12:40"
+            },
+            "otp": null,
+            "bank": "blu"
+        },
+        {
+            "text": "صادرات\nواریز:۵,۰۰۰,۰۰۰\nمانده:۸,۴۰۰,۰۰۰\n۰۵\/۰۷\/۱۸-۱۶:۲۰",
+            "sms": {
+                "direction": "in",
+                "amount": 5000000,
+                "balance": 8400000,
+                "account": null,
+                "bank_date": "1405\/07\/18",
+                "bank_time": "16:20"
+            },
+            "otp": null,
+            "bank": "saderat"
+        },
+        {
+            "text": "رمز پویا: 48213967\nمبلغ خرید: 1,250,000 ریال\nپذیرنده: فروشگاه نور\nاعتبار: 120 ثانیه",
+            "sms": {
+                "direction": "out",
+                "amount": 1250000,
+                "balance": null,
+                "account": null,
+                "bank_date": null,
+                "bank_time": null
+            },
+            "otp": {
+                "code": "48213967",
+                "amount": 1250000,
+                "merchant": "فروشگاه نور"
+            },
+            "bank": null
+        },
+        {
+            "text": "کد تایید شما 5521 است",
+            "sms": null,
+            "otp": {
+                "code": "5521",
+                "amount": null,
+                "merchant": null
+            },
+            "bank": null
+        },
+        {
+            "text": "بانک ملت\nسود سپرده:120,500\nمانده:9,000,000",
+            "sms": null,
+            "otp": null,
+            "bank": "mellat"
+        },
+        {
+            "text": "تبلیغ: با بانک ملت وام بگیرید",
+            "sms": null,
+            "otp": null,
+            "bank": "mellat"
+        }
+    ]
+}
