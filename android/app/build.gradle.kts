@@ -52,7 +52,7 @@ android {
 dependencies {
     // sherpa-onnx (offline speech engine, Apache-2.0): tools/voice-model/fetch.sh android puts it in libs/
     implementation(files("libs/sherpa-onnx.aar"))
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
