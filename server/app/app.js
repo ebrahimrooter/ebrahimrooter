@@ -1603,7 +1603,7 @@
       if (st.chat_id) lines.push('💬 چت تو: ✅ وصل');
       else if (st.waiting_for_start) lines.push('<b class="warn">⏳ حالا در بله به ' + (st.bot ? '<span class="num">@' + esc(st.bot) + '</span>' : 'ربات') + ' این پیام را بفرست: <span class="num" dir="ltr">/start ' + esc(st.claim_code || '') + '</span></b>');
       box.innerHTML = (lines.length ? '<p>' + lines.join('<br>') + '</p>' : '') +
-        (!canConnect ? '<p class="muted">روی کامپیوتر خودت (بدون https) توکن و شناسه‌ی چت را در <span class="num">config.php</span> بگذار؛ این بخش برای هاست است.</p>' :
+        (!canConnect ? '<p class="muted">سرویس پس‌زمینه‌ی ربات روشن نیست. روی کامپیوتر خودت برنامه را با <span class="num">start-windows.bat</span> / <span class="num">start.sh</span> اجرا کن (پنجره‌ی «jobs and Bale bot» باید باز بماند)، بعد این صفحه را دوباره باز کن. روی هاست: آدرس https.</p>' :
           '<p class="muted">ربات را در بله با <span class="num">@botfather</span> بساز و توکنش را اینجا بگذار. توکن مثل رمز است؛ به کسی نده.</p>' +
           '<form id="bf"><input id="btok" type="password" autocomplete="off" placeholder="' + (st.has_token ? 'توکن ذخیره شده — برای عوض کردن، توکن جدید' : 'توکن ربات') + '">' +
           '<div class="btns"><button class="btn">' + (st.has_token ? 'اتصال دوباره' : 'اتصال') + '</button>' +

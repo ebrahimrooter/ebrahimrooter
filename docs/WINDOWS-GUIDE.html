@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>راهنمای تصویری نصب روی ویندوز</title>
+<style>
+  @font-face { font-family: 'Vazirmatn'; font-weight: 400; src: url(../server/acc/vendor/fonts/vazirmatn-arabic-400-normal.woff2) format('woff2'); }
+  @font-face { font-family: 'Vazirmatn'; font-weight: 700; src: url(../server/acc/vendor/fonts/vazirmatn-arabic-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: 'Vazirmatn'; font-weight: 400; src: url(../server/acc/vendor/fonts/vazirmatn-latin-400-normal.woff2) format('woff2'); unicode-range: U+0000-00FF; }
+  :root { --ink: #121414; --muted: #5d6d69; --line: #dde6e3; --green: #1f8f45; --deep: #07140c; --bg: #f3f6f4; --warn: #b3261e; }
+  * { box-sizing: border-box; }
+  body { font-family: Vazirmatn, Tahoma, sans-serif; color: var(--ink); background: var(--bg); margin: 0; line-height: 1.9; font-size: 15px; }
+  .page { max-width: 880px; margin: 0 auto; padding: 24px 16px 40px; }
+  .cover { background: linear-gradient(135deg, #0b2416, #1f8f45); color: #fff; border-radius: 22px; padding: 28px 26px; margin-bottom: 22px; }
+  .cover h1 { margin: 0 0 6px; font-size: 28px; }
+  .cover p { margin: 0; opacity: .9; }
+  .need { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+  .need div { background: rgba(255,255,255,.12); border-radius: 14px; padding: 10px 12px; font-size: 13px; }
+  .need b { display: block; font-size: 15px; }
+  .step { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; margin: 16px 0; break-inside: avoid; page-break-inside: avoid; }
+  .step h2 { margin: 0 0 6px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+  .num { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 16px; }
+  .step p { margin: 6px 0; }
+  .note { background: #fff8e6; border: 1px solid #f1d38a; border-radius: 12px; padding: 8px 12px; font-size: 13.5px; margin-top: 10px; }
+  .ok { background: #ecf8ef; border-color: #b5e1c1; }
+  code, .ltr { direction: ltr; unicode-bidi: isolate; font-family: Consolas, 'Courier New', monospace; font-size: 13px; background: #eef2ef; border-radius: 6px; padding: 1px 6px; }
+  .shot { margin: 12px auto 4px; display: block; max-width: 100%; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+  .cap { text-align: center; color: var(--muted); font-size: 12.5px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .mark { outline: 3px solid #ff3b30; outline-offset: 2px; border-radius: 6px; }
+  .arrow { color: #ff3b30; font-weight: 700; }
+
+  /* ---- drawn Windows-like windows (illustrations, not screenshots) ---- */
+  .win { direction: ltr; font-family: 'Segoe UI', Tahoma, sans-serif; background: #f9f9f9; border: 1px solid #cfcfcf; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    max-width: 640px; margin: 14px auto 4px; overflow: hidden; font-size: 13px; }
+  .win .bar { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 0 0 12px; background: #f3f3f3; border-bottom: 1px solid #e3e3e3; }
+  .win .bar .t { flex: 1; color: #222; }
+  .win .bar .ctl { display: flex; } .win .bar .ctl span { width: 44px; text-align: center; color: #333; }
+  .win .body { padding: 12px 14px; }
+  .fe { display: grid; grid-template-columns: 150px 1fr; min-height: 190px; }
+  .fe .side { background: #f3f3f3; border-right: 1px solid #e5e5e5; padding: 8px; color: #333; line-height: 2; }
+  .fe .files { padding: 8px 10px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 2px 6px; border-radius: 4px; }
+  .row.sel { background: #cce4f7; }
+  .ico { width: 18px; height: 14px; border-radius: 2px; display: inline-block; }
+  .ico.d { background: #f6c443; } .ico.z { background: #f6c443; border: 2px dashed #b88a12; } .ico.b { background: #2f3640; } .ico.t { background: #fff; border: 1px solid #999; }
+  .menu { position: relative; left: 210px; top: -6px; width: 200px; background: #fff; border: 1px solid #d0d0d0; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 4px; }
+  .menu div { padding: 5px 10px; border-radius: 4px; } .menu .hl { background: #e5f1fb; outline: 2px solid #ff3b30; }
+  .btn-w { display: inline-block; padding: 5px 16px; border-radius: 4px; border: 1px solid #c8c8c8; background: #fdfdfd; margin-left: 6px; }
+  .btn-w.pri { background: #005fb8; color: #fff; border-color: #005fb8; }
+  .smart { background: #2765b0; color: #fff; max-width: 640px; margin: 14px auto 4px; padding: 22px 26px; direction: ltr; font-family: 'Segoe UI', Tahoma, sans-serif; border-radius: 6px; }
+  .smart h3 { font-weight: 400; font-size: 22px; margin: 0 0 10px; }
+  .smart u { color: #fff; }
+  .smart .foot { text-align: right; margin-top: 18px; } .smart .foot span { display: inline-block; border: 1px solid #fff; padding: 4px 18px; margin-left: 8px; }
+  .con { direction: ltr; background: #0c0c0c; color: #cccccc; font-family: Consolas, 'Courier New', monospace; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; padding: 10px 12px; }
+  .con .y { color: #f9f1a5; } .con .g { color: #16c60c; } .con .hl { background: #3a3a00; color: #fff; }
+  .fw .row2 { display: flex; gap: 8px; margin: 4px 0; } .chk { width: 14px; height: 14px; border: 1px solid #666; display: inline-block; text-align: center; line-height: 12px; font-size: 11px; }
+  .chk.on { background: #005fb8; color: #fff; border-color: #005fb8; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  td, th { border: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+  th { background: #eef5f0; }
+  .toc { columns: 2; font-size: 14px; margin: 0; padding-inline-start: 20px; }
+  @media print { body { background: #fff; } .step { box-shadow: none; } }
+  @media (max-width: 640px) { .two, .need { grid-template-columns: 1fr; } .toc { columns: 1; } .fe { grid-template-columns: 1fr; } .fe .side { display: none; } .menu { left: 20px; } }
+</style>
+</head>
+<body><div class="page">
+
+<div class="cover">
+  <h1>نصب دستیار بانک و حسابداری روی ویندوز</h1>
+  <p>راهنمای تصویری قدم‌به‌قدم؛ بدون هاست و سرور، روی کامپیوتر خودت.</p>
+  <div class="need">
+    <div><b>ویندوز ۱۰ یا ۱۱</b>نسخه‌ی ۶۴ بیتی</div>
+    <div><b>اینترنت</b>فقط بار اول (دانلود PHP، حدود ۳۰ مگابایت)</div>
+    <div><b>فایل</b>bank-assistant-local.zip</div>
+  </div>
+</div>
+
+<ol class="toc">
+  <li>باز کردن فایل zip</li><li>اجرای start-windows.bat</li><li>هشدار ویندوز (SmartScreen)</li><li>دانلود خودکار PHP</li>
+  <li>اجازه‌ی فایروال</li><li>رمزها در پنجره‌ی سیاه</li><li>ورود در مرورگر</li><li>پنل حسابداری</li>
+  <li>گوشی روی همان Wi-Fi</li><li>ربات بله</li><li>ESP32</li><li>اجرای خودکار با روشن شدن ویندوز</li>
+  <li>نگه‌داری اطلاعات و پشتیبان</li><li>اگر مشکلی پیش آمد</li>
+</ol>
+<p class="cap">تصویرهای پنجره‌های ویندوز طرح ساده‌شده‌اند و ممکن است کمی با کامپیوتر تو فرق داشته باشند؛ تصویرهای برنامه واقعی‌اند.</p>
+
+<div class="step">
+  <h2><span class="num">۱</span>فایل zip را باز کن (Extract)</h2>
+  <p>روی <b>bank-assistant-local.zip</b> راست‌کلیک کن و <b>Extract All…</b> را بزن. جای باز شدن را یک مسیر ساده بگذار، مثلاً <code>C:\</code> (پوشه‌ی <code>C:\bank-assistant</code> ساخته می‌شود).</p>
+  <div class="win">
+    <div class="bar"><span class="t">Downloads</span><span class="ctl"><span>—</span><span>☐</span><span>✕</span></span></div>
+    <div class="fe"><div class="side">⭐ Home<br>🖥 Desktop<br>⬇ Downloads<br>📄 Documents<br>💽 Local Disk (C:)</div>
+      <div class="files">
+        <div class="row sel"><span class="ico z"></span>bank-assistant-local.zip</div>
+        <div class="menu"><div>Open</div><div class="hl">Extract All…</div><div>Open with</div><div>Share</div><div>Copy as path</div><div>Properties</div></div>
+      </div></div>
+  </div>
+  <div class="win" style="max-width:520px">
+    <div class="bar"><span class="t">Extract Compressed (Zipped) Folders</span><span class="ctl"><span>✕</span></span></div>
+    <div class="body">Select a Destination and Extract Files<br><br>Files will be extracted to this folder:<br>
+      <span style="display:inline-block;border:1px solid #888;padding:3px 8px;width:330px;background:#fff" class="mark">C:\</span> <span class="btn-w">Browse…</span><br><br>
+      <span class="chk on">✓</span> Show extracted files when complete<br><br>
+      <div style="text-align:right"><span class="btn-w pri">Extract</span><span class="btn-w">Cancel</span></div></div>
+  </div>
+  <div class="note">مسیری با حروف فارسی یا خیلی طولانی (مثل داخل Desktop با نام فارسی) نگذار؛ <code>C:\bank-assistant</code> بهترین است.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۲</span>روی start-windows.bat دوبار کلیک کن</h2>
+  <p>در پوشه‌ی <code>C:\bank-assistant</code> فایل <b>start-windows.bat</b> را پیدا کن (آیکن پنجره‌ی سیاه دارد) و دوبار کلیک کن.</p>
+  <div class="win">
+    <div class="bar"><span class="t">C:\bank-assistant</span><span class="ctl"><span>—</span><span>☐</span><span>✕</span></span></div>
+    <div class="fe"><div class="side">⭐ Home<br>🖥 Desktop<br>⬇ Downloads<br>💽 Local Disk (C:)<br>&nbsp;&nbsp;📁 bank-assistant</div>
+      <div class="files">
+        <div class="row"><span class="ico d"></span>android</div><div class="row"><span class="ico d"></span>docs</div>
+        <div class="row"><span class="ico d"></span>firmware</div><div class="row"><span class="ico d"></span>ios</div>
+        <div class="row"><span class="ico d"></span>php</div><div class="row"><span class="ico d"></span>server</div>
+        <div class="row"><span class="ico d"></span>voice</div><div class="row"><span class="ico t"></span>LOCAL-README.txt</div>
+        <div class="row sel mark"><span class="ico b"></span><b>start-windows.bat</b> &nbsp;<span class="arrow">◀ دوبار کلیک</span></div>
+      </div></div>
+  </div>
+  <div class="note">اگر پسوند فایل‌ها را نمی‌بینی، اسمش فقط <b>start-windows</b> با نوع «Windows Batch File» است.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۳</span>اگر ویندوز هشدار داد: More info ← Run anyway</h2>
+  <p>چون فایل از اینترنت آمده، ویندوز ممکن است پنجره‌ی آبی «Windows protected your PC» نشان دهد. روی <b>More info</b> بزن، بعد <b>Run anyway</b>. فقط بار اول این را می‌پرسد.</p>
+  <div class="smart">
+    <h3>Windows protected your PC</h3>
+    Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.<br>
+    <u class="mark" style="outline-color:#ffcc00">More info</u> <span style="color:#ffcc00">◀ ۱</span><br><br>
+    App: start-windows.bat<br>Publisher: Unknown publisher
+    <div class="foot"><span class="mark" style="outline-color:#ffcc00">Run anyway</span><span style="color:#ffcc00;border:0;padding:0">◀ ۲</span><span>Don't run</span></div>
+  </div>
+  <div class="note">این فایل یک اسکریپت متنی ساده است؛ اگر خواستی قبل از اجرا با Notepad بازش کن و ببین چه می‌کند.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۴</span>بار اول: PHP خودش دانلود می‌شود</h2>
+  <p>یک پنجره‌ی سیاه باز می‌شود و PHP را از سایت رسمی <span class="ltr">windows.php.net</span> دانلود و در پوشه‌ی <code>php</code> می‌گذارد. چند دقیقه صبر کن. اگر ویندوز «<span class="ltr">Visual C++</span>» نداشته باشد، آن را هم نصب می‌کند (ممکن است یک پنجره‌ی نصب کوچک ببینی).</p>
+  <div class="win" style="max-width:720px">
+    <div class="bar" style="background:#1f1f1f;color:#fff;border:0"><span class="t" style="color:#fff">C:\Windows\System32\cmd.exe</span><span class="ctl"><span style="color:#fff">—</span><span style="color:#fff">☐</span><span style="color:#fff">✕</span></span></div>
+    <div class="con">
+ First run: downloading PHP for Windows into the "php" folder (about 30 MB)...
+  https://windows.php.net/downloads/releases/latest/php-8.4-nts-Win32-vs17-x64-latest.zip
+<span class="y">Writing web request
+    Writing request stream... (Number of bytes written: 18874368)</span>
+</div>
+  </div>
+  <div class="note">اگر نوشت <b>PHP could not be downloaded automatically</b>: بخش «اگر مشکلی پیش آمد» در آخر همین راهنما.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۵</span>فایروال ویندوز: Allow access</h2>
+  <p>ویندوز می‌پرسد آیا PHP اجازه‌ی شبکه داشته باشد. <b>Private networks</b> را تیک بزن (برای اینکه گوشی و ESP32 روی Wi-Fi خانه وصل شوند) و <b>Allow access</b> را بزن. Public را لازم نیست تیک بزنی.</p>
+  <div class="win fw" style="max-width:560px">
+    <div class="bar"><span class="t">Windows Security Alert</span><span class="ctl"><span>✕</span></span></div>
+    <div class="body">
+      <b style="font-size:15px">Windows Defender Firewall has blocked some features of this app</b><br><br>
+      Name: &nbsp;CLI<br>Publisher: &nbsp;The PHP Group<br>Path: &nbsp;C:\bank-assistant\php\php.exe<br><br>
+      Allow php.exe to communicate on these networks:
+      <div class="row2"><span class="chk on mark">✓</span> Private networks, such as my home or work network</div>
+      <div class="row2"><span class="chk"></span> Public networks, such as those in airports and coffee shops</div><br>
+      <div style="text-align:right"><span class="btn-w pri mark">Allow access</span><span class="btn-w">Cancel</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۶</span>رمزها را از پنجره‌ی سیاه بردار</h2>
+  <p>حالا برنامه روشن است. در پنجره‌ی سیاه همه‌ی چیزهایی که لازم داری نوشته شده: آدرس‌ها، <b>رمز اپ</b>، PIN رمزهای پویا و <b>رمز پشتیبان</b>. از آن عکس بگیر یا یادداشت کن (همین‌ها در فایل <code>server\config.php</code> هم هست).</p>
+  <div class="win" style="max-width:720px">
+    <div class="bar" style="background:#1f1f1f;color:#fff;border:0"><span class="t" style="color:#fff">C:\Windows\System32\cmd.exe</span><span class="ctl"><span style="color:#fff">—</span><span style="color:#fff">☐</span><span style="color:#fff">✕</span></span></div>
+    <div class="con">config.php created (passwords below; also inside server/config.php).
+
+================ Bank assistant ================
+ On this computer:  http://localhost:8080/app/
+ On your phone:     <span class="hl">http://192.168.1.20:8080/app/</span>   (same Wi-Fi)
+ App password:      <span class="hl">3f9a1c7e52b4</span>
+ Panel login:       user admin, password = app password (change it in the panel)
+ OTP PIN:           482915
+ Backup password:   <span class="hl">a17c09e4b25d3f81c6e2</span>   (opens backups and the Excel file)
+ Data folder:       C:\bank-assistant\server\data   (copy it to keep everything)
+
+ ESP32 on the same Wi-Fi - sketch sms_forwarder.ino ...
+   SERVER_URL    = "http://192.168.1.20:8080/api.php?r=ingest"
+   HEARTBEAT_URL = "http://192.168.1.20:8080/api.php?r=heartbeat"
+   DEVICE_TOKEN  = "5c0e…"
+================================================
+
+<span class="g"> Server is running. Keep this window open; close it to stop.</span></div>
+  </div>
+  <p class="cap">نمونه است؛ رمزها و IP روی کامپیوتر تو فرق دارند.</p>
+  <div class="note ok">دو پنجره‌ی دیگر هم کنار این باز می‌شوند: «jobs and Bale bot» (ربات بله و پشتیبان شبانه) و اگر صدای فارسی را نصب کرده باشی «voice». <b>هیچ‌کدام را نبند</b>؛ کوچکشان کن (—). برای خاموش کردن، همه را ببند.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۷</span>مرورگر خودش باز می‌شود: رمز اپ را بزن</h2>
+  <p>آدرس <code>http://localhost:8080/app/</code> باز می‌شود. رمز اپ (مرحله‌ی ۶) را بزن و <b>ورود</b>. فقط یک بار لازم است.</p>
+  <img class="shot" src="windows-guide/login.png" alt="ورود اپ" style="max-width:560px">
+  <p>بعد صفحه‌ی اصلی: کارت‌های بانک (ملت، ملی، صادرات، بلو، صندوق)، واریز و برداشت‌ها و دستیار.</p>
+  <img class="shot" src="windows-guide/home-desktop.jpg" alt="صفحه‌ی اصلی">
+  <p class="cap">تصویر واقعی برنامه با اطلاعات نمونه.</p>
+</div>
+
+<div class="step">
+  <h2><span class="num">۸</span>پنل حسابداری کامل</h2>
+  <p>در مرورگر کامپیوتر <code>http://localhost:8080/acc/</code> را باز کن: کاربر <b>admin</b> و رمز = رمز اپ. بعد از ورود، از «تغییر رمز» یک رمز تازه (حداقل ۱۰ حرف) بگذار. در اپ هم تب «حسابداری» همین پنل را بدون ورود دوباره باز می‌کند.</p>
+  <img class="shot" src="windows-guide/panel.jpg" alt="پنل حسابداری">
+</div>
+
+<div class="step">
+  <h2><span class="num">۹</span>روی گوشی (همان Wi-Fi)</h2>
+  <div class="two">
+    <div>
+      <p>گوشی را به همان Wi-Fi کامپیوتر وصل کن و در مرورگرش آدرس <b>On your phone</b> از پنجره‌ی سیاه را بزن، مثلاً <code>http://192.168.1.20:8080/app/</code>.</p>
+      <p><b>اپ اندروید:</b> اپ را نصب کن (فایل <code>server\app\android\bank-assistant.apk</code>) و آدرس <code>http://192.168.1.20:8080/</code> را بزن.</p>
+      <p><b>اپ آیفون:</b> آدرس سرور <code>http://192.168.1.20:8080/api.php</code> و رمز اپ.</p>
+      <div class="note">میکروفون و نوتیفِ <b>مرورگر</b> گوشی فقط روی https کار می‌کند و کامپیوتر خانه http است؛ برای حرف زدن روی گوشی از اپ اندروید، اپ آیفون یا ویس در ربات بله استفاده کن.</div>
+    </div>
+    <img class="shot" src="windows-guide/phone.jpg" alt="روی گوشی" style="max-width:260px">
+  </div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۱۰</span>ربات بله</h2>
+  <div class="two">
+    <div>
+      <p>در اپ: <b>تنظیمات ← ربات بله</b>. توکن ربات را از <b>@botfather</b> بله کپی کن، اینجا بگذار و «اتصال» را بزن.</p>
+      <p>اپ یک کد ۶ رقمی نشان می‌دهد؛ در بله به ربات بفرست: <code>/start 123456</code> (همان کد).</p>
+      <p>از این به بعد هر واریز و برداشت در بله پرسیده می‌شود، هر شب پشتیبان و <b>فایل اکسل حساب‌ها</b> (قفل با رمز پشتیبان) به بله می‌آید و با <code>/excel</code> هر وقت خواستی اکسل می‌گیری.</p>
+      <div class="note ok">دامنه و آدرس اینترنتی لازم نیست؛ پنجره‌ی «jobs and Bale bot» پیام‌ها را خودش از بله می‌گیرد. فقط کامپیوتر باید اینترنت داشته باشد.</div>
+    </div>
+    <img class="shot" src="windows-guide/phone-settings.jpg" alt="تنظیمات" style="max-width:260px">
+  </div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۱۱</span>دستگاه ESP32 (پیامک بانک)</h2>
+  <p>روی کامپیوتر خانه از فریمور <b>Wi-Fi</b> استفاده کن: <code>firmware\sms_forwarder\sms_forwarder.ino</code>. بالای فایل نام و رمز Wi-Fi را بنویس و سه خط <code>SERVER_URL</code>، <code>HEARTBEAT_URL</code> و <code>DEVICE_TOKEN</code> را از پنجره‌ی سیاه (مرحله‌ی ۶) کپی کن، بعد Upload.</p>
+  <div class="note">فریمور اینترنت سیم‌کارت (<code>gprs_forwarder</code>) به کامپیوتر خانه نمی‌رسد؛ آن برای وقتی است که برنامه روی سرور اینترنتی نصب شده (<code>deploy-vps.sh</code>). راهنمای کامل سیم‌کشی: <code>firmware\README.md</code>.</div>
+</div>
+
+<div class="step">
+  <h2><span class="num">۱۲</span>(اختیاری) روشن شدن خودکار با ویندوز</h2>
+  <ol>
+    <li>کلید <b>Win + R</b> را بزن، بنویس <code>shell:startup</code> و Enter.</li>
+    <li>در پوشه‌ای که باز شد راست‌کلیک ← <b>New ← Shortcut</b>.</li>
+    <li>آدرس: <code>C:\bank-assistant\start-windows.bat</code> ← Next ← نام: «دستیار بانک» ← Finish.</li>
+  </ol>
+  <div class="win" style="max-width:460px">
+    <div class="bar"><span class="t">Run</span><span class="ctl"><span>✕</span></span></div>
+    <div class="body">Type the name of a program, folder, document, or Internet resource, and Windows will open it for you.<br><br>
+      Open: <span style="display:inline-block;border:1px solid #888;padding:2px 8px;width:300px;background:#fff" class="mark">shell:startup</span><br><br>
+      <div style="text-align:right"><span class="btn-w pri">OK</span><span class="btn-w">Cancel</span><span class="btn-w">Browse…</span></div></div>
+  </div>
+  <p>از این به بعد با روشن شدن ویندوز برنامه هم روشن می‌شود. اگر کامپیوتر به خواب می‌رود، در Settings ← System ← Power زمان Sleep را «Never» کن تا ESP32 و بله همیشه جواب بگیرند.</p>
+</div>
+
+<div class="step">
+  <h2><span class="num">۱۳</span>نگه‌داری اطلاعات و پشتیبان</h2>
+  <ul>
+    <li>همه‌ی اطلاعات در <code>C:\bank-assistant\server\data</code> است، و تنظیمات و رمزها در <code>server\config.php</code>. برای بردن به کامپیوتر دیگر یا نسخه‌ی تازه، همین دو را کپی کن.</li>
+    <li>هر شب ساعت ۳ پشتیبان در <code>server\data\backups</code> ساخته و به بله فرستاده می‌شود (اگر کامپیوتر روشن باشد). دستی: اپ ← تنظیمات ← پشتیبان‌گیری.</li>
+    <li>به‌روزرسانی: zip تازه را جای دیگری باز کن، پوشه‌ی <code>server\data</code> و فایل <code>server\config.php</code> قدیمی را در آن کپی کن و از همان‌جا اجرا کن.</li>
+    <li>اگر فکر می‌کنی رمزی لو رفته: در پوشه‌ی برنامه پنجره‌ی cmd باز کن و بزن <code>php\php.exe server\cron.php rotate-secrets</code>.</li>
+  </ul>
+</div>
+
+<div class="step">
+  <h2><span class="num">۱۴</span>اگر مشکلی پیش آمد</h2>
+  <table>
+    <tr><th style="width:38%">چه دیدی</th><th>چه کنی</th></tr>
+    <tr><td>PHP could not be downloaded automatically</td><td>در مرورگر <span class="ltr">windows.php.net/download</span> را باز کن، از آخرین PHP 8 فایل ZIP نسخه‌ی <b>x64 Non Thread Safe</b> را بگیر، محتوایش را در <code>C:\bank-assistant\php</code> باز کن طوری که <code>php\php.exe</code> باشد، دوباره start-windows.bat.</td></tr>
+    <tr><td>PHP still does not start / VCRUNTIME140.dll</td><td>«<span class="ltr">Visual C++ Redistributable x64</span>» را از <span class="ltr">aka.ms/vs/17/release/vc_redist.x64.exe</span> نصب کن.</td></tr>
+    <tr><td>پنجره‌ی سیاه باز و فوری بسته می‌شود</td><td>در پوشه‌ی برنامه، در نوار آدرس File Explorer بنویس <code>cmd</code> و Enter، بعد بزن <code>start-windows.bat</code> تا پیام خطا را ببینی.</td></tr>
+    <tr><td>Failed to listen on 0.0.0.0:8080</td><td>برنامه‌ی دیگری از پورت ۸۰۸۰ استفاده می‌کند. start-windows.bat را با Notepad باز کن و <code>set PORT=8080</code> را مثلاً <code>8090</code> کن.</td></tr>
+    <tr><td>گوشی صفحه را باز نمی‌کند</td><td>گوشی و کامپیوتر روی یک Wi-Fi باشند؛ در فایروال php.exe برای Private مجاز باشد (Windows Security ← Firewall ← Allow an app through firewall)؛ Wi-Fi در ویندوز «Private network» باشد نه Public.</td></tr>
+    <tr><td>«رمز اپ نادرست است» یا «تلاش زیاد»</td><td>رمز را از <code>server\config.php</code> (خط app_token) بخوان. بعد از ۸ رمز اشتباه، ۱۵ دقیقه صبر لازم است.</td></tr>
+    <tr><td>ربات بله جواب نمی‌دهد</td><td>پنجره‌ی «jobs and Bale bot» باز باشد و کامپیوتر اینترنت داشته باشد؛ در اپ ← تنظیمات ← ربات بله وضعیت را ببین.</td></tr>
+  </table>
+</div>
+
+<p class="cap">دستیار بانک و حسابداری · راهنمای ویندوز · مهر ۱۴۰۵ · راهنمای متنی کوتاه: LOCAL-README.txt</p>
+</div></body>
+</html>
