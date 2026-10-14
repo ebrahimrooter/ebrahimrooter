@@ -1,7 +1,7 @@
 import AVFoundation
 
-/// Plays the answer. Persian speech comes from the server's local voice
-/// (iOS has no Persian system voice); without it the answer is shown as text only.
+/// Plays the answer. Persian speech comes from the app's own voice (LocalVoice),
+/// or the server's (iOS has no Persian system voice); without either it is text only.
 final class SpeechPlayer: NSObject, AVAudioPlayerDelegate {
     var onLevel: ((Float) -> Void)?
     private var player: AVAudioPlayer?

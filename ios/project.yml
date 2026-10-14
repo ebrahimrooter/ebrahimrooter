@@ -6,6 +6,11 @@ options:
   deploymentTarget:
     iOS: "17.0"
   developmentLanguage: fa
+packages:
+  # the app's own Persian voice (Piper through sherpa-onnx); the model: sh tools/voice-model/fetch.sh ios
+  SherpaOnnx:
+    url: https://github.com/k2-fsa/sherpa-onnx
+    exactVersion: 1.13.8
 settings:
   base:
     DEVELOPMENT_TEAM: ""            # your Apple team id
@@ -18,8 +23,13 @@ targets:
     platform: iOS
     sources:
       - path: BankAssistant
-        excludes: ["Resources/Info.plist", "Resources/*.entitlements"]
+        excludes: ["Resources/Info.plist", "Resources/*.entitlements", "Resources/FaVoice", "Resources/FaVoice/**"]
+      - path: BankAssistant/Resources/FaVoice
+        type: folder
+        buildPhase: resources
+        optional: true
       - Shared
+    scheme: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ir.example.bankassistant
@@ -28,6 +38,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
     dependencies:
       - target: AssistantWidgets
+      - package: SherpaOnnx
+        product: sherpa-onnx
   AssistantWidgets:
     type: app-extension
     platform: iOS

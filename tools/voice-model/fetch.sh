@@ -30,3 +30,6 @@ if [ "$1" = android ]; then
   cp tools/voice-model/speech_cases.json android/app/src/main/assets/speech_cases.json
   echo "sherpa-onnx $VER: android/app/libs/sherpa-onnx.aar"
 fi
+if [ "$1" = ios ]; then
+  cp tools/voice-model/speech_cases.json "$OUT/speech_cases.json"   # for the -voicetest self-check
+fi

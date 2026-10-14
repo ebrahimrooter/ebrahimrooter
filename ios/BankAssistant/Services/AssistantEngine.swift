@@ -127,7 +127,15 @@ final class AssistantEngine {
         silentTurns = 0
         set(.processing, "در حال پردازش…")
         do {
-            let heard = try await api.transcribe(fileURL: u.url)
+            let heard: String
+            do {
+                heard = try await api.transcribe(fileURL: u.url)
+            } catch {
+                // the server can't do speech-to-text: Apple's own Persian recognizer, if this iPhone has one
+                if case APIError.unauthorized = error { throw error }
+                guard let t = await PhoneListen.transcribe(fileURL: u.url) else { throw error }
+                heard = t
+            }
             try? FileManager.default.removeItem(at: u.url)
             guard !heard.trimmingCharacters(in: .whitespaces).isEmpty else { set(.idle, "نفهمیدم؛ دوباره بگو."); return talk() }
             if Self.isGoodbye(heard) { return stop(reason: "خداحافظ") }
@@ -135,7 +143,7 @@ final class AssistantEngine {
             let r = try await api.ask(heard)
             turns.append(Turn(heard: heard, reply: r.reply))
             set(.speaking, r.reply)
-            if let audio = try? await api.speech(for: r.reply) {
+            if let audio = await Self.voice(r.reply) {
                 await player.play(audio)
             } else {
                 try? await Task.sleep(for: .seconds(min(6, Double(r.reply.count) / 15)))   // time to read it
@@ -147,6 +155,12 @@ final class AssistantEngine {
             if case APIError.unauthorized = error { api.unpair() }
             fail(error.localizedDescription)
         }
+    }
+
+    /// The app's own Persian voice; the server's only when the voice is not in the app.
+    static func voice(_ text: String) async -> Data? {
+        if let d = await LocalVoice.shared.wav(text) { return d }
+        return try? await APIClient.shared.speech(for: text)
     }
 
     private func fail(_ message: String) {

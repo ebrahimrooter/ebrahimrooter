@@ -392,9 +392,9 @@ struct CardAskPanel: View {
         .onDisappear { player.stop() }
     }
 
-    /// The question in the server's Persian voice (when it has one).
+    /// The question in the app's own Persian voice (the server's as a fallback).
     private func say() async {
-        guard let data = try? await APIClient.shared.speech(for: question) else { return }
+        guard let data = await AssistantEngine.voice(question) else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
         speaking = true

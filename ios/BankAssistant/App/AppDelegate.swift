@@ -7,7 +7,33 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         PushManager.registerCategories()
+        LocalVoice.shared.warmUp()
+        if ProcessInfo.processInfo.arguments.contains("-voicetest") { Task { await Self.voiceTest() } }
         return true
+    }
+
+    /// CI self-check (simulator): the number rules match the server's, and the
+    /// app's own voice speaks. Result in Documents/voice-test.txt.
+    static func voiceTest() async {
+        var same = 0, total = 0
+        if let u = Bundle.main.url(forResource: "speech_cases", withExtension: "json", subdirectory: "FaVoice"),
+           let d = try? Data(contentsOf: u),
+           let cases = try? JSONSerialization.jsonObject(with: d) as? [[String: String]] {
+            for c in cases {
+                total += 1
+                let got = SpeechText.forSpeech(c["in"] ?? "")
+                if got == c["out"] { same += 1 } else { print("VOICE_TEST diff: \(got) | want: \(c["out"] ?? "")") }
+            }
+        }
+        let t = Date()
+        let wav = await LocalVoice.shared.wav("موجودی کارت ملت ۴٬۲۵۰٬۰۰۰ تومان است.")
+        let ms = Int(Date().timeIntervalSince(t) * 1000)
+        let line = "speech_text=\(same)/\(total) bundled=\(LocalVoice.shared.bundled) tts=\((wav?.count ?? 0) > 44 + 22050 ? "ok" : "fail") " +
+            "bytes=\(wav?.count ?? 0) ms=\(ms) phone_listen=\(PhoneListen.recognizer != nil)"
+        print("VOICE_TEST " + line)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? line.write(to: docs.appendingPathComponent("voice-test.txt"), atomically: true, encoding: .utf8)
+        if let wav { try? wav.write(to: docs.appendingPathComponent("voice-test.wav")) }
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
