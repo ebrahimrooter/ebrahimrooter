@@ -48,6 +48,9 @@ enum LocalMode {
 
     /// One Bot API call, JSON in and out.
     static func bale(_ method: String, json: Data, token: String? = LocalMode.token) async throws -> Data {
+        #if DEBUG
+        if base == "fake" { return FakeBale.answer(method, json) }
+        #endif
         guard let token, let url = URL(string: "\(base)/bot\(token)/\(method)") else { throw APIError.server("توکن ربات بله گذاشته نشده") }
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
@@ -57,6 +60,9 @@ enum LocalMode {
     }
 
     static func sendDocument(chat: String, name: String, data: Data, caption: String) async throws {
+        #if DEBUG
+        if base == "fake" { _ = FakeBale.answer("sendDocument", Data("{\"bytes\":\(data.count)}".utf8)); return }
+        #endif
         guard let token, let url = URL(string: "\(base)/bot\(token)/sendDocument") else { throw APIError.server("توکن ربات بله گذاشته نشده") }
         let b = "----ba" + UUID().uuidString
         var body = Data()
@@ -327,3 +333,47 @@ struct LocalSetupView: View {
         }
     }
 }
+
+#if DEBUG
+/// Tests (-baleBase fake): the same pretend Bale as tools/demo/fakebale.py, inside the
+/// simulator build. The owner sends /start, taps under an ESP32 Mellat SMS and replies
+/// under a Melli one; every call goes to Application Support/fakebale.log.
+enum FakeBale {
+    static func answer(_ method: String, _ body: Data) -> Data {
+        let log = LocalMode.booksURL.deletingLastPathComponent().appendingPathComponent("fakebale.log")
+        let line = method + " " + String(decoding: body, as: UTF8.self) + "\n"
+        if let h = try? FileHandle(forWritingTo: log) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+        else { try? Data(line.utf8).write(to: log) }
+        let sep = "──────────"
+        func relay(_ head: String, _ sms: String) -> String {
+            "\(head)\n\(sep)\n\(sms)\n\(sep)\n✍️ بابت چی بود؟ دکمه را بزن یا روی همین پیام Reply کن و بنویس."
+        }
+        let t = Int(Date().timeIntervalSince1970)
+        let chat: [String: Any] = ["id": 555, "type": "private"]
+        let start: [String: Any] = ["message_id": 1, "chat": chat, "date": t - 300, "text": "/start"]
+        let tapped: [String: Any] = ["message_id": 10, "chat": chat, "date": t - 200,
+                                     "text": relay("🔴 برداشت 250,000 تومان", "بانک ملت\nبرداشت:2,500,000\nمانده:45,000,000\n0720-14:25")]
+        let original: [String: Any] = ["message_id": 11, "chat": chat, "date": t - 150,
+                                       "text": relay("🟢 واریز 700,000 تومان", "بانک ملی ایران\nواریز:7,000,000\nمانده:12,500,000\n10:05")]
+        let reply: [String: Any] = ["message_id": 21, "chat": chat, "date": t - 100, "text": "فروش لپ تاپ از علی رضایی", "reply_to_message": original]
+        let callback: [String: Any] = ["id": "cb1", "data": "relay:ans", "message": tapped]
+        let updates: [[String: Any]] = [
+            ["update_id": 1, "message": start],
+            ["update_id": 2, "callback_query": callback],
+            ["update_id": 3, "message": reply],
+        ]
+        let q = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        var result: Any = true
+        switch method {
+        case "getMe": result = ["id": 1, "username": "test_bank_bot", "is_bot": true] as [String: Any]
+        case "getUpdates":
+            let off = (q["offset"] as? Int) ?? 0
+            result = updates.filter { ($0["update_id"] as? Int ?? 0) >= off }
+        case "sendMessage": result = ["message_id": 900] as [String: Any]
+        default: break
+        }
+        let out: [String: Any] = ["ok": true, "result": result]
+        return (try? JSONSerialization.data(withJSONObject: out)) ?? Data()
+    }
+}
+#endif
