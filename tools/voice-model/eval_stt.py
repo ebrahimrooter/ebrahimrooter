@@ -107,14 +107,15 @@ with tarfile.open(tgz) as t:
             clips[n] = (a if a.ndim == 1 else a[:, 0], sr)
 print("fleurs clips:", len(clips))
 
-# the app's sentences in the Piper voice
-vd = os.environ.get("FA_VOICE", "android/app/src/main/assets/fa-voice")
-tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.OfflineTtsModelConfig(vits=sherpa_onnx.OfflineTtsVitsModelConfig(
-    model=vd + "/fa_IR-amir-medium.onnx", tokens=vd + "/tokens.txt", data_dir=vd + "/espeak-ng-data"), num_threads=2)))
-spoken = []
-for s in SENTENCES:
-    a = tts.generate(s, sid=0, speed=1.0)
-    spoken.append((s, np.array(a.samples, dtype=np.float32), a.sample_rate))
+# the app's sentences in the Piper voice (FA_VOICE: one or more model dirs, comma-separated)
+spoken_by = {}
+for vd in os.environ.get("FA_VOICE", "android/app/src/main/assets/fa-voice").split(","):
+    m = [f for f in glob.glob(vd + "/*.onnx")][0]
+    tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.OfflineTtsModelConfig(vits=sherpa_onnx.OfflineTtsVitsModelConfig(
+        model=m, tokens=vd + "/tokens.txt", data_dir=vd + "/espeak-ng-data"), num_threads=2)))
+    spoken_by[os.path.basename(vd.rstrip("/"))] = [(s, np.array(a.samples, dtype=np.float32), a.sample_rate)
+                                                  for s, a in ((s, tts.generate(s, sid=0, speed=1.0)) for s in SENTENCES)]
+spoken = list(spoken_by.values())[0]
 
 report = []
 for repo, int8 in [(r, q) for r in MODELS for q in ([False, True] if QUANT else [False])]:
@@ -130,10 +131,11 @@ for repo, int8 in [(r, q) for r in MODELS for q in ([False, True] if QUANT else 
         real.append((want[n], run(rec, a, sr))); dur += len(a) / sr
     rtf = (time.time() - t) / max(dur, 1)
     app = [(s, run(rec, a, sr)) for s, a, sr in spoken]
+    per_voice = "  ".join(f"{k}: CER {score([(s, run(rec, a, sr)) for s, a, sr in v])[0]}%" for k, v in spoken_by.items())
     size = os.path.getsize(used) // 1000000
     report.append(f"{repo}  [{os.path.basename(used)}; {size} MB]\n"
                   f"  FLEURS (real people, {len(real)} clips): CER {score(real)[0]}%  WER {score(real)[1]}%  RTF {rtf:.3f}\n"
-                  f"  app sentences (Piper voice): CER {score(app)[0]}%  WER {score(app)[1]}%")
+                  f"  app sentences (Piper voice): CER {score(app)[0]}%  WER {score(app)[1]}%\n  by voice model: {per_voice}")
     for r, h in real[:2] + app:
         report.append(f"    want: {r}\n    got:  {h}")
 out = "\n".join(report)

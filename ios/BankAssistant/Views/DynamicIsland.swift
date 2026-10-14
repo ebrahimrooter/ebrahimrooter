@@ -65,7 +65,11 @@ final class IslandCenter {
     static let shared = IslandCenter()
 
     private(set) var note: IslandNote?
-    fileprivate var drop = Spring1(), expand = Spring1(), reveal = Spring1(), tint = Spring1(), drag = Spring1()
+    fileprivate var drop = Spring1()
+    fileprivate var expand = Spring1()
+    fileprivate var reveal = Spring1()
+    fileprivate var tint = Spring1()
+    fileprivate var drag = Spring1()
     fileprivate var dragLive: CGFloat?
     private var queued: IslandNote?
     private(set) var exiting = false
