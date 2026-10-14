@@ -1,1 +1,1 @@
-speech_text=5/5 bundled=true tts=ok bytes=181052 ms=2331 phone_listen=false ear=true stt=ok stt_ms=373 heard=مجری کارت ملت چهار میلیون و دویست و پنجاه هزار توممن است
+speech_text=5/5 bundled=true tts=ok bytes=191490 ms=1232 phone_listen=false ear=true stt=ok stt_ms=133 heard=مججودری کارت ملت چهار میلیون و دویست و پنجاه هزار توممان است
