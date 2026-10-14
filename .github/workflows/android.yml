@@ -58,11 +58,16 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/bank.keystore"
       - name: Keep the APK and screenshots in the repo
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p server/app/android android/screenshots
           # only an APK signed with the real key is published
           if [ "${SIGNED:-0}" = 1 ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
+          # run by hand without the key: a test APK (machine debug key) for trying the app
+          if [ "${SIGNED:-0}" != 1 ] && [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            mkdir -p android/test-apk && cp android/app/build/outputs/apk/release/app-release.apk android/test-apk/bank-assistant-test.apk
+            git add android/test-apk
+          fi
           cp shots/*.png shots/voice-test.txt android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
