@@ -1,0 +1,21 @@
+name: Persian speech-to-text on the phone (model check)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install "sherpa-onnx==1.13.8" numpy
+      - run: sh tools/voice-model/fetch.sh /tmp/fa-voice
+      - run: FA_VOICE=/tmp/fa-voice python3 tools/voice-model/eval_stt.py /tmp/eval
+      - name: Keep the report
+        run: |
+          cp /tmp/eval/stt-report.txt tools/voice-model/stt-report.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/voice-model/stt-report.txt
+          git diff --cached --quiet || { git commit -m "Persian STT model check report [skip ci]" && for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done; }
