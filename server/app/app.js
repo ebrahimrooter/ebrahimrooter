@@ -55,6 +55,12 @@
 
   var toastTimer;
   function toast(msg) {
+    // Dynamic Island–style (vendor/island.js); the plain bar only if it is missing
+    if (window.Island) {
+      var ok = /ثبت شد|ذخیره شد|انجام شد|کپی شد|فرستاده شد|وصل شد/.test(msg), bad = /خطا|نشد|نمی|اشتباه|رد شد/.test(msg);
+      Island.trigger({ title: msg, icon: ok ? '✓' : bad ? '!' : 'i', accent: ok ? '#16A34A' : bad ? '#DC2626' : '#2F9BFF', duration: 2600 });
+      return;
+    }
     var el = document.getElementById('toast');
     el.textContent = msg;
     el.hidden = false;
@@ -1735,6 +1741,17 @@
   function orbShow(tx) {
     orbBuild();
     orb.tx = tx;
+    if (window.Island) {
+      var answer = function () { Voice.unlock(); askInCard(tx, true); };
+      Island.trigger({
+        title: (tx.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(tx.amount),
+        message: (tx.wallet_name ? tx.wallet_name + ' — ' : '') + 'بابت چی بود؟',
+        icon: tx.direction === 'in' ? '↓' : '↑', accent: tx.direction === 'in' ? '#16A34A' : '#DC2626',
+        duration: ORB_TIMEOUT, onPress: answer, actions: [{ label: 'جواب بده', onPress: answer }]
+      });
+      if (navigator.vibrate) navigator.vibrate(30);
+      return;
+    }
     var n = document.getElementById('orbNotif');
     document.getElementById('orbNBody').textContent =
       (tx.direction === 'in' ? 'واریز ' : 'برداشت ') + toman(tx.amount) + ' — بابت چی بود؟';
@@ -2004,7 +2021,7 @@
   function orbCheck() {
     if (!token() || document.hidden || orb.busy) return;
     var n = document.getElementById('orbNotif');
-    if (n && n.classList.contains('show')) return;
+    if (n && n.classList.contains('show') || window.Island && Island.active()) return;
     api('pending').then(function (d) {
       setBadge(d.items.length);
       var last = +store('ba_orb_last') || 0;

@@ -63,6 +63,14 @@ const check = (n, ok, x = '') => { console.log((ok ? '  ok   ' : '  FAIL ') + n 
   calls = await p.evaluate(() => __calls);
   check('voice: speaks with the app (no server) and listens with the phone', heard === 'سلام' && calls.includes('speak:آزمایش') && calls.includes('listen'), heard + ' ' + JSON.stringify(calls));
   check('settings: voice from the app itself', (await p.textContent('#permBox')).includes('از خود اپ'));
+  // Dynamic Island notification: falls out of the island, tap = its action, then it flows back
+  await p.evaluate(() => { window.__tapped = 0; Island.trigger({ title: 'واریز ۵۰۰٬۰۰۰ تومان', message: 'بانک ملی', duration: null, onPress: () => { window.__tapped++; } }); });
+  await p.waitForTimeout(1600);
+  const isl = await p.evaluate(() => { const c = document.querySelector('#island [role=status]'); const r = c.getBoundingClientRect(); return { text: c.textContent, op: +getComputedStyle(c).opacity, x: r.x + r.width / 2, y: r.y + r.height / 2, active: Island.active() }; });
+  check('island notification shown', isl.active && isl.op > 0.95 && isl.text.includes('۵۰۰٬۰۰۰'), JSON.stringify(isl));
+  await p.mouse.click(isl.x, isl.y);
+  await p.waitForTimeout(1600);
+  check('island: tap runs its action and it goes back', await p.evaluate(() => window.__tapped === 1 && !Island.active()));
   check('orb shown as off', (await p.textContent('#andBox')).includes('خاموش است'));
   // Android browser without the app: download card
   const c2 = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36' });
