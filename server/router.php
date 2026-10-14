@@ -65,6 +65,11 @@ if (strpos($path, '/app/') === 0 && strpos($path, '..') === false) {
         readfile(__DIR__ . '/app/index.html');
         return true;
     }
+    if ($path === '/app/android/bank-assistant.apk' && !is_file(__DIR__ . $path)) {
+        // too big for git (voice + speech-to-text inside): CI publishes it as a GitHub release
+        header('Location: https://github.com/ebrahimrooter/ebrahimrooter/releases/download/android-latest/bank-assistant.apk', true, 302);
+        return true;
+    }
     if (is_file(__DIR__ . $path)) {
         if (substr($path, -4) === '.apk') {
             header('Content-Type: application/vnd.android.package-archive');

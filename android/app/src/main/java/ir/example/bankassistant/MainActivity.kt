@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var web: WebView? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val speaker by lazy { Speaker(cacheDir) }   // the web app's answers in the app's own voice
+    private val webRecorder by lazy { Recorder(cacheDir) }   // the web app's questions for the app's own ear
     private var pendingWebPermission: PermissionRequest? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var startOrbWhenAllowed = false
@@ -83,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("demo_orb", false) == true) OrbService.start(this)
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("voice_test", false) == true) voiceTest()
         LocalVoice.warmUp(this)
+        LocalEar.warmUp(this)
     }
 
     /**
@@ -105,6 +107,20 @@ class MainActivity : AppCompatActivity() {
             val t = System.currentTimeMillis()
             val wav = runCatching { LocalVoice.wav(this@MainActivity, "بانک ملی، واریز ۷٬۰۰۰٬۰۰۰ تومان. بابت چی بود؟") }.getOrNull()
             val ms = System.currentTimeMillis() - t
+            var heard = "-"
+            var earMs = 0L
+            if (wav != null) {
+                // the app's own ear on the app's own voice (22.05 kHz → 16 kHz, as the microphone records)
+                val src = java.nio.ByteBuffer.wrap(wav, 44, wav.size - 44).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                val inRate = java.nio.ByteBuffer.wrap(wav, 24, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+                val n = src.remaining()
+                val out = FloatArray((n.toLong() * 16000 / inRate).toInt())
+                for (i in out.indices) out[i] = src.get(minOf(n - 1, (i.toLong() * inRate / 16000).toInt())) / 32768f
+                val t2 = System.currentTimeMillis()
+                heard = runCatching { LocalEar.transcribe(this@MainActivity, out) }.getOrNull() ?: "null"
+                earMs = System.currentTimeMillis() - t2
+            }
+            Log.i("VOICE_TEST", "ear=${LocalEar.bundled(this@MainActivity)} stt=${if ("ملی" in heard && "واریز" in heard) "ok" else "fail"} stt_ms=$earMs heard=$heard")
             Log.i("VOICE_TEST", "speech_text=$same/$total bundled=${LocalVoice.bundled(this@MainActivity)} " +
                 "tts=${if (wav != null && wav.size > 44 + 22050) "ok" else "fail"} bytes=${wav?.size ?: 0} ms=$ms " +
                 "phone_listen=${PhoneListen.available(this@MainActivity)}")
@@ -326,7 +342,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface fun stopSpeaking() = runOnUiThread { speaker.stop() }
 
         /** The phone's Persian recognizer can listen (no server needed). */
-        @JavascriptInterface fun canListen() = PhoneListen.available(this@MainActivity)
+        @JavascriptInterface fun canListen() = LocalEar.bundled(this@MainActivity) || PhoneListen.available(this@MainActivity)
 
         /** Listens once; then window.onAndroidHeard(id, text) — text null when it could not listen. */
         @JavascriptInterface fun listen(id: String) = runOnUiThread {
@@ -336,7 +352,11 @@ class MainActivity : AppCompatActivity() {
                 return@runOnUiThread
             }
             scope.launch {
-                val heard = PhoneListen.listen(this@MainActivity)
+                // the app's own recognizer first (no server, no Google), else the phone's
+                val heard = if (LocalEar.bundled(this@MainActivity)) withContext(Dispatchers.IO) {
+                    val wav = runCatching { webRecorder.record() }.getOrNull()
+                    if (wav == null) "" else try { LocalEar.transcribe(this@MainActivity, wav) } finally { wav.delete() }
+                } else PhoneListen.listen(this@MainActivity)
                 web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, " +
                     (if (heard == null) "null" else JSONObject.quote(heard)) + ")", null)
             }

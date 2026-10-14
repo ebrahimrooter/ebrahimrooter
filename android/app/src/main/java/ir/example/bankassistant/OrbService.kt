@@ -112,6 +112,7 @@ class OrbService : Service() {
         recorder = Recorder(cacheDir)
         speaker = Speaker(cacheDir)
         LocalVoice.warmUp(this)
+        LocalEar.warmUp(this)
         channels()
     }
 
@@ -366,8 +367,9 @@ class OrbService : Service() {
                     next = null
                 } else {
                     set(Phase.LISTENING, "بگو؛ مثلاً «فروش امروز چقدر بود؟»")
-                    // 1) the phone's own Persian recognizer (no server); 2) the server's speech-to-text
-                    val phone = if (prefs.phoneListen && PhoneListen.available(this@OrbService))
+                    // 1) the app's own Persian recognizer; 2) the phone's (Google); 3) the server's speech-to-text
+                    val inApp = LocalEar.bundled(this@OrbService)
+                    val phone = if (!inApp && prefs.phoneListen && PhoneListen.available(this@OrbService))
                         PhoneListen.listen(this@OrbService) { l -> orb.level = l; cardOrb.level = l } else null
                     orb.level = 0f; cardOrb.level = 0f
                     if (phone != null) {
@@ -389,7 +391,7 @@ class OrbService : Service() {
                         }
                         set(Phase.PROCESSING, "در حال فکر کردن…")
                         heard = try {
-                            withContext(Dispatchers.IO) { api.transcribe(wav) }
+                            withContext(Dispatchers.IO) { LocalEar.transcribe(this@OrbService, wav) ?: api.transcribe(wav) }
                         } catch (e: ApiException) {
                             if (e.code == 401) throw e
                             throw ApiException("تشخیص گفتار فارسی روی این گوشی نیست (برنامه‌ی Google را نصب و به‌روز کن) و سرور هم صدای فارسی ندارد.", 0)

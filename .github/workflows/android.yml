@@ -39,8 +39,8 @@ jobs:
         run: |
           cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
           ls -la app/build/outputs/apk/*/*.apk
-          # GitHub keeps files up to 100 MB (and people download this on a phone)
-          [ "$(stat -c %s app/build/outputs/apk/release/app-release.apk)" -lt 95000000 ] || { echo "::error::release APK too big"; exit 1; }
+          # GitHub releases keep files up to 2 GB; keep the download reasonable for a phone
+          [ "$(stat -c %s app/build/outputs/apk/release/app-release.apk)" -lt 300000000 ] || { echo "::error::release APK too big"; exit 1; }
       - name: Demo server (sample books)
         run: sh tools/demo/run.sh /tmp/demo
       - name: Enable KVM
@@ -61,21 +61,24 @@ jobs:
       - name: Remove the signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/bank.keystore"
-      - name: Keep the APK and screenshots in the repo
+      - name: Publish the APK (GitHub release android-latest; too big for git)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk bank-assistant.apk
+          if [ "${SIGNED:-0}" = 1 ]; then NOTE="Signed with the app key: installs over the previous version."; else NOTE="Signed with a temporary key (the ANDROID_KEYSTORE_B64 secret is missing): uninstall the old app first."; fi
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --prerelease --title "Android app (latest build)" --notes "$NOTE" --target "$GITHUB_SHA"
+          gh release edit android-latest --notes "$NOTE ($(date -u +%Y-%m-%d) ${GITHUB_SHA:0:7})"
+          gh release upload android-latest bank-assistant.apk --clobber
+      - name: Keep the screenshots in the repo
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
-          mkdir -p server/app/android android/screenshots
-          # only an APK signed with the real key is published
-          if [ "${SIGNED:-0}" = 1 ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
-          # run by hand without the key: a test APK (machine debug key) for trying the app
-          if [ "${SIGNED:-0}" != 1 ] && [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            mkdir -p android/test-apk && cp android/app/build/outputs/apk/release/app-release.apk android/test-apk/bank-assistant-test.apk
-            git add android/test-apk
-          fi
+          mkdir -p android/screenshots
           cp shots/*.png shots/voice-test.txt android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/app/android/bank-assistant.apk android/screenshots
+          git add android/screenshots
           git diff --cached --quiet && exit 0
-          git commit -m "Android APK and emulator screenshots [skip ci]"
+          git commit -m "Android emulator screenshots [skip ci]"
           for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done

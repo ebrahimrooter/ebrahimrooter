@@ -7,6 +7,11 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
@@ -95,6 +100,73 @@ object LocalVoice {
         h.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(rate).putInt(rate * 2).putShort(2).putShort(16)
         h.put("data".toByteArray()).putInt(data.size)
         return ByteArrayOutputStream(44 + data.size).apply { write(h.array()); write(data) }.toByteArray()
+    }
+}
+
+/**
+ * Persian speech-to-text inside the app, no server and no Google needed: Shenava
+ * Koochik (FastConformer CTC, Apache-2.0, int8) through sherpa-onnx, the model in
+ * assets/fa-ear (tools/voice-model/fetch.sh android). Checked on real voices:
+ * tools/voice-model/stt-report.txt.
+ */
+object LocalEar {
+    private const val TAG = "LocalEar"
+    private const val DIR = "fa-ear"
+    @Volatile private var rec: OfflineRecognizer? = null
+    @Volatile private var failed = false
+    private val lock = Any()
+
+    fun bundled(c: Context): Boolean =
+        runCatching { c.assets.list(DIR)?.let { "model.onnx" in it && "tokens.txt" in it } == true }.getOrDefault(false)
+
+    private fun engine(c: Context): OfflineRecognizer? {
+        rec?.let { return it }
+        if (failed || !bundled(c)) return null
+        synchronized(lock) {
+            rec?.let { return it }
+            return try {
+                val cfg = OfflineRecognizerConfig(
+                    featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
+                    modelConfig = OfflineModelConfig(nemo = OfflineNemoEncDecCtcModelConfig("$DIR/model.onnx"),
+                        tokens = "$DIR/tokens.txt", numThreads = 2, debug = false, provider = "cpu"))
+                OfflineRecognizer(assetManager = c.assets, config = cfg).also { rec = it }
+            } catch (t: Throwable) {
+                Log.w(TAG, "local speech-to-text not available", t)
+                failed = true
+                null
+            }
+        }
+    }
+
+    fun warmUp(c: Context) {
+        if (bundled(c)) Thread { engine(c.applicationContext) }.start()
+    }
+
+    /** Text of 16 kHz mono samples (-1…1), or null when the model is not in the app. Blocking. */
+    fun transcribe(c: Context, samples: FloatArray): String? {
+        val e = engine(c.applicationContext) ?: return null
+        // 0.3 s of silence before and 0.6 s after: without it the last word gets lost
+        val padded = FloatArray(4800 + samples.size + 9600)
+        System.arraycopy(samples, 0, padded, 4800, samples.size)
+        return synchronized(lock) {
+            val s = e.createStream()
+            try {
+                s.acceptWaveform(padded, 16000)
+                e.decode(s)
+                e.getResult(s).text.trim()
+            } finally { s.release() }
+        }
+    }
+
+    /** Text of a Recorder WAV (16 kHz mono 16-bit). */
+    fun transcribe(c: Context, wav: File): String? {
+        if (!bundled(c)) return null
+        val b = wav.readBytes()
+        if (b.size <= 44) return ""
+        val bb = ByteBuffer.wrap(b, 44, b.size - 44).order(ByteOrder.LITTLE_ENDIAN)
+        val out = FloatArray((b.size - 44) / 2)
+        for (i in out.indices) out[i] = bb.short / 32768f
+        return transcribe(c, out)
     }
 }
 
