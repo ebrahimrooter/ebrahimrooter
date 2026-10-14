@@ -30,6 +30,16 @@ enum LocalMode {
         UserDefaults.standard.string(forKey: "baleBase") ?? "https://tapi.bale.ai"
     }
 
+    /// Test builds: what happened, in Application Support/local-debug.txt (read by CI).
+    static func debug(_ line: String) {
+        #if DEBUG
+        NSLog("LOCAL_MODE %@", line)
+        let f = booksURL.deletingLastPathComponent().appendingPathComponent("local-debug.txt")
+        if let h = try? FileHandle(forWritingTo: f) { h.seekToEndOfFile(); h.write(Data((line + "\n").utf8)); try? h.close() }
+        else { try? Data((line + "\n").utf8).write(to: f) }
+        #endif
+    }
+
     static var booksURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -86,12 +96,15 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
             Task { @MainActor in
                 let data: Data
                 do { data = try await LocalMode.bale(method, json: Data(q.utf8)) } catch {
+                    LocalMode.debug("bale \(method) failed: \(error)")
                     data = (try? JSONSerialization.data(withJSONObject: ["ok": false, "description": error.localizedDescription])) ?? Data()
                 }
+                LocalMode.debug("bale \(method) -> \(data.count) bytes")
                 self.respond(task, data, mime: "application/json")
             }
             return
         }
+        LocalMode.debug("load \(path)")
         guard let root, let file = Optional(root.appendingPathComponent(path)),
               file.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path),
               let data = try? Data(contentsOf: file) else {
@@ -135,7 +148,11 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
         let id = m["id"] as? String ?? ""
         switch op {
         case "save":
-            if let s = m["data"] as? String { try? Data(s.utf8).write(to: LocalMode.booksURL, options: .atomic) }
+            if let s = m["data"] as? String {
+                do { try Data(s.utf8).write(to: LocalMode.booksURL, options: .atomic) } catch { LocalMode.debug("save failed: \(error)") }
+            }
+        case "log":
+            LocalMode.debug("page: \(m["text"] as? String ?? "")")
         case "saveFile":
             guard let name = m["name"] as? String, let b64 = m["b64"] as? String, let data = Data(base64Encoded: b64) else { return done(id, false, "فایل خراب بود") }
             let f = FileManager.default.temporaryDirectory.appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"))
@@ -208,6 +225,8 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
         return """
         (function () {
           var post = function (o) { window.webkit.messageHandlers.ba.postMessage(o); };
+          window.addEventListener('error', function (e) { post({ op: 'log', text: 'error: ' + e.message + ' @ ' + e.filename + ':' + e.lineno }); });
+          window.addEventListener('unhandledrejection', function (e) { post({ op: 'log', text: 'rejection: ' + (e.reason && e.reason.message || e.reason) }); });
           var books = \(books);
           window.BANative = {
             load: function () { return books; },

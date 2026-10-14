@@ -82,6 +82,8 @@ jobs:
           print("local=" + ("ok" if ok else "fail"), "chat=", s.get("bale", {}).get("chat_id"), "txs=", len(s.get("txs", [])), "last_error=", s.get("bale", {}).get("last_error"))
           PY
           grep -E "^(sendMessage|editMessageReplyMarkup|answerCallbackQuery)" /tmp/fakebale.log | cut -c1-120 | tee -a shots/local-test.txt || true
+          echo "--- pretend Bale from the Mac:"; curl -s -m 5 -H 'Content-Type: application/json' -d '{}' http://localhost:8841/bot1:x/getMe || echo "not reachable"
+          echo "--- app:"; head -60 "$DATA/Library/Application Support/local-debug.txt" | tee -a shots/local-test.txt || true
           grep -q "local=ok" shots/local-test.txt || { echo "::error::local mode test failed"; xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'process == "BankAssistant"' | grep -i -E "bankapp|webkit|local|bale|error" | tail -40; exit 1; }
           xcrun simctl launch "$UDID" com.apple.Preferences || true
           sleep 5
