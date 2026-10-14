@@ -20,15 +20,8 @@ SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
   Require all denied
 </FilesMatch>
 
-# the Android app download (app/android/bank-assistant.apk). The APK carries the Persian
-# voice and speech-to-text (~200 MB), too big for git: CI publishes it as a GitHub release;
-# put a copy at app/android/bank-assistant.apk to serve it yourself, else the link goes there.
+# the Android app download (app/android/bank-assistant.apk)
 AddType application/vnd.android.package-archive .apk
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteRule ^app/android/bank-assistant\.apk$ https://github.com/ebrahimrooter/ebrahimrooter/releases/download/android-latest/bank-assistant.apk [R=302,L]
-</IfModule>
 
 # Security headers (same list as router.php for the built-in server)
 <IfModule mod_headers.c>

@@ -18,25 +18,31 @@ case "$1" in
 esac
 get() { [ -s "$CACHE/$2" ] || curl -fsSL --retry 3 -o "$CACHE/$2" "$1"; }
 # Persian speech-to-text inside the apps (iOS has no Persian recognizer; Android's needs
-# Google): Shenava Koochik, Apache-2.0, int8 (131 MB). NO_EAR=1 skips it (then the
-# phone's / the server's speech-to-text is used).
+# Google): Shenava (Apache-2.0), quantized to int8. iPhone: Koochik (131 MB, ~12% word
+# errors on real voices); Android: Rizeh (38 MB, ~17%) so the APK stays under 100 MB.
+# NO_EAR=1 skips it (then the phone's / the server's speech-to-text is used).
+#   ear DIR Koochik|Rizeh
 ear() {
   [ "${NO_EAR:-0}" = 1 ] && return 0
-  HFM=https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx/resolve/main
-  if [ ! -s "$CACHE/ear-int8.onnx" ]; then
-    get "$HFM/model.onnx" ear-fp32.onnx
+  HFM=https://huggingface.co/Reza2kn/Shenava-$2-v1.0-sherpa-onnx/resolve/main
+  if [ ! -s "$CACHE/ear-$2-int8.onnx" ]; then
+    get "$HFM/model.onnx" ear-$2-fp32.onnx
     [ -d "$CACHE/venv" ] || { python3 -m venv "$CACHE/venv" && "$CACHE/venv/bin/pip" -q install onnx onnxruntime; }
-    "$CACHE/venv/bin/python" tools/voice-model/quantize.py "$CACHE/ear-fp32.onnx" "$CACHE/ear-int8.onnx"
+    "$CACHE/venv/bin/python" tools/voice-model/quantize.py "$CACHE/ear-$2-fp32.onnx" "$CACHE/ear-$2-int8.onnx"
   fi
-  get "$HFM/tokens.txt" ear-tokens.txt
-  get "$HFM/LICENSE" ear-LICENSE
+  get "$HFM/tokens.txt" ear-$2-tokens.txt
+  get "$HFM/LICENSE" ear-$2-LICENSE
   rm -rf "$1" && mkdir -p "$1"
-  cp "$CACHE/ear-int8.onnx" "$1/model.onnx"; cp "$CACHE/ear-tokens.txt" "$1/tokens.txt"; cp "$CACHE/ear-LICENSE" "$1/LICENSE"
-  echo "speech-to-text: $1 ($(du -sh "$1" | cut -f1))"
+  cp "$CACHE/ear-$2-int8.onnx" "$1/model.onnx"; cp "$CACHE/ear-$2-tokens.txt" "$1/tokens.txt"; cp "$CACHE/ear-$2-LICENSE" "$1/LICENSE"
+  echo "speech-to-text ($2): $1 ($(du -sh "$1" | cut -f1))"
 }
-get "$REL/tts-models/vits-piper-fa_IR-amir-medium.tar.bz2" voice.tar.bz2
-rm -rf "$CACHE/x" && mkdir -p "$CACHE/x" && tar xjf "$CACHE/voice.tar.bz2" -C "$CACHE/x"
-SRC="$CACHE/x/vits-piper-fa_IR-amir-medium"
+# Android: the int8 voice (18 MB instead of 63; as clear to the recognizer:
+# tools/voice-model/stt-report.txt), so the APK fits in git and on your own server
+V=vits-piper-fa_IR-amir-medium
+[ "$1" = android ] && V=$V-int8
+get "$REL/tts-models/$V.tar.bz2" $V.tar.bz2
+rm -rf "$CACHE/x" && mkdir -p "$CACHE/x" && tar xjf "$CACHE/$V.tar.bz2" -C "$CACHE/x"
+SRC="$CACHE/x/$V"
 rm -rf "$OUT" && mkdir -p "$OUT/espeak-ng-data"
 cp "$SRC/fa_IR-amir-medium.onnx" "$SRC/tokens.txt" "$SRC/MODEL_CARD" "$OUT/"
 for f in phondata phonindex phontab intonations fa_dict lang voices; do cp -r "$SRC/espeak-ng-data/$f" "$OUT/espeak-ng-data/"; done
@@ -46,9 +52,9 @@ if [ "$1" = android ]; then
   mkdir -p android/app/libs && cp "$CACHE/sherpa-onnx-$VER.aar" android/app/libs/sherpa-onnx.aar
   cp tools/voice-model/speech_cases.json android/app/src/main/assets/speech_cases.json
   echo "sherpa-onnx $VER: android/app/libs/sherpa-onnx.aar"
-  ear android/app/src/main/assets/fa-ear
+  ear android/app/src/main/assets/fa-ear Rizeh
 fi
 if [ "$1" = ios ]; then
   cp tools/voice-model/speech_cases.json "$OUT/speech_cases.json"   # for the -voicetest self-check
-  ear ios/BankAssistant/Resources/FaEar
+  ear ios/BankAssistant/Resources/FaEar Koochik
 fi

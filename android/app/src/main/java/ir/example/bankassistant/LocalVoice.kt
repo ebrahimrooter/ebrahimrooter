@@ -105,7 +105,8 @@ object LocalVoice {
 
 /**
  * Persian speech-to-text inside the app, no server and no Google needed: Shenava
- * Koochik (FastConformer CTC, Apache-2.0, int8) through sherpa-onnx, the model in
+ * Rizeh (FastConformer CTC, Apache-2.0, int8, 38 MB; the iPhone has the bigger Koochik)
+ * through sherpa-onnx, the model in
  * assets/fa-ear (tools/voice-model/fetch.sh android). Checked on real voices:
  * tools/voice-model/stt-report.txt.
  */
