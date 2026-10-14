@@ -62,6 +62,14 @@ struct RootView: View {
                 }
             }
         }
+        .task {
+            // simulator screenshot of the island notification (-demo -sheet island)
+            guard Demo.enabled, Demo.sheet == "island" else { return }
+            try? await Task.sleep(for: .seconds(2))
+            var n = AppDelegate.islandNote(title: "🔴 برداشت ۲۵۰٬۰۰۰ تومان", body: "بانک ملت — بابت چی بود؟", tx: 1, otpCard: nil)
+            n.duration = nil
+            IslandCenter.shared.trigger(n)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .deviceUnpaired)) { _ in
             store.reset()
             paired = false

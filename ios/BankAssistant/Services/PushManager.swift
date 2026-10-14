@@ -1,3 +1,4 @@
+import SwiftUI
 import Observation
 import UIKit
 import UserNotifications
@@ -52,6 +53,19 @@ final class PushManager {
 
     /// A short local notice after answering from the notification.
     nonisolated static func notice(_ title: String, _ body: String) {
+        // app on screen: out of the island; otherwise a normal notification
+        Task { @MainActor in
+            if UIApplication.shared.applicationState == .active {
+                var n = IslandNote(title: title, message: body)
+                if title.contains("✅") { n.symbol = "checkmark"; n.accent = Color(red: 0.09, green: 0.64, blue: 0.29); n.title = title.replacingOccurrences(of: "✅", with: "").trimmingCharacters(in: .whitespaces) }
+                IslandCenter.shared.trigger(n)
+                return
+            }
+            post(title, body)
+        }
+    }
+
+    nonisolated private static func post(_ title: String, _ body: String) {
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body

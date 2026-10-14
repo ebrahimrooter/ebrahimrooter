@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import UserNotifications
 
@@ -58,9 +59,35 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     // shown also while the app is open; the books are refreshed
+    /// While the app is open the notification comes out of the island (DynamicIsland.swift), not as a banner.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         await FinanceStore.shared.refresh()
-        return [.banner, .sound, .list]
+        let c = notification.request.content
+        let info = c.userInfo
+        let txID = (info["tx_id"] as? NSNumber)?.intValue ?? (info["tx_id"] as? Int)
+        let otpCard = (info["card_otp"] as? NSNumber)?.intValue ?? (info["card_otp"] as? Int)
+        await MainActor.run {
+            IslandCenter.shared.trigger(Self.islandNote(title: c.title, body: c.body, tx: txID, otpCard: otpCard))
+        }
+        return [.sound, .list]
+    }
+
+    @MainActor static func islandNote(title: String, body: String, tx: Int?, otpCard: Int?) -> IslandNote {
+        let isIn = title.contains("واریز") || title.contains("🟢")
+        let isOut = title.contains("برداشت") || title.contains("🔴")
+        let clean = title.replacingOccurrences(of: "🟢", with: "").replacingOccurrences(of: "🔴", with: "").trimmingCharacters(in: .whitespaces)
+        var n = IslandNote(title: clean, message: body)
+        if otpCard != nil {
+            n.symbol = "key.fill"; n.accent = Color(red: 0.55, green: 0.36, blue: 0.96); n.duration = 8; n.action = "ببین"
+        } else if isIn || isOut {
+            n.symbol = isIn ? "arrow.down" : "arrow.up"
+            n.accent = isIn ? Color(red: 0.09, green: 0.64, blue: 0.29) : Color(red: 0.86, green: 0.15, blue: 0.15)
+            n.duration = 7; n.action = "جواب بده"
+        }
+        n.onPress = {
+            if let otpCard { PushManager.shared.openCardOTP = otpCard } else if let tx { PushManager.shared.openTx = tx }
+        }
+        return n
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

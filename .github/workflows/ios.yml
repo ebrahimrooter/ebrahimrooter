@@ -53,6 +53,7 @@ jobs:
           shot 12-cards -demo -sheet stack
           shot 13-card-orb -demo -sheet card
           shot 14-card-otp -demo -sheet otp
+          shot 15-island -demo -sheet island
           shot 5-assistant -demo -sheet assistant
           shot 6-confirm -demo -sheet tx
           shot 7-manual -demo -sheet manual
