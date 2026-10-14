@@ -36,7 +36,11 @@ jobs:
           BANK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           BANK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BANK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
+        run: |
+          cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
+          ls -la app/build/outputs/apk/*/*.apk
+          # GitHub keeps files up to 100 MB (and people download this on a phone)
+          [ "$(stat -c %s app/build/outputs/apk/release/app-release.apk)" -lt 95000000 ] || { echo "::error::release APK too big"; exit 1; }
       - name: Demo server (sample books)
         run: sh tools/demo/run.sh /tmp/demo
       - name: Enable KVM

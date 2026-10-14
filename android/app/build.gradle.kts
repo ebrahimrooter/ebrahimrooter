@@ -13,11 +13,11 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "1.1"
-        // the app's own Persian voice (sherpa-onnx): phones are arm, x86_64 for the emulator
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
     // the voice model is read straight from the APK
     androidResources { noCompress += listOf("onnx") }
+    // native libraries compressed in the APK (onnxruntime: 22 MB → ~8 MB); unpacked on install
+    packaging { jniLibs { useLegacyPackaging = true } }
 
     // One fixed key so a new APK installs over the old one (sideloaded app, not Play Store).
     // The key is never in the repository: CI writes it from the ANDROID_KEYSTORE_B64 secret,
@@ -35,8 +35,14 @@ android {
     }
     buildTypes {
         // without the key: the machine's own debug key (fine for trying it, not for updates)
-        getByName("debug") { if (ks != null) signingConfig = signingConfigs.getByName("sideload") }
+        // the voice engine is ~30 MB per processor type: phones (arm64) only in the release APK,
+        // plus x86_64 for the emulator in the debug one
+        getByName("debug") {
+            if (ks != null) signingConfig = signingConfigs.getByName("sideload")
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
         getByName("release") {
+            ndk { abiFilters += listOf("arm64-v8a") }
             isMinifyEnabled = false
             signingConfig = if (ks != null) signingConfigs.getByName("sideload") else signingConfigs.getByName("debug")
         }
