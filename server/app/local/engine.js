@@ -25,6 +25,8 @@
   var SEP = '──────────';
   var N = window.BANative || null;
   var realFetch = window.fetch.bind(window);
+  /** Test builds of the iPhone app keep these lines (Application Support/local-debug.txt). */
+  function log(m) { try { if (N && N.log) N.log(String(m)); } catch (e) { /* no log */ } }
 
   /* ---------------------------------------------------------------- books */
 
@@ -401,6 +403,7 @@
 
   // XMLHttpRequest, not fetch: WKWebView's fetch does not reach a custom scheme (bankapp://)
   function bale(method, params) {
+    log('bale → ' + method);
     return new Promise(function (resolve, reject) {
       var x = new XMLHttpRequest();
       x.open('GET', '/__bale/' + method + '?q=' + encodeURIComponent(JSON.stringify(params || {})));
@@ -411,7 +414,7 @@
         if (!d || !d.ok) reject(new Error((d && d.description) || 'بله جواب نداد'));
         else resolve(d.result);
       };
-      x.onerror = function () { reject(new Error('بله در دسترس نیست')); };
+      x.onerror = function () { log('bale ' + method + ' xhr error ' + x.status); reject(new Error('بله در دسترس نیست')); };
       x.ontimeout = function () { reject(new Error('بله جواب نداد (وقت تمام شد)')); };
       x.send();
     });
@@ -528,6 +531,7 @@
         return newCount;
       });
     }, function (e) {
+      log('sync failed: ' + e.message);
       S.bale.last_error = e.message;
       save();
       throw e;
@@ -743,7 +747,9 @@
     backupBytes: backupBytes, restore: restore, state: function () { return S; }, ingest: ingest, bale: bale
   };
   saveNow();   // the books exist on the phone from the first start
+  log('engine ready, ' + document.readyState + ', hidden=' + document.hidden);
   document.addEventListener('DOMContentLoaded', function () {
+    log('DOMContentLoaded');
     bale('getMe', {}).then(function (me) { S.bale.bot = me && me.username ? '@' + me.username : null; save(); }).catch(function () {});
     startSync();
   });

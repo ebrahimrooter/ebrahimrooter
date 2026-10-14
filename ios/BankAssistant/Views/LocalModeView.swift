@@ -233,7 +233,8 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
             save: function (s) { books = s; post({ op: 'save', data: s }); },
             saveFile: function (id, name, mime, b64) { post({ op: 'saveFile', id: id, name: name, mime: mime, b64: b64 }); },
             sendDocument: function (id, chat, name, b64, caption) { post({ op: 'sendDocument', id: id, chat: chat, name: name, b64: b64, caption: caption }); },
-            changeMode: function () { post({ op: 'changeMode' }); }
+            changeMode: function () { post({ op: 'changeMode' }); },
+            log: function (t) { post({ op: 'log', text: t }); }
           };
           window.NativeVoice = {
             localVoice: function () { return \(voice); },
