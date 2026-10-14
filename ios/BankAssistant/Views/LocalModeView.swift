@@ -16,7 +16,15 @@ enum LocalMode {
         get { UserDefaults.standard.bool(forKey: flagKey) }
         set { UserDefaults.standard.set(newValue, forKey: flagKey) }
     }
-    static var token: String? { KeychainStore.get(tokenKey) }
+    static var token: String? {
+        if let t = KeychainStore.get(tokenKey) { return t }
+        #if DEBUG
+        // tests: an unsigned simulator build has no Keychain (-localToken X)
+        return UserDefaults.standard.string(forKey: "localToken")
+        #else
+        return nil
+        #endif
+    }
     /// Only for tests (a pretend Bale: -baleBase http://localhost:8841).
     static var base: String {
         UserDefaults.standard.string(forKey: "baleBase") ?? "https://tapi.bale.ai"

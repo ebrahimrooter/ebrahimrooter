@@ -126,7 +126,7 @@ class MainActivity : AppCompatActivity() {
                 heard = runCatching { LocalEar.transcribe(this@MainActivity, out) }.getOrNull() ?: "null"
                 earMs = System.currentTimeMillis() - t2
             }
-            Log.i("VOICE_TEST", "ear=${LocalEar.bundled(this@MainActivity)} stt=${if ("ملی" in heard && "واریز" in heard) "ok" else "fail"} stt_ms=$earMs heard=$heard")
+            Log.i("VOICE_TEST", "ear=${LocalEar.bundled(this@MainActivity)} stt=${if ("ملی" in heard && "میلیون" in heard) "ok" else "fail"} stt_ms=$earMs heard=$heard")
             Log.i("VOICE_TEST", "speech_text=$same/$total bundled=${LocalVoice.bundled(this@MainActivity)} " +
                 "tts=${if (wav != null && wav.size > 44 + 22050) "ok" else "fail"} bytes=${wav?.size ?: 0} ms=$ms " +
                 "phone_listen=${PhoneListen.available(this@MainActivity)}")

@@ -66,12 +66,15 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/bank.keystore"
       - name: Keep the APK and screenshots in the repo
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
           mkdir -p server/app/android android/screenshots
           # the real key when the ANDROID_KEYSTORE_B64 secret is set; otherwise a temporary one
           # (then a later signed build needs one uninstall)
-          cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk
+          # the APK only from a run whose tests passed; screenshots always (to see what went wrong)
+          if [ "$JOB_STATUS" = success ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
           cp shots/*.png shots/voice-test.txt shots/local-test.txt android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
