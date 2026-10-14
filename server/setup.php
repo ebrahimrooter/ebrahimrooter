@@ -20,16 +20,18 @@ if ($missing) {
 }
 
 if (!is_file($cfgFile)) {
-    $app = bin2hex(random_bytes(4));          // short enough to type on a phone
+    $app = bin2hex(random_bytes(6));          // 12 characters: still easy to type on a phone
     $dev = bin2hex(random_bytes(16));
-    $pin = (string)random_int(1000, 9999);
+    $pin = (string)random_int(100000, 999999);
+    $bkp = bin2hex(random_bytes(10));         // backups (and the Excel copy) are locked with it
     $sample = file_get_contents(__DIR__ . '/config.sample.php');
-    $sample = str_replace(["'CHANGE-ME-app'", "'CHANGE-ME-device'", "'otp_pin' => ''"],
-        ["'$app'", "'$dev'", "'otp_pin' => '$pin'"], $sample);
+    $sample = str_replace(["'CHANGE-ME-app'", "'CHANGE-ME-device'", "'otp_pin' => ''", "'backup_password' => ''"],
+        ["'$app'", "'$dev'", "'otp_pin' => '$pin'", "'backup_password' => '$bkp'"], $sample);
     $sample = str_replace("'https://example.com/bank/app/'", "'http://localhost:$port/app/'", $sample);
     $sample = str_replace("'https://example.com/bank/api.php'", "'http://localhost:$port/api.php'", $sample);
     file_put_contents($cfgFile, $sample);
-    echo "config.php created.\n";
+    @chmod($cfgFile, 0600);
+    echo "config.php created (passwords below; also inside server/config.php).\n";
 }
 $cfg = require $cfgFile;
 if (!is_dir(__DIR__ . '/data')) {
@@ -50,8 +52,12 @@ foreach ($ips as $i) {
     echo " On your phone:     http://$i:$port/app/   (same Wi-Fi)\n";
 }
 echo " App password:      {$cfg['app_token']}\n";
+echo " Panel login:       user admin, password = app password (change it in the panel)\n";
 echo " OTP PIN:           " . ($cfg['otp_pin'] ?? '') . "\n";
-echo "\n Put these in the ESP32 sketch (sms_forwarder.ino):\n";
+echo " Backup password:   " . ($cfg['backup_password'] ?? '') . "   (opens backups and the Excel file)\n";
+echo " Data folder:       " . realpath(__DIR__ . '/data') . "   (copy it to keep everything)\n";
+echo "\n ESP32 on the same Wi-Fi - sketch sms_forwarder.ino (the SIM-internet sketch gprs_forwarder\n";
+echo " cannot reach a computer at home; for that use a server on the internet: deploy-vps.sh):\n";
 echo "   SERVER_URL    = \"http://$ip:$port/api.php?r=ingest\"\n";
 echo "   HEARTBEAT_URL = \"http://$ip:$port/api.php?r=heartbeat\"\n";
 echo "   DEVICE_TOKEN  = \"{$cfg['device_token']}\"\n";

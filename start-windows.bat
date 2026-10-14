@@ -1,6 +1,6 @@
 @echo off
 rem Bank assistant - run on this Windows computer (no host needed).
-rem Needs PHP for Windows extracted into the "php" folder next to this file.
+rem Double-click it. The first time it downloads PHP for Windows into the "php" folder.
 setlocal
 cd /d "%~dp0"
 set PORT=8080
@@ -9,15 +9,37 @@ chcp 65001 >nul
 
 if not exist "%PHPEXE%" (
   echo.
-  echo  PHP not found.
+  echo  First run: downloading PHP for Windows into the "php" folder ^(about 30 MB^)...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $z=Join-Path $env:TEMP 'bank-php.zip';" ^
+    "foreach($u in @('https://windows.php.net/downloads/releases/latest/php-8.4-nts-Win32-vs17-x64-latest.zip','https://windows.php.net/downloads/releases/latest/php-8.3-nts-Win32-vs16-x64-latest.zip')){" ^
+    " try { Write-Host ('  ' + $u); Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; Expand-Archive -Force -Path $z -DestinationPath '%~dp0php'; Remove-Item $z; exit 0 } catch { Write-Host ('  failed: ' + $_.Exception.Message) } }; exit 1"
+)
+if not exist "%PHPEXE%" (
+  echo.
+  echo  PHP could not be downloaded automatically.
   echo  1. Open https://windows.php.net/download/
-  echo  2. Under the newest PHP 8.x, download the ZIP of "VS17 x64 Non Thread Safe"
+  echo  2. Under the newest PHP 8.x, download the ZIP of "x64 Non Thread Safe"
   echo  3. Extract it into this folder:  %~dp0php
   echo     so that this file exists:      %PHPEXE%
   echo  4. Run start-windows.bat again.
   echo.
   pause
   exit /b 1
+)
+
+rem PHP needs the Microsoft Visual C++ runtime; most Windows have it, install it if not
+"%PHPEXE%" -n -v >nul 2>&1
+if errorlevel 1 (
+  echo  Installing the Microsoft Visual C++ runtime that PHP needs...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'vc_redist.x64.exe'; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $f -UseBasicParsing; Start-Process $f -ArgumentList '/install','/passive','/norestart' -Wait"
+  "%PHPEXE%" -n -v >nul 2>&1
+  if errorlevel 1 (
+    echo  PHP still does not start. Install "Visual C++ Redistributable x64" from https://aka.ms/vs/17/release/vc_redist.x64.exe and try again.
+    pause
+    exit /b 1
+  )
 )
 
 set PHPOPT=-n -d "extension_dir=%~dp0php\ext" -d extension=pdo_sqlite -d extension=sqlite3 -d extension=curl -d extension=mbstring -d extension=openssl -d extension=sodium -d date.timezone=Asia/Tehran -d upload_max_filesize=20M -d post_max_size=25M -d display_errors=0 -d log_errors=1

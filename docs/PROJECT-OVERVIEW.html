@@ -377,6 +377,15 @@ sudo systemctl start bank-bot</pre>فایلی که از بله دانلود کر
   <li><b class="t">کلید امضای اندروید</b>دیگر در مخزن نیست. در GitHub ← Settings ← Secrets and variables ← Actions این‌ها را بساز: <code>ANDROID_KEYSTORE_B64</code> (محتوای فایل ANDROID_KEYSTORE_B64.txt)، <code>ANDROID_KEYSTORE_PASSWORD</code>، <code>ANDROID_KEY_ALIAS</code> = sideload. تا این کار نشود APK جدید منتشر نمی‌شود. با کلید تازه اپ اندروید یک بار باید حذف و دوباره نصب شود.</li>
 </ol>
 
+<h2 id="local">۱۷. اجرا روی کامپیوتر خودت <small>بدون هاست</small></h2>
+<ol class="steps">
+  <li><b class="t">ویندوز</b>روی <code>start-windows.bat</code> دوبار کلیک کن؛ بار اول PHP خودش دانلود می‌شود. مرورگر روی <code>http://localhost:8080/app/</code> باز می‌شود و رمزها در پنجره نوشته شده‌اند.</li>
+  <li><b class="t">مک / لینوکس</b>مک: <code>brew install php</code> و دوبار کلیک روی <code>start-mac.command</code>. لینوکس: <code>sh start.sh</code>.</li>
+  <li><b class="t">گوشی و ESP32</b>روی همان Wi-Fi: <code>http://IP-کامپیوتر:8080/app/</code>؛ ESP32 با فریمور <code>sms_forwarder</code> (Wi-Fi). اپ اندروید و آیفون هم با همین آدرس وصل می‌شوند.</li>
+  <li><b class="t">ربات بله و پشتیبان</b>پنجره‌ی «jobs and Bale bot» پیام‌های بله را می‌گیرد (دامنه لازم نیست) و هر شب پشتیبان و فایل اکسل را می‌فرستد.</li>
+  <li><b class="t">محدودیت</b>میکروفون وب‌اپ در مرورگر گوشی https می‌خواهد؛ روی کامپیوتر خانه از اپ اندروید/آیفون یا ویس بله استفاده کن. ESP32 با اینترنت سیم‌کارت به کامپیوتر خانه نمی‌رسد. راهنمای کامل: <code>LOCAL-README.txt</code>.</li>
+</ol>
+
 <div class="foot">دستیار بانک و حسابداری · نسخه‌ی مهر ۱۴۰۵</div>
 </div>
 </body>

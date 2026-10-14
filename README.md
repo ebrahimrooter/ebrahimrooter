@@ -29,7 +29,7 @@
 | `server/cron.php` | گزارش هفتگی مغایرت، یادآوری روزانه، پایش سلامت دستگاه، اتصال ربات بله. |
 | `server/app/` | اپ گوشی (مثل اپ مدیریت باغکار، با «افزودن به صفحه اصلی» نصب می‌شود). |
 | `server/tests/run.php` | تست خودکار: `php server/tests/run.php` |
-| `start-windows.bat` / `start.sh` | اجرای همه‌چیز روی کامپیوتر خودت، بدون هاست |
+| `start-windows.bat` / `start-mac.command` / `start.sh` | اجرای همه‌چیز روی کامپیوتر خودت، بدون هاست (راهنما: [`LOCAL-README.txt`](LOCAL-README.txt)) |
 
 ## دو بخش برنامه 📱💻
 
