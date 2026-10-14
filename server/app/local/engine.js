@@ -399,13 +399,22 @@
 
   /* ---------------------------------------------------------------- Bale */
 
+  // XMLHttpRequest, not fetch: WKWebView's fetch does not reach a custom scheme (bankapp://)
   function bale(method, params) {
-    return realFetch('/__bale/' + method + '?q=' + encodeURIComponent(JSON.stringify(params || {})), { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.ok) throw new Error((d && d.description) || 'بله جواب نداد');
-        return d.result;
-      });
+    return new Promise(function (resolve, reject) {
+      var x = new XMLHttpRequest();
+      x.open('GET', '/__bale/' + method + '?q=' + encodeURIComponent(JSON.stringify(params || {})));
+      x.timeout = 45000;
+      x.onload = function () {
+        var d = null;
+        try { d = JSON.parse(x.responseText); } catch (e) { /* not JSON */ }
+        if (!d || !d.ok) reject(new Error((d && d.description) || 'بله جواب نداد'));
+        else resolve(d.result);
+      };
+      x.onerror = function () { reject(new Error('بله در دسترس نیست')); };
+      x.ontimeout = function () { reject(new Error('بله جواب نداد (وقت تمام شد)')); };
+      x.send();
+    });
   }
   function baleSendDocument(name, bytes, caption) {
     if (!S.bale.chat_id) return Promise.reject(new Error('هنوز به چت بله وصل نیست: در بله به ربات /start بفرست.'));
@@ -733,6 +742,7 @@
     sync: sync, saveFile: saveFile, excelBytes: excelBytes, excelName: excelName, sendExcelToBale: sendExcelToBale,
     backupBytes: backupBytes, restore: restore, state: function () { return S; }, ingest: ingest, bale: bale
   };
+  saveNow();   // the books exist on the phone from the first start
   document.addEventListener('DOMContentLoaded', function () {
     bale('getMe', {}).then(function (me) { S.bale.bot = me && me.username ? '@' + me.username : null; save(); }).catch(function () {});
     startSync();
