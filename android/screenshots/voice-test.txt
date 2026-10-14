@@ -1,2 +1,2 @@
 --------- beginning of main
-10-14 12:17:04.833  3216  3395 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=152200 ms=39076 phone_listen=true
+10-14 12:39:53.513  2814  3061 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=153638 ms=17928 phone_listen=true
