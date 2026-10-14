@@ -5,6 +5,7 @@ and the app's own kind of sentences (spoken by the Piper voice), CER/WER and spe
 """
 import glob, io, json, os, re, sys, tarfile, time, urllib.request, wave
 import numpy as np
+import soundfile as sf
 import sherpa_onnx
 
 W = sys.argv[1]
@@ -85,9 +86,8 @@ with tarfile.open(tgz) as t:
     for m in t:
         n = os.path.basename(m.name)
         if n in want:
-            with wave.open(io.BytesIO(t.extractfile(m).read())) as w:
-                a = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
-                clips[n] = (a, w.getframerate())
+            a, sr = sf.read(io.BytesIO(t.extractfile(m).read()), dtype="float32")
+            clips[n] = (a if a.ndim == 1 else a[:, 0], sr)
 print("fleurs clips:", len(clips))
 
 # the app's sentences in the Piper voice

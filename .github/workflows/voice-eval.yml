@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - run: pip install "sherpa-onnx==1.13.8" numpy
+      - run: pip install "sherpa-onnx==1.13.8" numpy soundfile
       - run: sh tools/voice-model/fetch.sh /tmp/fa-voice
       - run: FA_VOICE=/tmp/fa-voice python3 tools/voice-model/eval_stt.py /tmp/eval
       - name: Keep the report
