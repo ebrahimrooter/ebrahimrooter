@@ -1112,13 +1112,16 @@
         '<p class="muted">آخرین خواندن از بله: <span class="num">' + esc(st.last_sync || '—') + '</span>' + (st.last_error ? ' · <span class="warn">' + esc(st.last_error) + '</span>' : '') + '</p>' +
         '<label class="check"><input type="checkbox" id="lDaily"' + (st.daily_excel ? ' checked' : '') + '> هر روز یک بار، فایل اکسل حساب‌ها به چت بله برود</label>' +
         '<div class="btns"><button class="btn" type="button" id="lSync">همین حالا از بله بخوان</button></div>' +
-        '<p class="muted">در فریمور ESP32 (firmware/bale_direct) همان توکن ربات و عدد chat id بالا را بگذار.</p>';
+        '<p class="muted">در فریمور ESP32 (firmware/bale_direct) همان توکن ربات و عدد chat id بالا را بگذار.</p>' +
+        (window.BANative && BANative.changeMode ? '<div class="btns"><button class="btn plain" type="button" id="lMode">تغییر حالت (با سرور / توکن دیگر)</button></div>' : '');
       document.getElementById('lSync').onclick = function () {
         var b = this;
         b.disabled = true;
         api('local_sync', { body: {} }).then(function (d) { toast(d.new ? faDigits(d.new) + ' پیامک جدید' : 'پیام تازه‌ای در بله نبود'); localBaleSettings(); },
           function (e) { toast(e.message); }).then(function () { b.disabled = false; });
       };
+      var lm = document.getElementById('lMode');
+      if (lm) lm.onclick = function () { if (confirm('به صفحه‌ی اول برگردی؟ اطلاعات این گوشی می‌ماند.')) BANative.changeMode(); };
       document.getElementById('lDaily').onchange = function () { api('local_settings', { body: { daily_excel: this.checked } }); };
     }, function (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; });
   }
@@ -1521,7 +1524,7 @@
   /** The native orb gets its own device token with a one-time code (never the app password). */
   var andPairing = false;
   function androidPair() {
-    if (!AND || andPairing || AND.isPaired()) return;
+    if (!AND || LOCAL || andPairing || AND.isPaired()) return;
     andPairing = true;
     api('assistant_pair', { body: {} }).then(function (d) { AND.pair(d.code); }, function () { andPairing = false; });
   }

@@ -1,7 +1,7 @@
 name: Android app build
 on:
   push:
-    paths: ["android/**", "server/app/**", "server/api.php", "server/assistant*.php", "tools/android-shots.sh", "tools/voice-model/**", ".github/workflows/android.yml"]
+    paths: ["android/**", "server/app/**", "server/api.php", "server/assistant*.php", "tools/android-shots.sh", "tools/voice-model/**", "tools/local-app/**", "tools/demo/**", ".github/workflows/android.yml"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -31,6 +31,8 @@ jobs:
           fi
       - name: Persian voice model (Piper «amir», sherpa-onnx)
         run: sh tools/voice-model/fetch.sh android
+      - name: The web app with its own books (the mode without a server)
+        run: sh tools/local-app/build.sh android/app/src/main/assets/www
       - name: Build the APKs
         env:
           BANK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -41,8 +43,10 @@ jobs:
           ls -la app/build/outputs/apk/*/*.apk
           # GitHub keeps files up to 100 MB, and your own server hands this to the phone
           [ "$(stat -c %s app/build/outputs/apk/release/app-release.apk)" -lt 95000000 ] || { echo "::error::release APK too big"; exit 1; }
-      - name: Demo server (sample books)
-        run: sh tools/demo/run.sh /tmp/demo
+      - name: Demo server (sample books) and a pretend Bale
+        run: |
+          sh tools/demo/run.sh /tmp/demo
+          (nohup php -S 0.0.0.0:8841 tools/demo/fakebale.php > /tmp/fakebale-server.log 2>&1 &)
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -68,7 +72,7 @@ jobs:
           # the real key when the ANDROID_KEYSTORE_B64 secret is set; otherwise a temporary one
           # (then a later signed build needs one uninstall)
           cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk
-          cp shots/*.png shots/voice-test.txt android/screenshots/ || true
+          cp shots/*.png shots/voice-test.txt shots/local-test.txt android/screenshots/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f server/app/android/bank-assistant.apk android/screenshots

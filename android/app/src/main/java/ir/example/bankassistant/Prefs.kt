@@ -20,6 +20,22 @@ class Prefs(context: Context) {
         get() = plain.getString("base", null)
         set(v) = plain.edit().putString("base", v).apply()
 
+    /** "local": the app without a server (books on the phone, bank SMS from Bale; LocalMode.kt). */
+    var mode: String?
+        get() = plain.getString("mode", null)
+        set(v) = plain.edit().putString("mode", v).apply()
+    val local: Boolean get() = mode == "local"
+
+    /** The Bale bot token in the mode without a server (the same one the ESP32 uses). */
+    var baleToken: String?
+        get() = secret.getString("bale_token", null)
+        set(v) = secret.edit().putString("bale_token", v).apply()
+
+    /** Only for tests (a pretend Bale on the demo server). */
+    var baleBase: String?
+        get() = plain.getString("bale_base", null)
+        set(v) = plain.edit().putString("bale_base", v).apply()
+
     var deviceToken: String?
         get() = secret.getString("device_token", null)
         set(v) = secret.edit().putString("device_token", v).apply()

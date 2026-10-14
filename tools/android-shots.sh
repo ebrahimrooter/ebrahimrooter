@@ -48,5 +48,25 @@ adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys activity services $PKG | grep -i -E "OrbService|isForeground" | head -5
 adb logcat -d -s AndroidRuntime:E | tail -30
 
+# the app without a server: books on the phone, the bank SMS from (a pretend) Bale
+adb shell am force-stop $PKG
+adb shell am start -W -n $PKG/.MainActivity --es local_token 123456789:test-token-abcdef --es bale_base http://10.0.2.2:8841
+shot a7-local-home 20
+adb shell run-as $PKG cat files/local-books.json > "$OUT/local-books.json" || true
+python3 - "$OUT/local-books.json" <<'PY' | tee "$OUT/local-test.txt"
+import json, sys
+try:
+    s = json.load(open(sys.argv[1]))
+except Exception as e:
+    print("local=fail no books file:", e); sys.exit(0)
+t = {x.get("bale_mid"): x for x in s.get("txs", [])}
+a, b = t.get(10), t.get(11)
+ok = (s.get("bale", {}).get("chat_id") == "555" and a and a["status"] == "pending" and a["amount"] == 2500000
+      and b and b["status"] == "confirmed" and b.get("party") == "علی رضایی")
+print("local=" + ("ok" if ok else "fail"), "chat=", s.get("bale", {}).get("chat_id"), "txs=", len(s.get("txs", [])), "last_error=", s.get("bale", {}).get("last_error"))
+PY
+grep -E "^(sendMessage|editMessageReplyMarkup|answerCallbackQuery|sendDocument)" /tmp/fakebale.log | cut -c1-120 | tee -a "$OUT/local-test.txt" || true
+grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; exit 1; }
+
 # fail the job when the in-app voice does not work
 grep -q "speech_text=5/5" "$OUT/voice-test.txt" && grep -q "tts=ok" "$OUT/voice-test.txt" && grep -q "stt=ok" "$OUT/voice-test.txt" || { echo "VOICE TEST FAILED"; exit 1; }

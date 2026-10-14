@@ -71,9 +71,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
-        if (BuildConfig.DEBUG) intent?.getStringExtra("server")?.let { Prefs.normalizeBase(it)?.let { b -> prefs.base = b } }
+        if (BuildConfig.DEBUG) intent?.getStringExtra("server")?.let { Prefs.normalizeBase(it)?.let { b -> prefs.base = b; prefs.mode = "server" } }
+        // tests: the mode without a server against a pretend Bale (tools/demo/fakebale.php)
+        if (BuildConfig.DEBUG) intent?.getStringExtra("local_token")?.let { t ->
+            prefs.baleToken = t
+            prefs.baleBase = intent?.getStringExtra("bale_base")
+            prefs.mode = "local"
+        }
         window.statusBarColor = Color.parseColor("#07140C")
-        if (prefs.base == null) showSetup() else showWeb()
+        if (prefs.local) showLocal() else if (prefs.base == null) showSetup() else showWeb()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val w = web
@@ -200,12 +206,133 @@ class MainActivity : AppCompatActivity() {
                     showSetup("آدرس درست نیست. برای سرور اینترنتی https لازم است (مثلاً https://example.com/bank/).")
                 } else {
                     prefs.base = base
+                    prefs.mode = "server"
                     showWeb()
                 }
             }
         }
         root.addView(go, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)).apply { topMargin = dp(20) })
+        root.addView(text("یا بدون سرور: پیامک‌های بانک را ESP32 به ربات بله‌ات می‌فرستد و همه‌چیز روی همین گوشی ثبت می‌شود.", 14f, Color.argb(170, 255, 255, 255)).apply {
+            setPadding(0, dp(28), 0, dp(4))
+        })
+        root.addView(Button(this).apply {
+            text = "بدون سرور (فقط بله و ESP32)"
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { cornerRadius = dp(30).toFloat(); setStroke(dp(1), Color.argb(120, 255, 255, 255)) }
+            setOnClickListener { showLocalSetup() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(8) })
         setContentView(root)
+    }
+
+    /** The mode without a server: only the Bale bot token (the same one the ESP32 sends with). */
+    private fun showLocalSetup(error: String? = null) {
+        val p = dp(24)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(p, p, p, p)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#275C34"), Color.parseColor("#07140C"), Color.parseColor("#07140C")))
+        }
+        root.addView(text("بدون سرور", 28f, Color.WHITE, bold = true))
+        root.addView(text("۱) در بله از @botfather یک ربات بساز و توکنش را اینجا بگذار (همان توکنی که در فریمور ESP32 هست).\n" +
+            "۲) در بله به ربات خودت /start بفرست؛ اپ چت را وصل می‌کند و عددش را نشان می‌دهد.\n" +
+            "۳) زیر هر پیامک بانک در بله دکمه‌ی «ثبت در حسابداری» را بزن یا Reply کن؛ اپ آن را می‌خواند و ثبت می‌کند.", 14f, Color.argb(190, 255, 255, 255)).apply {
+            setPadding(0, dp(10), 0, dp(18))
+        })
+        val input = EditText(this).apply {
+            hint = "توکن ربات بله"
+            setHintTextColor(Color.argb(90, 255, 255, 255))
+            setTextColor(Color.WHITE)
+            textDirection = View.TEXT_DIRECTION_LTR
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            setSingleLine()
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat(); setColor(Color.argb(20, 255, 255, 255)); setStroke(dp(1), Color.argb(50, 255, 255, 255))
+            }
+        }
+        root.addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        if (error != null) root.addView(text(error, 14f, Color.parseColor("#FF9B8F")).apply { setPadding(0, dp(10), 0, 0) })
+        root.addView(Button(this).apply {
+            text = "شروع"
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            setTextColor(Color.parseColor("#121414"))
+            typeface = Typeface.DEFAULT_BOLD
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor("#BBF3B4"), Color.parseColor("#8DE08F"), Color.parseColor("#5BBD6D"))).apply { cornerRadius = dp(30).toFloat() }
+            setOnClickListener {
+                val token = input.text.toString().trim()
+                if (!Regex("^\\d{5,}:[\\w-]{10,}$").matches(token)) return@setOnClickListener showLocalSetup("این توکن ربات بله نیست (شکلش این است: 123456789:AbC…).")
+                isEnabled = false
+                prefs.baleToken = token
+                scope.launch {
+                    val me = withContext(Dispatchers.IO) { runCatching { JSONObject(LocalMode(this@MainActivity, prefs).bale("getMe", "{}")) }.getOrNull() }
+                    if (me?.optBoolean("ok") == true) {
+                        prefs.mode = "local"
+                        showLocal()
+                    } else {
+                        prefs.baleToken = null
+                        showLocalSetup(if (me == null) "به بله وصل نشد؛ اینترنت را ببین." else "بله این توکن را قبول نکرد.")
+                    }
+                }
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)).apply { topMargin = dp(20) })
+        root.addView(Button(this).apply {
+            text = "برگشت"
+            isAllCaps = false
+            setTextColor(Color.argb(200, 255, 255, 255))
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { showSetup() }
+        })
+        setContentView(root)
+    }
+
+    /** The web app with its own books (assets/www) — no server. */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun showLocal() {
+        web?.destroy()
+        val local = LocalMode(this, prefs)
+        val w = WebView(this)
+        web = w
+        w.setBackgroundColor(Color.parseColor("#07140C"))
+        with(w.settings) {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            userAgentString = "$userAgentString BankAssistantAndroid/1 BankAssistantLocal/1"
+            allowFileAccess = false
+            setSupportZoom(false)
+        }
+        w.addJavascriptInterface(Bridge(), "AndroidOrb")
+        w.addJavascriptInterface(local.Bridge { web }, "BANative")
+        w.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest) = local.intercept(req)
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
+                if (local.isOwnPage(req.url)) return false
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, req.url)) }
+                return true
+            }
+        }
+        w.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                fileCallback?.onReceiveValue(null)
+                fileCallback = cb
+                return runCatching { pickFile.launch(params.createIntent()); true }.getOrElse { fileCallback = null; false }
+            }
+        }
+        setContentView(w)
+        w.loadUrl(local.startUrl)
+    }
+
+    /** Settings ← «تغییر حالت»: back to the first screen (the books stay on the phone). */
+    fun leaveLocal() {
+        prefs.mode = null
+        showSetup()
     }
 
     private fun text(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
