@@ -11,7 +11,8 @@ import sherpa_onnx
 W = sys.argv[1]
 os.makedirs(W, exist_ok=True)
 HF = "https://huggingface.co"
-MODELS = ["Reza2kn/Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx", "Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx", "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx"]
+MODELS = os.environ.get("STT_MODELS", "Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx,Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx").split(",")
+QUANT = os.environ.get("STT_INT8", "1") == "1"   # also try an int8 copy (4x smaller)
 SENTENCES = ["فروش امروز چقدر بوده", "موجودی کارت ملت چقدره", "بابت خرید لوازم اداری بود", "پانصد هزار تومان به علی دادم",
              "خلاصه وضعیت این ماه رو بگو", "این واریز بابت فروش لپ تاپ بود", "نادیده بگیر", "بله ثبت کن", "موجودی انبار برنج چقدره",
              "یک فاکتور فروش برای آقای محمدی ثبت کن"]
@@ -56,20 +57,36 @@ def model_files(repo):
     return d, files
 
 
-def recognizer(d):
+def recognizer(d, int8=False):
     onnx = sorted(glob.glob(d + "/**/*.onnx", recursive=True))
+    if int8:
+        from onnxruntime.quantization import QuantType, quantize_dynamic
+        src = [f for f in onnx if "int8" not in f][0]
+        q = src.replace(".onnx", ".int8.onnx")
+        if not os.path.exists(q):
+            quantize_dynamic(src, q, weight_type=QuantType.QUInt8)
+            import onnx   # keep sherpa-onnx's settings (vocab size, normalize_type…) stored in the model
+            a, b = onnx.load(src, load_external_data=False), onnx.load(q)
+            have = {p.key for p in b.metadata_props}
+            for p in a.metadata_props:
+                if p.key not in have:
+                    b.metadata_props.add(key=p.key, value=p.value)
+            onnx.save(b, q)
+        onnx = [q]
     tokens = (glob.glob(d + "/**/tokens.txt", recursive=True) or [None])[0]
     enc = [f for f in onnx if "encoder" in f]
     if enc:
         pick = lambda k: sorted([f for f in onnx if k in f], key=lambda f: ("int8" not in f, f))[0]
         return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=pick("encoder"), decoder=pick("decoder"), joiner=pick("joiner"),
                                                              tokens=tokens, num_threads=2, model_type="nemo_transducer"), pick("encoder")
-    m = sorted(onnx, key=lambda f: ("int8" not in f, os.path.getsize(f)))[0]
+    m = sorted(onnx, key=lambda f: ("int8" not in f, os.path.getsize(f)))[0] if int8 else [f for f in onnx if "int8" not in f][0]
     return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(model=m, tokens=tokens, num_threads=2), m
 
 
 def run(rec, samples, sr):
     s = rec.create_stream()
+    # 0.3 s of silence before and 0.6 s after: CTC models drop the last word without it
+    samples = np.concatenate([np.zeros(int(0.3 * sr), np.float32), samples, np.zeros(int(0.6 * sr), np.float32)])
     s.accept_waveform(sr, samples)
     rec.decode_stream(s)
     return s.result.text
@@ -100,12 +117,12 @@ for s in SENTENCES:
     spoken.append((s, np.array(a.samples, dtype=np.float32), a.sample_rate))
 
 report = []
-for repo in MODELS:
+for repo, int8 in [(r, q) for r in MODELS for q in ([False, True] if QUANT else [False])]:
     try:
         d, files = model_files(repo)
-        rec, used = recognizer(d)
+        rec, used = recognizer(d, int8)
     except Exception as e:  # noqa
-        report.append(f"{repo}: could not load ({e})")
+        report.append(f"{repo} int8={int8}: could not load ({e})")
         continue
     t = time.time(); dur = 0
     real = []
@@ -113,11 +130,11 @@ for repo in MODELS:
         real.append((want[n], run(rec, a, sr))); dur += len(a) / sr
     rtf = (time.time() - t) / max(dur, 1)
     app = [(s, run(rec, a, sr)) for s, a, sr in spoken]
-    size = sum(os.path.getsize(f) for f in glob.glob(d + "/**/*.onnx", recursive=True)) // 1000000
-    report.append(f"{repo}  [{os.path.basename(used)}; onnx total {size} MB; files {files}]\n"
+    size = os.path.getsize(used) // 1000000
+    report.append(f"{repo}  [{os.path.basename(used)}; {size} MB]\n"
                   f"  FLEURS (real people, {len(real)} clips): CER {score(real)[0]}%  WER {score(real)[1]}%  RTF {rtf:.3f}\n"
                   f"  app sentences (Piper voice): CER {score(app)[0]}%  WER {score(app)[1]}%")
-    for r, h in real[:4] + app:
+    for r, h in real[:2] + app:
         report.append(f"    want: {r}\n    got:  {h}")
 out = "\n".join(report)
 print(out)
