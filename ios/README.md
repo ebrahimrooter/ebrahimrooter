@@ -181,7 +181,7 @@ Authorization: Bearer 3f…a9
 
 ```bash
 brew install xcodegen
-sh tools/voice-model/fetch.sh ios     # صدای فارسی داخل اپ (۶۳ مگ؛ یک بار)
+sh tools/voice-model/fetch.sh ios     # صدا و گوش فارسی داخل اپ (یک بار؛ ۴۵۸ مگ دانلود از huggingface، بعد ۱۹۴ مگ در اپ)
 cd ios
 # در project.yml: DEVELOPMENT_TEAM و bundle idها (ir.example.bankassistant → شناسه‌ی خودت)
 # در Resources/BankAssistant.entitlements: applinks:دامنه‌ی خودت
@@ -190,7 +190,7 @@ open BankAssistant.xcodeproj
 ```
 در Xcode: هدف BankAssistant ← Signing ← تیم را انتخاب کن (برای هدف AssistantWidgets هم) ← آیفون را با کابل وصل کن ← Run. بار اول روی گوشی: Settings ← General ← VPN & Device Management ← به اپ اعتماد کن (اگر حساب رایگان است). Developer Mode را در Settings ← Privacy & Security روشن کن.
 
-صدای فارسی: اپ خودش فارسی حرف می‌زند (Piper داخل اپ، بدون سرور؛ Xcode بسته‌ی sherpa-onnx را خودش دانلود می‌کند). برای «فهمیدن حرف تو» آیفون فارسی بلد نیست: یا صدای محلی سرور، یا تایپ.
+صدای فارسی: اپ خودش فارسی حرف می‌زند (Piper داخل اپ، بدون سرور؛ Xcode بسته‌ی sherpa-onnx را خودش دانلود می‌کند). فهمیدن حرف تو هم داخل خود اپ است: مدل فارسی Shenava Koochik (Apache-2.0، int8)؛ روی صدای آدم‌های واقعی حدود ۱۲٪ خطای کلمه (tools/voice-model/stt-report.txt). اگر huggingface در دسترس نیست: `NO_EAR=1 sh tools/voice-model/fetch.sh ios` (آن‌وقت تبدیل صدا از سرور).
 
 روی سرور (برای تبدیل صدا به متن): صدای محلی باید نصب باشد (`voice/install.sh`، همان که در deploy-vps.sh اجرا می‌شود) و برای Universal Link گزینه‌ی `--ios-app-id`.
 
