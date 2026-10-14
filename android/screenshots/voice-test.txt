@@ -1,2 +1,3 @@
 --------- beginning of main
-10-14 12:39:53.513  2814  3061 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=153638 ms=17928 phone_listen=true
+10-14 16:35:22.970  2828  3042 I VOICE_TEST: ear=true stt=ok stt_ms=3670 heard=وانک ملی واریز هفت میلیون تومان بابت چی بود
+10-14 16:35:23.032  2828  3042 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=161170 ms=72005 phone_listen=true
