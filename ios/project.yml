@@ -23,8 +23,12 @@ targets:
     platform: iOS
     sources:
       - path: BankAssistant
-        excludes: ["Resources/Info.plist", "Resources/*.entitlements", "Resources/FaVoice", "Resources/FaVoice/**"]
+        excludes: ["Resources/Info.plist", "Resources/*.entitlements", "Resources/FaVoice", "Resources/FaVoice/**", "Resources/FaEar", "Resources/FaEar/**"]
       - path: BankAssistant/Resources/FaVoice
+        type: folder
+        buildPhase: resources
+        optional: true
+      - path: BankAssistant/Resources/FaEar
         type: folder
         buildPhase: resources
         optional: true

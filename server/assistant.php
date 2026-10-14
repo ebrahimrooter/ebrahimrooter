@@ -241,12 +241,23 @@ function assistant_amount($t)
         }
         return $n ? $n . ' ' : $m[0];
     }, $t);
-    if (!preg_match('/(\d+(?:\.\d+)?)\s*(میلیارد|میلیون|هزار)?(?:\s*و\s*(\d+)\s*(هزار))?\s*(تومان|تومن|ریال)?/u', $t, $m) || (float)$m[1] <= 0) {
+    // «2 میلیون و 300 هزار»، «هزار و 500»، «1 میلیارد و 200 میلیون و 50 هزار» -> one number
+    $scale = ['میلیارد' => 1e9, 'میلیون' => 1e6, 'هزار' => 1e3];
+    $t = preg_replace_callback('/(?:\d+(?:\.\d+)?\s*)?(?:میلیارد|میلیون|هزار)(?:\s*و\s*(?:\d+(?:\.\d+)?\s*)?(?:میلیارد|میلیون|هزار)|\s*و\s*\d+(?!\s*(?:\d|\.)))*/u', function ($m) use ($scale) {
+        preg_match_all('/(\d+(?:\.\d+)?)?\s*(میلیارد|میلیون|هزار)?/u', $m[0], $parts, PREG_SET_ORDER);
+        $total = 0;
+        foreach ($parts as $p) {
+            if (($p[1] ?? '') === '' && ($p[2] ?? '') === '') continue;
+            $total += ((($p[1] ?? '') !== '') ? (float)$p[1] : 1) * ($scale[$p[2] ?? ''] ?? 1);
+        }
+        return $total ? (string)$total : $m[0];
+    }, $t);
+    // the number said with تومان/ریال wins over «3 کیسه»; else the first number
+    if (!preg_match('/(\d+(?:\.\d+)?)\s*(تومان|تومن|ریال)/u', $t, $m) && !preg_match('/(\d+(?:\.\d+)?)/u', $t, $m) || (float)$m[1] <= 0) {
         return 0;
     }
-    $mult = ['میلیارد' => 1e9, 'میلیون' => 1e6, 'هزار' => 1e3][$m[2] ?? ''] ?? 1;
-    $v = (float)$m[1] * $mult + (!empty($m[3]) ? (float)$m[3] * 1e3 : 0);
-    return (int)round(($m[5] ?? '') === 'ریال' ? $v : $v * 10);
+    $v = (float)$m[1];
+    return (int)round(($m[2] ?? '') === 'ریال' ? $v : $v * 10);
 }
 
 /**

@@ -49,7 +49,7 @@ final class Dictation {
             busy = true
             defer { busy = false; try? FileManager.default.removeItem(at: u.url) }
             do {
-                return try await APIClient.shared.transcribe(fileURL: u.url)
+                return try await Hearing.text(of: u.url)
             } catch {
                 self.error = error.localizedDescription
                 return nil

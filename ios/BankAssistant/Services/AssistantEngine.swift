@@ -2,8 +2,8 @@ import AVFoundation
 import Observation
 import UIKit
 
-/// One voice session: listen → transcribe (server) → ask the accounting backend →
-/// speak the answer (server voice) → listen again, until the user stops or says
+/// One voice session: listen → transcribe (in the app) → ask the accounting backend →
+/// speak the answer (the app's own voice) → listen again, until the user stops or says
 /// nothing twice. The audio session stays active for the whole session, which is
 /// what lets it continue on the Home Screen / Lock Screen (UIBackgroundModes: audio).
 @MainActor
@@ -127,15 +127,7 @@ final class AssistantEngine {
         silentTurns = 0
         set(.processing, "در حال پردازش…")
         do {
-            let heard: String
-            do {
-                heard = try await api.transcribe(fileURL: u.url)
-            } catch {
-                // the server can't do speech-to-text: Apple's own Persian recognizer, if this iPhone has one
-                if case APIError.unauthorized = error { throw error }
-                guard let t = await PhoneListen.transcribe(fileURL: u.url) else { throw error }
-                heard = t
-            }
+            let heard = try await Hearing.text(of: u.url)     // in the app first, the server as a fallback
             try? FileManager.default.removeItem(at: u.url)
             guard !heard.trimmingCharacters(in: .whitespaces).isEmpty else { set(.idle, "نفهمیدم؛ دوباره بگو."); return talk() }
             if Self.isGoodbye(heard) { return stop(reason: "خداحافظ") }

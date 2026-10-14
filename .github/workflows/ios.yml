@@ -41,10 +41,10 @@ jobs:
           # the app's own Persian voice: number rules = the server's, and it speaks
           xcrun simctl launch "$UDID" $BID -demo -voicetest
           DATA=$(xcrun simctl get_app_container "$UDID" $BID data)
-          for i in $(seq 1 30); do [ -s "$DATA/Documents/voice-test.txt" ] && break; sleep 2; done
+          for i in $(seq 1 60); do [ -s "$DATA/Documents/voice-test.txt" ] && break; sleep 2; done
           echo "--- voice test"; cat "$DATA/Documents/voice-test.txt" || true; echo
           cp "$DATA/Documents/voice-test.txt" "$DATA/Documents/voice-test.wav" shots/ 2>/dev/null || true
-          grep -q "speech_text=5/5" shots/voice-test.txt && grep -q "tts=ok" shots/voice-test.txt || { echo "::error::voice test failed"; xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'process == "BankAssistant"' | grep -i -E "voice|sherpa|onnx" | tail -40; exit 1; }
+          grep -q "speech_text=5/5" shots/voice-test.txt && grep -q "tts=ok" shots/voice-test.txt && grep -q "stt=ok" shots/voice-test.txt || { echo "::error::voice test failed"; xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'process == "BankAssistant"' | grep -i -E "voice|sherpa|onnx" | tail -40; exit 1; }
           shot 1-onboarding -onboarding
           shot 2-home -demo
           shot 3-report -demo -tab report

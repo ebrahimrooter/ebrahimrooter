@@ -185,6 +185,15 @@ http($A . 'assistant_revoke', ['id' => $dev['id']], ['X-App-Token: apppass123'])
 check('revoked device is locked out', http($A . 'assistant_ask', ['text' => 'فروش امروز'], $D)[0] === 401);
 check('revoked device: no data', http($A . 'assistant_home', [], $D)[0] === 401);
 
+// amounts as the phone's own speech-to-text writes them (in words)
+require_once __DIR__ . '/../assistant.php';
+foreach (['پانصد هزار تومان به علی دادم' => 5000000, 'دو میلیون و سیصد هزار تومان' => 23000000, 'یک میلیون و دویست و پنجاه هزار تومان' => 12500000,
+    'هزار و پانصد تومان' => 15000, 'یک میلیارد و دویست میلیون' => 12000000000, 'خرید ۳ کیسه برنج ۴۵۰ هزار تومان' => 4500000,
+    '۲.۵ میلیون' => 25000000, '۱۰۰۰۰۰ ریال' => 100000] as $said => $rial) {
+    $got = assistant_amount(ba_normalize($said));
+    check("amount: $said", $got == $rial, (string)$got);
+}
+
 proc_terminate($srv);
 exec('rm -rf ' . escapeshellarg($tmp));
 echo $fails ? "\n$fails FAILED\n" : "\nall passed\n";

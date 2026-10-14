@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         PushManager.registerCategories()
         LocalVoice.shared.warmUp()
+        LocalEar.shared.warmUp()
         if ProcessInfo.processInfo.arguments.contains("-voicetest") { Task { await Self.voiceTest() } }
         return true
     }
@@ -28,8 +29,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let t = Date()
         let wav = await LocalVoice.shared.wav("موجودی کارت ملت ۴٬۲۵۰٬۰۰۰ تومان است.")
         let ms = Int(Date().timeIntervalSince(t) * 1000)
+        // and the app's own ear on the app's own voice (16 kHz like the microphone recording)
+        var heard = "-"
+        var earMs = 0
+        if let wav {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("voice-test.wav")
+            try? wav.write(to: url)
+            let t2 = Date()
+            heard = await LocalEar.shared.transcribe(fileURL: url) ?? "nil"
+            earMs = Int(Date().timeIntervalSince(t2) * 1000)
+        }
         let line = "speech_text=\(same)/\(total) bundled=\(LocalVoice.shared.bundled) tts=\((wav?.count ?? 0) > 44 + 22050 ? "ok" : "fail") " +
-            "bytes=\(wav?.count ?? 0) ms=\(ms) phone_listen=\(PhoneListen.recognizer != nil)"
+            "bytes=\(wav?.count ?? 0) ms=\(ms) phone_listen=\(PhoneListen.recognizer != nil) " +
+            "ear=\(LocalEar.shared.bundled) stt=\(heard.contains("کارت") && heard.contains("ملت") ? "ok" : "fail") stt_ms=\(earMs) heard=\(heard)"
         print("VOICE_TEST " + line)
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? line.write(to: docs.appendingPathComponent("voice-test.txt"), atomically: true, encoding: .utf8)

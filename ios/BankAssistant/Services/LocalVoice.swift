@@ -1,5 +1,6 @@
 import Foundation
 import Speech
+import AVFoundation
 import SherpaOnnx
 
 /// Persian voice inside the app, no server needed: Piper «amir» (fa_IR) through
@@ -69,6 +70,86 @@ final class LocalVoice {
     }
 }
 
+/// Persian speech-to-text inside the app, no server needed: Shenava (FastConformer
+/// CTC, Apache-2.0) through sherpa-onnx, the model in Resources/FaEar
+/// (tools/voice-model/fetch.sh ios). Checked on real voices: tools/voice-model/stt-report.txt.
+final class LocalEar {
+    static let shared = LocalEar()
+    private let queue = DispatchQueue(label: "ir.example.bankassistant.ear", qos: .userInitiated)
+    private var rec: SherpaOnnxOfflineRecognizer?
+
+    private var dir: URL? { Bundle.main.url(forResource: "FaEar", withExtension: nil) }
+    private var model: URL? { dir?.appendingPathComponent("model.onnx") }
+
+    var bundled: Bool {
+        guard let m = model, let d = dir else { return false }
+        return FileManager.default.fileExists(atPath: m.path) && FileManager.default.fileExists(atPath: d.appendingPathComponent("tokens.txt").path)
+    }
+
+    private func engine() -> SherpaOnnxOfflineRecognizer? {
+        if let rec { return rec }
+        guard bundled, let d = dir, let m = model else { return nil }   // the recognizer stops the app on a missing file
+        let mc = sherpaOnnxOfflineModelConfig(tokens: d.appendingPathComponent("tokens.txt").path,
+                                              nemoCtc: sherpaOnnxOfflineNemoEncDecCtcModelConfig(model: m.path), numThreads: 2)
+        var cfg = sherpaOnnxOfflineRecognizerConfig(featConfig: sherpaOnnxFeatureConfig(sampleRate: 16000, featureDim: 80), modelConfig: mc)
+        let r = SherpaOnnxOfflineRecognizer(config: &cfg)
+        rec = r
+        return r
+    }
+
+    func warmUp() {
+        guard bundled else { return }
+        queue.async { _ = self.engine() }
+    }
+
+    /// Text of a recording (AudioCapture's 16 kHz mono WAV); nil when the model is not in the app.
+    func transcribe(fileURL: URL) async -> String? {
+        guard bundled, let samples = Self.samples(fileURL) else { return nil }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let r = self.engine() else { return c.resume(returning: nil) }
+                c.resume(returning: r.decode(samples: samples, sampleRate: 16000).text.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+    }
+
+    func transcribe(samples: [Float]) async -> String? {
+        await withCheckedContinuation { c in
+            queue.async {
+                guard let r = self.engine() else { return c.resume(returning: nil) }
+                c.resume(returning: r.decode(samples: Self.padded(samples), sampleRate: 16000).text.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+    }
+
+    /// 0.3 s of silence before and 0.6 s after: without it the last word gets lost.
+    static func padded(_ s: [Float]) -> [Float] {
+        [Float](repeating: 0, count: 4800) + s + [Float](repeating: 0, count: 9600)
+    }
+
+    static func samples(_ url: URL) -> [Float]? {
+        guard let f = try? AVAudioFile(forReading: url),
+              let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let inBuf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+              (try? f.read(into: inBuf)) != nil else { return nil }
+        if f.processingFormat.sampleRate == 16000, f.processingFormat.channelCount == 1, let ch = inBuf.floatChannelData {
+            return padded(Array(UnsafeBufferPointer(start: ch[0], count: Int(inBuf.frameLength))))
+        }
+        guard let conv = AVAudioConverter(from: f.processingFormat, to: fmt),
+              let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(Double(inBuf.frameLength) * 16000 / f.processingFormat.sampleRate) + 1024)
+        else { return nil }
+        var fed = false
+        _ = conv.convert(to: out, error: nil) { _, status in
+            if fed { status.pointee = .endOfStream; return nil }
+            fed = true
+            status.pointee = .haveData
+            return inBuf
+        }
+        guard let ch = out.floatChannelData else { return nil }
+        return padded(Array(UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength))))
+    }
+}
+
 /// Listening in Persian with Apple's own recognizer — only when this iPhone
 /// offers Persian (fa-IR); otherwise the server's speech-to-text is used.
 enum PhoneListen {
@@ -93,6 +174,21 @@ enum PhoneListen {
                 if let result, result.isFinal { done = true; c.resume(returning: result.bestTranscription.formattedString) }
                 else if error != nil { done = true; c.resume(returning: nil) }
             }
+        }
+    }
+}
+
+/// What was said in a recording: the app's own recognizer first (no server), then
+/// the server's speech-to-text, then Apple's Persian recognizer if this iPhone has one.
+enum Hearing {
+    static func text(of url: URL) async throws -> String {
+        if let t = await LocalEar.shared.transcribe(fileURL: url) { return t }
+        do {
+            return try await APIClient.shared.transcribe(fileURL: url)
+        } catch {
+            if case APIError.unauthorized = error { throw error }
+            guard let t = await PhoneListen.transcribe(fileURL: url) else { throw error }
+            return t
         }
     }
 }
