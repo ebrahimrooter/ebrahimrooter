@@ -42,8 +42,9 @@ const char *ALLOWED_SENDERS[] = {
 // false if you don't want codes in a chat history; they are then deleted.
 const bool FORWARD_OTP = true;
 // Ask "what was it for?" under each deposit/withdrawal, with buttons. The
-// accounting program on the computer (start-windows.bat, same bot token)
-// picks the SMS up when you tap a button or reply, asks and records it.
+// accounting program on the computer (start-windows.bat, same bot token) - or
+// the phone app in its mode without a server (same bot token) - picks the SMS
+// up when you tap a button or reply, asks and records it.
 const bool ASK_IN_BALE = true;
 
 // Internet of the SIM card (APN): Hamrah-e Aval "mcinet", Irancell "mtnirancell", Rightel "rightel"
