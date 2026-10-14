@@ -45,4 +45,13 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(out)
 
-ThreadingHTTPServer(('0.0.0.0', int(sys.argv[1]) if len(sys.argv) > 1 else 8841), H).serve_forever()
+import socket
+
+class Dual(ThreadingHTTPServer):
+    # IPv6 and IPv4 together: "localhost" is ::1 first on macOS (the iPhone simulator)
+    address_family = socket.AF_INET6
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()
+
+Dual(('::', int(sys.argv[1]) if len(sys.argv) > 1 else 8841), H).serve_forever()
