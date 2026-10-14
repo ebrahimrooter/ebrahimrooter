@@ -1,1 +1,1 @@
-speech_text=5/5 bundled=true tts=ok bytes=191490 ms=1232 phone_listen=false ear=true stt=ok stt_ms=133 heard=مججودری کارت ملت چهار میلیون و دویست و پنجاه هزار توممان است
+speech_text=5/5 bundled=true tts=ok bytes=196056 ms=1087 phone_listen=false ear=true stt=ok stt_ms=183 heard=موجودی کارت ملت چهار میلیون و دویست و پنجاه هزار توممان است
