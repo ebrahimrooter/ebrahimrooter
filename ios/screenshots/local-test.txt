@@ -1,1 +1,15 @@
-local=fail no books file: [Errno 2] No such file or directory: '/Users/runner/Library/Developer/CoreSimulator/Devices/DC4CD8B3-4457-4153-9087-A0D7A2F9BFD9/data/Containers/Data/Application/E3D2E533-B34A-4C9A-895F-E408213D19A2/Library/Application Support/local-books.json'
+local=fail no books file: [Errno 2] No such file or directory: '/Users/runner/Library/Developer/CoreSimulator/Devices/DC4CD8B3-4457-4153-9087-A0D7A2F9BFD9/data/Containers/Data/Application/AF8C16C7-7670-497B-BDEC-DCDB2D1AFCDB/Library/Application Support/local-books.json'
+load /app/index.html
+load /app/manifest.webmanifest
+load /app/app.css
+load /app/vendor/orbs.js
+load /app/vendor/island.js
+load /app/local/seed.js
+load /app/local/sms.js
+load /app/local/xlsx.js
+load /app/local/engine.js
+load /app/app.js
+load /acc/vendor/fonts/vazirmatn-latin-400-normal.woff2
+load /acc/vendor/fonts/vazirmatn-latin-700-normal.woff2
+load /acc/vendor/fonts/vazirmatn-arabic-400-normal.woff2
+load /acc/vendor/fonts/vazirmatn-arabic-700-normal.woff2
