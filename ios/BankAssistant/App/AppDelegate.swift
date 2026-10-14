@@ -8,6 +8,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         PushManager.registerCategories()
+        #if DEBUG
+        // tests: the mode without a server against a pretend Bale (-localToken X -baleBase http://localhost:8841)
+        if let t = UserDefaults.standard.string(forKey: "localToken") {
+            try? KeychainStore.set(t, for: LocalMode.tokenKey)
+            LocalMode.enabled = true
+        }
+        #endif
         LocalVoice.shared.warmUp()
         LocalEar.shared.warmUp()
         if ProcessInfo.processInfo.arguments.contains("-voicetest") { Task { await Self.voiceTest() } }

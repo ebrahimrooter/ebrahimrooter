@@ -5,6 +5,7 @@ import UIKit
 /// app (Settings → «اپ دستیار آیفون» → «اتصال اپ آیفون»). A pairing link fills it in.
 struct PairingView: View {
     var link: DeepLink?
+    var onLocal: () -> Void = {}
     var onPaired: () -> Void
 
     @State private var server = ""
@@ -64,6 +65,18 @@ struct PairingView: View {
                         .disabled(busy || !ready)
                         .opacity(ready ? 1 : 0.55)
                         .padding(.top, 8)
+
+                    // the mode without a server: only Bale and the ESP32
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("یا بدون سرور: پیامک‌های بانک را ESP32 به ربات بله‌ات می‌فرستد و همه‌چیز روی همین گوشی ثبت می‌شود.")
+                            .font(.fa(14)).foregroundStyle(.white.opacity(0.6))
+                        Button(action: onLocal) {
+                            Text("بدون سرور (فقط بله و ESP32)").font(.fa(16, .semibold)).foregroundStyle(.white)
+                                .frame(maxWidth: .infinity).frame(height: 54)
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.45), lineWidth: 1))
+                        }
+                    }
+                    .padding(.top, 18)
                 }
                 .padding(24)
             }

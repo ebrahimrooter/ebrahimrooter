@@ -23,12 +23,17 @@ targets:
     platform: iOS
     sources:
       - path: BankAssistant
-        excludes: ["Resources/Info.plist", "Resources/*.entitlements", "Resources/FaVoice", "Resources/FaVoice/**", "Resources/FaEar", "Resources/FaEar/**"]
+        excludes: ["Resources/Info.plist", "Resources/*.entitlements", "Resources/FaVoice", "Resources/FaVoice/**", "Resources/FaEar", "Resources/FaEar/**", "Resources/www", "Resources/www/**"]
       - path: BankAssistant/Resources/FaVoice
         type: folder
         buildPhase: resources
         optional: true
       - path: BankAssistant/Resources/FaEar
+        type: folder
+        buildPhase: resources
+        optional: true
+      # the web app with its own books, for the mode without a server: sh tools/local-app/build.sh ios/BankAssistant/Resources/www
+      - path: BankAssistant/Resources/www
         type: folder
         buildPhase: resources
         optional: true

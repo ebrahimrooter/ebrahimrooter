@@ -45,16 +45,23 @@ struct RootView: View {
     @Environment(FinanceStore.self) private var store
     @Binding var pairing: DeepLink?
     @State private var paired = APIClient.shared.isPaired || Demo.enabled
+    @State private var local = LocalMode.enabled && LocalMode.token != nil
+    @State private var localSetup = false
     @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
         Group {
-            if paired && pairing == nil {
+            if local {
+                // without a server: books on the phone, bank SMS from Bale (LocalModeView.swift)
+                LocalModeView().ignoresSafeArea()
+            } else if localSetup {
+                LocalSetupView(onDone: { onboarded = true; localSetup = false; local = true }, onBack: { localSetup = false })
+            } else if paired && pairing == nil {
                 MainTabView(onUnpair: unpair)
             } else if (!onboarded || ProcessInfo.processInfo.arguments.contains("-onboarding")) && pairing == nil {
                 OnboardingView { withAnimation { onboarded = true } }
             } else {
-                PairingView(link: pairing) {
+                PairingView(link: pairing, onLocal: { localSetup = true }) {
                     paired = true
                     pairing = nil
                     onboarded = true
@@ -69,6 +76,9 @@ struct RootView: View {
             var n = AppDelegate.islandNote(title: "🔴 برداشت ۲۵۰٬۰۰۰ تومان", body: "بانک ملت — بابت چی بود؟", tx: 1, otpCard: nil)
             n.duration = nil
             IslandCenter.shared.trigger(n)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .localModeChanged)) { _ in
+            local = LocalMode.enabled && LocalMode.token != nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceUnpaired)) { _ in
             store.reset()

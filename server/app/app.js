@@ -187,7 +187,7 @@
 
     /** Inside the Android app: its own Persian voice / the phone's recognizer, no server needed. */
     native: function (method, arg) {
-      var A = window.AndroidOrb;
+      var A = window.NativeVoice || window.AndroidOrb;
       return new Promise(function (resolve) {
         var id = 'v' + Date.now() + Math.random().toString(36).slice(2, 6);
         Voice.waits[id] = resolve;
@@ -196,8 +196,9 @@
       });
     },
     waits: {},
-    androidVoice: function () { try { return !!(window.AndroidOrb && AndroidOrb.localVoice && AndroidOrb.localVoice()); } catch (e) { return false; } },
-    androidListen: function () { try { return !!(window.AndroidOrb && AndroidOrb.canListen && AndroidOrb.canListen()) && !Voice.androidListenBroken; } catch (e) { return false; } },
+    // the app's own voice / ear: the Android app (AndroidOrb) or the iPhone app (NativeVoice)
+    androidVoice: function () { var A = window.NativeVoice || window.AndroidOrb; try { return !!(A && A.localVoice && A.localVoice()); } catch (e) { return false; } },
+    androidListen: function () { var A = window.NativeVoice || window.AndroidOrb; try { return !!(A && A.canListen && A.canListen()) && !Voice.androidListenBroken; } catch (e) { return false; } },
 
     /** Speaks: the Android app's own voice, else the server voice if set up, else the phone's Persian voice, else a chime. */
     speak: function (text) {
