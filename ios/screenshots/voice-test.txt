@@ -1,0 +1,1 @@
+speech_text=5/5 bundled=true tts=ok bytes=186764 ms=2810 phone_listen=false ear=true stt=ok stt_ms=195 heard=مجری کارت ملت چهار میلیون و دویست و پنجاه هزار تومان است
