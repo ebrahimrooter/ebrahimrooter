@@ -1,28 +1,6 @@
-local=fail chat=  txs= 0 last_error= None
-load /app/index.html
-load /app/manifest.webmanifest
-load /app/app.css
-load /app/vendor/orbs.js
-load /app/vendor/island.js
-load /app/local/seed.js
-load /app/local/sms.js
-load /app/local/xlsx.js
-load /app/local/engine.js
-load /app/app.js
-page: engine ready, loading, hidden=false
-load /acc/vendor/fonts/vazirmatn-latin-400-normal.woff2
-load /acc/vendor/fonts/vazirmatn-latin-700-normal.woff2
-load /acc/vendor/fonts/vazirmatn-arabic-400-normal.woff2
-load /acc/vendor/fonts/vazirmatn-arabic-700-normal.woff2
-page: DOMContentLoaded
-page: bale → getMe
-page: bale → getUpdates
-bale getUpdates failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x600000ddfab0 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <EF1C4E57-2C95-42D7-BB5F-CEC34AB0CBBA>.<2>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
-    "LocalDataTask <EF1C4E57-2C95-42D7-BB5F-CEC34AB0CBBA>.<2>"
-), NSLocalizedDescription=The request timed out., NSErrorFailingURLStringKey=http://localhost:8841/bot123456789:test-token-abcdef/getUpdates, NSErrorFailingURLKey=http://localhost:8841/bot123456789:test-token-abcdef/getUpdates, _kCFStreamErrorDomainKey=4}
-bale getUpdates -> 51 bytes
-bale getMe failed: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={_kCFStreamErrorCodeKey=-2102, NSUnderlyingError=0x600000de8990 {Error Domain=kCFErrorDomainCFNetwork Code=-1001 "(null)" UserInfo={_kCFStreamErrorCodeKey=-2102, _kCFStreamErrorDomainKey=4}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <912549B4-5E38-43E7-8CF7-27BB9C3CBB42>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
-    "LocalDataTask <912549B4-5E38-43E7-8CF7-27BB9C3CBB42>.<1>"
-), NSLocalizedDescription=The request timed out., NSErrorFailingURLStringKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, NSErrorFailingURLKey=http://localhost:8841/bot123456789:test-token-abcdef/getMe, _kCFStreamErrorDomainKey=4}
-bale getMe -> 51 bytes
-page: sync failed: The request timed out.
+local=ok chat= 555 txs= 2 last_error= None
+sendMessage {"chat_id":555,"text":"✅ این چت به اپ «دستیار بانک» (بدون سرور) وصل شد.\n\nchat id: 555\nهمین عدد را در BALE
+editMessageReplyMarkup {"chat_id":"555","message_id":10,"reply_markup":{"inline_keyboard":[[{"text":"📲 در اپ است — Reply
+answerCallbackQuery {"callback_query_id":"cb1","text":"در اپ است؛ بابت چی بود؟"}
+sendMessage {"chat_id":"555","reply_to_message_id":21,"text":"✅ ثبت شد: فروش لپ تاپ از علی رضایی — علی رضایی (فروش)"}
+sendDocument {"bytes":16892}
