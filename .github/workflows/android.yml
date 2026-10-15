@@ -77,11 +77,22 @@ jobs:
           # the real key when the ANDROID_KEYSTORE_B64 secret is set; otherwise a temporary one
           # (then a later signed build needs one uninstall)
           # the APK only from a run whose tests passed; screenshots always (to see what went wrong)
-          if [ "$JOB_STATUS" = success ]; then cp android/app/build/outputs/apk/release/app-release.apk server/app/android/bank-assistant.apk; fi
-          cp shots/*.png shots/voice-test.txt shots/local-test.txt android/screenshots/ || true
+          # put aside, then lay them on the newest branch each try: screenshots pushed in between
+          # (another run) must never cost this run its APK
+          K="$RUNNER_TEMP/keep"; mkdir -p "$K/shots"
+          if [ "$JOB_STATUS" = success ]; then cp android/app/build/outputs/apk/release/app-release.apk "$K/app.apk"; fi
+          cp shots/*.png shots/*.txt "$K/shots/" 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f server/app/android/bank-assistant.apk android/screenshots
-          git diff --cached --quiet && exit 0
-          git commit -m "Android APK and emulator screenshots [skip ci]"
-          for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD
+            mkdir -p server/app/android android/screenshots
+            [ -f "$K/app.apk" ] && cp "$K/app.apk" server/app/android/bank-assistant.apk
+            for f in "$K"/shots/*.png "$K"/shots/voice-test.txt "$K"/shots/local-test.txt; do [ -f "$f" ] && cp "$f" android/screenshots/; done
+            git add -f server/app/android/bank-assistant.apk android/screenshots
+            git diff --cached --quiet && exit 0
+            git commit -q -m "Android APK and emulator screenshots [skip ci]"
+            git push -q origin "HEAD:$GITHUB_REF_NAME" && exit 0
+            sleep $((i * 4))
+          done
+          echo "::error::could not push the APK"; exit 1
