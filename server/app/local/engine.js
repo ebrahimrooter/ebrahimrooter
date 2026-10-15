@@ -482,7 +482,7 @@
       onState: function (st, why) { linkState = st; linkError = why || null; log('link ' + st + (why ? ': ' + why : '')); } });
     client.start();
   }
-  function sync() { if (!client || linkState !== 'online') startLink(); return Promise.resolve(0); }
+  function sync() { if (!client) startLink(); else client.check(); return Promise.resolve(0); }
   function pendingList() {
     refresh();
     return S.txs.filter(function (t) { return t.status === 'pending'; })

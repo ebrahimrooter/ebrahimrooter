@@ -1527,6 +1527,9 @@
       '<p>' + (on ? '🟢 orb روشن است' : '⚪️ orb خاموش است') + (paired ? '' : ' · <span class="warn">در حال وصل شدن…</span>') +
       (overlay ? '' : '<br><span class="muted">بار اول اجازه‌ی «نمایش روی برنامه‌های دیگر» را بده.</span>') + '</p>' +
       '<label class="check"><input type="checkbox" id="andAuto"' + (AND.autoAsk() ? ' checked' : '') + '> وقتی واریز یا برداشت رسید، خودش بپرسد «بابت چی بود؟»</label>' +
+      (LOCAL && AND.batteryFree ? '<p>' + (AND.batteryFree() ? '🟢 کار در پس‌زمینه مجاز است: پیامک بانک حتی با صفحه‌ی خاموش نوتیف می‌شود؛ رویش بزن تا orb بپرسد.' :
+        '⚪️ برای نوتیف با <b>صفحه‌ی خاموش</b>، اجازه‌ی کار در پس‌زمینه را بده (سامسونگ: باتری ← «بدون محدودیت»).') + '</p>' +
+        (AND.batteryFree() ? '' : '<div class="btns"><button class="btn ghost" type="button" id="andBattery">اجازه‌ی کار در پس‌زمینه</button></div>') : '') +
       '<div class="btns">' + (on ? '<button class="btn ghost" type="button" id="andStop">خاموش کردن orb</button>' : '<button class="btn" type="button" id="andStart">روشن کردن orb</button>') +
       '<button class="btn ghost" type="button" id="andTalk">صحبت با orb</button></div>' +
       (LOCAL ? '' : '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>');
@@ -1534,6 +1537,7 @@
     on1('andStart', function () { androidPair(); AND.startOrb(); setTimeout(androidSettings, 800); });
     on1('andStop', function () { AND.stopOrb(); setTimeout(androidSettings, 500); });
     on1('andTalk', function () { androidPair(); AND.talk(); });
+    on1('andBattery', function () { AND.askBatteryFree(); });
     on1('andServer', function () { if (confirm('اتصال این گوشی به سرور فعلی قطع شود و آدرس دیگری بزنی؟')) AND.changeServer(); });
     document.getElementById('andAuto').onchange = function () { AND.setAutoAsk(this.checked); };
   }

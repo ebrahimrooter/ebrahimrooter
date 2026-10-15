@@ -8,7 +8,7 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val prefs = Prefs(context)
-        if (prefs.orbEnabled && prefs.paired && OrbService.canDrawOverlays(context)) {
+        if (prefs.orbEnabled && (prefs.paired || prefs.local) && OrbService.canDrawOverlays(context)) {
             runCatching { OrbService.start(context) }
         }
     }

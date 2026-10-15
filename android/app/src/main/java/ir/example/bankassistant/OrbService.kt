@@ -79,6 +79,11 @@ class OrbService : Service() {
 
         @Volatile var running = false
             private set
+        @Volatile private var self: OrbService? = null
+        const val ACTION_KEEPALIVE = "keepalive"
+
+        /** KeepAlive (AlarmManager, also with the screen off): look at the link and the books now. */
+        fun keepAlive(c: Context) { self?.let { s -> s.scope.launch { s.onKeepAlive() } } }
     }
 
     private lateinit var prefs: Prefs
@@ -135,10 +140,12 @@ class OrbService : Service() {
         }
         if (!running) {
             running = true
+            self = this
             addViews()
             if (prefs.local && !demo) brain = runCatching { LocalBrain(this, prefs) { onBooksChanged() }.also { it.attach(wm, overlayType()) } }
                 .onFailure { Log.e("BankOrb", "local books for the orb", it) }.getOrNull()
             if (demo) showDemo() else startPolling()
+            if (prefs.local && !demo) KeepAlive.schedule(this)
         }
 
         if (intent?.action == ACTION_TALK) onTap()
@@ -147,6 +154,8 @@ class OrbService : Service() {
 
     override fun onDestroy() {
         running = false
+        self = null
+        KeepAlive.cancel(this)
         brain?.detach(wm)
         brain = null
         scope.cancel()
@@ -480,6 +489,19 @@ class OrbService : Service() {
         }
     }
 
+    /** Every few minutes, even in Doze (KeepAlive): the link is up (or comes back), new SMS are read. */
+    private suspend fun onKeepAlive() {
+        val b = brain ?: return
+        val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        val lock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "bankassistant:keepalive")
+        lock.acquire(25_000)
+        try {
+            runCatching { b.pending() }.onSuccess { if (session?.isActive != true) onPending(it) }
+            delay(8_000)                       // time for waiting SMS to come in over the link
+            runCatching { b.pending() }.onSuccess { if (session?.isActive != true) onPending(it) }
+        } finally { if (lock.isHeld) lock.release() }
+    }
+
     /** The orb's books got a new bank SMS from the ESP32 (LocalBrain): ask right away. */
     private fun onBooksChanged() {
         val b = brain ?: return
@@ -496,9 +518,10 @@ class OrbService : Service() {
         prefs.seenPending = list.map(key).toSet()   // forget answered ones
         val t = fresh.firstOrNull() ?: return
         val what = (if (t.incoming) "واریز " else "برداشت ") + toman(t.amountRial) + " تومان"
-        notifyTx(what)
+        notifyTx(what, fresh.size)
         bounce()
-        if (prefs.autoAsk && hasMic()) {
+        // screen off or locked: only the notification (with sound); a tap on it and the orb asks
+        if (prefs.autoAsk && hasMic() && userIsLooking()) {
             goForeground(withMic = true)
             session = scope.launch { converse("تراکنش‌های بی‌جواب") }
         } else {
@@ -575,14 +598,27 @@ class OrbService : Service() {
         runCatching { getSystemService(NotificationManager::class.java).notify(NOTE_ID, note(text)) }
     }
 
-    private fun notifyTx(what: String) {
+    private fun userIsLooking(): Boolean {
+        val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+        return pm.isInteractive && !km.isKeyguardLocked
+    }
+
+    /** Also on the lock screen and with the screen off (sound + vibration); a tap: the orb asks. */
+    private fun notifyTx(what: String, count: Int = 1) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val talk = PendingIntent.getService(this, 3, Intent(this, OrbService::class.java).setAction(ACTION_TALK), PendingIntent.FLAG_IMMUTABLE)
+        val i = Intent(this, OrbService::class.java).setAction(ACTION_TALK)
+        val talk = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            else PendingIntent.getService(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(this, CHANNEL_TX)
             .setSmallIcon(R.drawable.ic_orb_small)
-            .setContentTitle(what)
-            .setContentText("بابت چی بود؟ روی orb بزن و بگو.")
+            .setContentTitle((if (what.startsWith("واریز")) "🟢 " else "🔴 ") + what)
+            .setContentText(if (count > 1) "${count.toString().map { "۰۱۲۳۴۵۶۷۸۹"[it - '0'] }.joinToString("")} تراکنش تازه — بزن تا بپرسم بابت چی بود" else "بزن تا orb بپرسد بابت چی بود")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .setContentIntent(talk)
             .build()

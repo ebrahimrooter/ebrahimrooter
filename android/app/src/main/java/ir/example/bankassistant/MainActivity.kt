@@ -467,6 +467,15 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface fun isPaired() = prefs.paired || prefs.local
 
         @JavascriptInterface fun orbOn() = OrbService.running
+
+        /** «Run in the background» (no battery optimization): SMS from the ESP32 also with the screen off. */
+        @JavascriptInterface fun batteryFree(): Boolean =
+            (getSystemService(POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(packageName)
+        @SuppressLint("BatteryLife")
+        @JavascriptInterface fun askBatteryFree() = runOnUiThread {
+            runCatching { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
+                .onFailure { runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } }
+        }
         @JavascriptInterface fun canOverlay() = OrbService.canDrawOverlays(this@MainActivity)
         @JavascriptInterface fun autoAsk() = prefs.autoAsk
         @JavascriptInterface fun setAutoAsk(on: Boolean) { prefs.autoAsk = on }

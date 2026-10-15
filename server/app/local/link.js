@@ -147,7 +147,7 @@
   function Client(opts) {
     this.o = opts;
     this.ws = null; this.buf = new Uint8Array(0); this.up = false; this.timer = null; this.ping = null; this.wait = 2000; this.closed = false;
-    this.pid = 1;
+    this.pid = 1; this.pong = 0;
   }
   Client.prototype.start = function () {
     var self = this, o = this.o;
@@ -158,7 +158,8 @@
     this.ws = ws;
     ws.binaryType = 'arraybuffer';
     ws.onopen = function () {
-      var body = concat(str('MQTT'), new Uint8Array([4, 0x02, 0, 60]), str(o.clientId));
+      // keep alive 5 minutes: with the screen off the phone pings less often (KeepAlive.kt looks every few minutes)
+      var body = concat(str('MQTT'), new Uint8Array([4, 0x02, 300 >> 8, 300 & 255]), str(o.clientId));
       ws.send(packet(0x10, body));
     };
     ws.onmessage = function (ev) { self.feed(new Uint8Array(ev.data)); };
@@ -184,6 +185,14 @@
     clearTimeout(this.timer); clearInterval(this.ping);
     if (this.ws) try { this.ws.send(new Uint8Array([0xe0, 0])); this.ws.close(); } catch (e) { /* gone */ }
     this.ws = null; this.up = false;
+  };
+  /** Is the link still alive? No answer in 10 s: drop it and connect again. */
+  Client.prototype.check = function () {
+    var self = this;
+    if (!this.up || !this.ws) { if (!this.closed) { clearTimeout(this.timer); this.wait = 2000; this.start(); } return; }
+    var sent = Date.now();
+    try { this.ws.send(new Uint8Array([0xc0, 0])); } catch (e) { return this.down('ارسال نشد'); }
+    setTimeout(function () { if (self.up && self.pong < sent) { try { self.ws.close(); } catch (e) { /* gone */ } self.down('جواب نداد'); } }, 10000);
   };
   Client.prototype.publish = function (topic, text, retain) {
     if (!this.up) return false;
@@ -219,6 +228,8 @@
       clearInterval(this.ping);
       this.ping = setInterval(function () { if (self.up) try { self.ws.send(new Uint8Array([0xc0, 0])); } catch (e) { /* closing */ } }, 45000);
       if (o.onState) o.onState('online');
+    } else if (type === 13) {                           // PINGRESP
+      this.pong = Date.now();
     } else if (type === 3) {                            // PUBLISH
       var tl = (body[0] << 8) | body[1], topic = fromUtf8(body.slice(2, 2 + tl)), p = 2 + tl, qos = (head >> 1) & 3;
       if (qos) { this.ws.send(new Uint8Array([0x40, 2, body[p], body[p + 1]])); p += 2; }
@@ -278,7 +289,8 @@
           } else if (type === 3) {
             var tl = (body[0] << 8) | body[1];
             B.publish(new TextDecoder().decode(body.slice(2, 2 + tl)), new TextDecoder().decode(body.slice(2 + tl)), !!(head & 1));
-          } else if (type === 14) { ws.close(); }
+          } else if (type === 12) { setTimeout(function () { ws.onmessage({ data: new Uint8Array([0xd0, 0]).buffer }); }, 5); }
+          else if (type === 14) { ws.close(); }
         }
       };
       ws.close = function () {

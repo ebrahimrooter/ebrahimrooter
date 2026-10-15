@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- the mode without a server: bank SMS from the ESP32 also with the screen off (settings asks once) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+: to see the phone's speech recognizer (Persian listening without a server) -->
     <queries>
@@ -61,6 +64,7 @@
                 android:resource="@xml/files" />
         </provider>
 
+        <receiver android:name=".KeepAlive" android:exported="false" />
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
