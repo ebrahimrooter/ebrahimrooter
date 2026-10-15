@@ -1,6 +1,1 @@
-local=ok chat= 555 txs= 2 last_error= None
-sendMessage {"chat_id":555,"text":"✅ این چت به اپ «دستیار بانک» (بدون سرور) وصل شد.\n\nchat id: 555\nهمین عدد را در BALE
-answerCallbackQuery {"callback_query_id":"cb1","text":"در اپ است؛ بابت چی بود؟"}
-editMessageReplyMarkup {"chat_id":"555","message_id":10,"reply_markup":{"inline_keyboard":[[{"text":"📲 در اپ است — Reply
-sendMessage {"chat_id":"555","reply_to_message_id":21,"text":"✅ ثبت شد: فروش لپ تاپ از علی رضایی — علی رضایی (فروش)"}
-sendDocument {"bytes":16892}
+local=ok txs= 2 acked= ['demo0000000000a1', 'demo0000000000a2']
