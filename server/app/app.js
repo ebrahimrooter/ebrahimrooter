@@ -191,11 +191,13 @@
       return new Promise(function (resolve) {
         var id = 'v' + Date.now() + Math.random().toString(36).slice(2, 6);
         Voice.waits[id] = resolve;
-        setTimeout(function () { if (Voice.waits[id]) { delete Voice.waits[id]; resolve(null); } }, method === 'speak' ? 45000 : 20000);
+        // listening may first ask for the microphone and load the speech model: give it time
+        setTimeout(function () { if (Voice.waits[id]) { delete Voice.waits[id]; resolve(null); } }, method === 'speak' ? 45000 : 60000);
         try { method === 'speak' ? A.speak(id, arg) : A.listen(id); } catch (e) { delete Voice.waits[id]; resolve(null); }
       });
     },
     waits: {},
+    androidMiss: 0,
     // the app's own voice / ear: the Android app (AndroidOrb) or the iPhone app (NativeVoice)
     androidVoice: function () { var A = window.NativeVoice || window.AndroidOrb; try { return !!(A && A.localVoice && A.localVoice()); } catch (e) { return false; } },
     androidListen: function () { var A = window.NativeVoice || window.AndroidOrb; try { return !!(A && A.canListen && A.canListen()) && !Voice.androidListenBroken; } catch (e) { return false; } },
@@ -231,8 +233,10 @@
     listen: function (maxMs) {
       if (this.androidListen()) {
         return this.native('listen').then(function (t) {
-          if (t !== null && t !== undefined) return t;
-          Voice.androidListenBroken = true;           // no Persian recognizer on this phone: the old way
+          if (t !== null && t !== undefined) { Voice.androidMiss = 0; return t; }
+          // no answer from the app: once is a hiccup (heard nothing); three times in a row, the old way
+          if (++Voice.androidMiss < 3) return '';
+          Voice.androidListenBroken = true;
           return Voice.listen(maxMs);
         });
       }
@@ -2314,7 +2318,7 @@
     var speak = function (text, sub) { orbSay(text, sub || ''); orbMode('speaking'); return Voice.speak(text).then(function () { orbMode(''); }); };
     var done = function (ms) { setTimeout(function () { if (alive()) orbCloseStage(); }, ms || 2500); };
     if (!Voice.canListen()) {
-      orbSay('تشخیص گفتار روی این مرورگر در دسترس نیست', 'صدای سرور را نصب کن (voice/install.sh) یا از اپ آیفون استفاده کن');
+      orbSay('تشخیص گفتار روی این مرورگر در دسترس نیست', AND ? 'اپ اندروید را از تنظیمات ← «دانلود اپ اندروید» به‌روز کن (تشخیص گفتار فارسی داخل خود اپ است)' : 'صدای سرور را نصب کن (voice/install.sh) یا از اپ اندروید یا آیفون استفاده کن');
       return done(4000);
     }
     var silent = 0;

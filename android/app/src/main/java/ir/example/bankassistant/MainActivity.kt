@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.provider.Settings
 import android.text.InputType
 import android.util.Log
@@ -61,7 +62,16 @@ class MainActivity : AppCompatActivity() {
     private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         pendingWebPermission?.let { if (ok) it.grant(it.resources) else it.deny() }
         pendingWebPermission = null
+        // the web app's question that asked for the microphone: listen now (or say nothing was heard)
+        micWaiting?.let { id ->
+            micWaiting = null
+            if (ok) hear(id) else {
+                Toast.makeText(this, "برای شنیدن، اجازه‌ی میکروفون لازم است", Toast.LENGTH_LONG).show()
+                heard(id, "")
+            }
+        }
     }
+    private var micWaiting: String? = null
     private val notePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val pickFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data))
@@ -407,6 +417,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun hasMic() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    /** One question from the web app: the app's own recognizer first (no server, no Google), else the phone's. */
+    private fun hear(id: String) {
+        scope.launch {
+            var text: String? = null
+            if (LocalEar.bundled(this@MainActivity)) text = withContext(Dispatchers.IO) {
+                val wav = try { webRecorder.record() } catch (e: Exception) { Log.w("BankVoice", "record: $e"); null }
+                if (wav == null) "" else try { LocalEar.transcribe(this@MainActivity, wav) } finally { wav.delete() }
+            }
+            if (text == null && PhoneListen.available(this@MainActivity)) text = PhoneListen.listen(this@MainActivity)
+            Log.i("BankVoice", "heard: " + (text ?: "<no recognizer>"))
+            heard(id, text)
+        }
+    }
+
+    private fun heard(id: String, text: String?) {
+        web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, " +
+            (if (text == null) "null" else JSONObject.quote(text)) + ")", null)
+    }
+
     /** What the web app can ask from the Android side. */
     inner class Bridge {
         @JavascriptInterface fun version() = 1
@@ -481,19 +510,13 @@ class MainActivity : AppCompatActivity() {
         /** Listens once; then window.onAndroidHeard(id, text) — text null when it could not listen. */
         @JavascriptInterface fun listen(id: String) = runOnUiThread {
             if (!hasMic()) {
+                // ask first, then listen (the web app waits for the answer)
+                micWaiting?.let { heard(it, "") }
+                micWaiting = id
                 micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, null)", null)
                 return@runOnUiThread
             }
-            scope.launch {
-                // the app's own recognizer first (no server, no Google), else the phone's
-                val heard = if (LocalEar.bundled(this@MainActivity)) withContext(Dispatchers.IO) {
-                    val wav = runCatching { webRecorder.record() }.getOrNull()
-                    if (wav == null) "" else try { LocalEar.transcribe(this@MainActivity, wav) } finally { wav.delete() }
-                } else PhoneListen.listen(this@MainActivity)
-                web?.evaluateJavascript("window.onAndroidHeard && window.onAndroidHeard(${JSONObject.quote(id)}, " +
-                    (if (heard == null) "null" else JSONObject.quote(heard)) + ")", null)
-            }
+            hear(id)
         }
 
         @JavascriptInterface fun changeServer() = runOnUiThread {
