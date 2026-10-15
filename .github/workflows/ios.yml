@@ -98,11 +98,14 @@ jobs:
           rm -rf Payload && mkdir Payload
           cp -R build/device/Build/Products/Release-iphoneos/BankAssistant.app Payload/
           zip -qry ../bank-assistant-iphone.ipa Payload
-          ls -la ../bank-assistant-iphone.ipa
+          # the same without the widget extension: easier to sign with a free Apple ID
+          rm -rf Payload/BankAssistant.app/PlugIns
+          zip -qry ../bank-assistant-iphone-simple.ipa Payload
+          ls -la ../bank-assistant-iphone*.ipa
       - uses: actions/upload-artifact@v4
         with:
           name: bank-assistant-iphone-ipa
-          path: bank-assistant-iphone.ipa
+          path: bank-assistant-iphone*.ipa
           retention-days: 90
       - name: Keep the screenshots in the repo (ios/screenshots)
         if: always() && github.event_name == 'push'
