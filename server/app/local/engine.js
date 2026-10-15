@@ -450,8 +450,15 @@
     refresh();
     var lk = link();
     if (topic === base + 'st') { lk.status = Object.assign({}, m, { seen: stamp() }); save(); return; }
-    if (topic.indexOf(base + 'sms/') !== 0 || !m.id || typeof m.text !== 'string') return;
-    var n = 0;
+    if (topic.indexOf(base + 'sms/') !== 0) return;
+    takeSms(m);
+  }
+
+  /** One bank SMS from the ESP32 (from the link here, or handed over by the orb's native link). */
+  function takeSms(m) {
+    if (!m || !m.id || typeof m.text !== 'string') return 0;
+    refresh();
+    var lk = link(), n = 0;
     if (lk.acked.indexOf(m.id) === -1) {
       var res = ingest(String(m.from || 'ESP32'), m.text, smsDate(m.when) || new Date());
       if (res.transaction && !res.duplicate) n++;
@@ -464,6 +471,7 @@
     newSms(n);
     // the orb's copy: the app's own page may have booked it first; the orb still asks
     if (!n && window.BA_HEADLESS) try { if (window.OrbHost && OrbHost.changed) OrbHost.changed(); } catch (e) { /* no orb */ }
+    return n;
   }
 
   function startLink() {
@@ -677,7 +685,8 @@
   window.BA_LOCAL = {
     sync: sync, saveFile: saveFile, excelBytes: excelBytes, excelName: excelName,
     backupBytes: backupBytes, restore: restore, state: function () { refresh(); return S; }, ingest: ingest,
-    link: function () { return { state: linkState, error: linkError, keys: linkKeys, code: link().code }; }, pending: pendingList, ask: function (text) { refresh(); var a = ask(text); save(); return a; }
+    link: function () { return { state: linkState, error: linkError, keys: linkKeys, code: link().code }; }, pending: pendingList,
+    take: function (m) { var n = takeSms(m); return { new: n, pending: pendingList() }; }, ask: function (text) { refresh(); var a = ask(text); save(); return a; }
   };
   saveNow();   // the books exist on the phone from the first start
   log('engine ready, ' + document.readyState + ', hidden=' + document.hidden);

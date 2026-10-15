@@ -81,6 +81,7 @@ class OrbService : Service() {
             private set
         @Volatile private var self: OrbService? = null
         const val ACTION_KEEPALIVE = "keepalive"
+        const val ACTION_ASK = "ask"
 
         /** KeepAlive (AlarmManager, also with the screen off): look at the link and the books now. */
         fun keepAlive(c: Context) { self?.let { s -> s.scope.launch { s.onKeepAlive() } } }
@@ -92,6 +93,12 @@ class OrbService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     /** The books on this phone (the mode without a server); null: the server answers. */
     private var brain: LocalBrain? = null
+    /** The link to the ESP32 in this service (works with the app closed and the screen off). */
+    private var link: NativeLink? = null
+    /** SMS the native link got that the books may not have yet. */
+    private val waitingSms = ArrayList<org.json.JSONObject>()
+    /** «out|2500000» → when a notification for it went out (no second one when the books catch up). */
+    private val notified = HashMap<String, Long>()
     private fun ready() = prefs.paired || prefs.local
     private var session: Job? = null
     private var poller: Job? = null
@@ -145,8 +152,12 @@ class OrbService : Service() {
             if (prefs.local && !demo) brain = runCatching { LocalBrain(this, prefs) { onBooksChanged() }.also { it.attach(wm, overlayType()) } }
                 .onFailure { Log.e("BankOrb", "local books for the orb", it) }.getOrNull()
             if (demo) showDemo() else startPolling()
-            if (prefs.local && !demo) KeepAlive.schedule(this)
+            if (prefs.local && !demo) {
+                KeepAlive.schedule(this)
+                link = NativeLink(this) { m -> scope.launch { onNativeSms(m) } }.also { it.start() }
+            }
         }
+        if (intent?.action == ACTION_ASK) { askAboutWaiting(); return START_STICKY }
 
         if (intent?.action == ACTION_TALK) onTap()
         return START_STICKY
@@ -156,6 +167,8 @@ class OrbService : Service() {
         running = false
         self = null
         KeepAlive.cancel(this)
+        link?.stop()
+        link = null
         brain?.detach(wm)
         brain = null
         scope.cancel()
@@ -491,6 +504,7 @@ class OrbService : Service() {
 
     /** Every few minutes, even in Doze (KeepAlive): the link is up (or comes back), new SMS are read. */
     private suspend fun onKeepAlive() {
+        link?.poke()
         val b = brain ?: return
         val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
         val lock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "bankassistant:keepalive")
@@ -500,6 +514,42 @@ class OrbService : Service() {
             delay(8_000)                       // time for waiting SMS to come in over the link
             runCatching { b.pending() }.onSuccess { if (session?.isActive != true) onPending(it) }
         } finally { if (lock.isHeld) lock.release() }
+    }
+
+    /** The native link got a bank SMS: a notification right away, then into the books. */
+    private fun onNativeSms(m: org.json.JSONObject) {
+        val text = m.optString("text")
+        synchronized(waitingSms) { waitingSms.add(m) }
+        val a = NativeLink.amountOf(text)
+        if (a != null && !(text.contains("رمز") && text.contains("پویا"))) {
+            notified[(if (a.first) "in|" else "out|") + a.second] = System.currentTimeMillis()
+            notifyTx((if (a.first) "واریز " else "برداشت ") + toman(a.second) + " تومان")
+            bounce()
+            orb.attention = true
+        }
+        val b = brain ?: return
+        scope.launch {
+            val list = runCatching { b.take(m) }.getOrNull() ?: return@launch
+            synchronized(waitingSms) { waitingSms.remove(m) }
+            if (session?.isActive != true) onPending(list)
+        }
+    }
+
+    /** A tap on the transaction notification: the books get what the link brought, then the orb asks. */
+    private fun askAboutWaiting() {
+        if (session?.isActive == true) return
+        if (!hasMic()) { openApp(); return }
+        goForeground(withMic = true)
+        session = scope.launch {
+            set(Phase.PROCESSING, "دارم تراکنش‌های بانک را نگاه می‌کنم؛ چند لحظه صبر کن.")
+            val b = brain
+            if (b != null) {
+                val list = synchronized(waitingSms) { ArrayList(waitingSms) }
+                for (m in list) runCatching { b.take(m) }.onSuccess { synchronized(waitingSms) { waitingSms.remove(m) } }
+                runCatching { b.pending() }.onSuccess { l -> prefs.seenPending = l.map { "L" + it.id }.toSet() }
+            }
+            converse("تراکنش‌های بی‌جواب")
+        }
     }
 
     /** The orb's books got a new bank SMS from the ESP32 (LocalBrain): ask right away. */
@@ -518,7 +568,11 @@ class OrbService : Service() {
         prefs.seenPending = list.map(key).toSet()   // forget answered ones
         val t = fresh.firstOrNull() ?: return
         val what = (if (t.incoming) "واریز " else "برداشت ") + toman(t.amountRial) + " تومان"
-        notifyTx(what, fresh.size)
+        // the native link already told about this one: no second notification
+        val k = (if (t.incoming) "in|" else "out|") + t.amountRial
+        val told = (notified[k] ?: 0L) > System.currentTimeMillis() - 30 * 60_000L
+        notified.remove(k)
+        if (!told) notifyTx(what, fresh.size)
         bounce()
         // screen off or locked: only the notification (with sound); a tap on it and the orb asks
         if (prefs.autoAsk && hasMic() && userIsLooking()) {
@@ -608,7 +662,7 @@ class OrbService : Service() {
     private fun notifyTx(what: String, count: Int = 1) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val i = Intent(this, OrbService::class.java).setAction(ACTION_TALK)
+        val i = Intent(this, OrbService::class.java).setAction(ACTION_ASK)
         val talk = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             else PendingIntent.getService(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(this, CHANNEL_TX)

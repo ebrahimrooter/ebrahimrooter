@@ -88,7 +88,23 @@ hit = [x for x in s.get("txs", []) if x.get("amount") == 1200000 and x.get("dire
 print("orb=" + ("ok" if len(hit) == 1 else "fail"), "txs=", len(s.get("txs", [])))
 PY
 adb logcat -d -s AndroidRuntime:E | tail -30
-grep -q "orb=ok" "$OUT/local-orb.txt" && grep -q "was booked" "$OUT/local-orb.txt" || { echo "LOCAL ORB TEST FAILED"; exit 1; }
+grep -q "orb=ok" "$OUT/local-orb.txt" && grep -q "was booked" "$OUT/local-orb.txt" && grep -q "bank SMS from the ESP32" "$OUT/local-orb.txt" || { echo "LOCAL ORB TEST FAILED"; exit 1; }
+
+# screen off, app closed: the SMS still becomes a notification (the orb's own link, not the page)
+adb shell am force-stop $PKG 2>/dev/null; true
+adb shell am start -W -n $PKG/.MainActivity >/dev/null
+sleep 12
+adb shell input keyevent KEYCODE_HOME
+adb shell input keyevent KEYCODE_SLEEP
+sleep 5
+adb logcat -c
+python3 tools/demo/fake_esp32.py sms $CODE 127.0.0.1 1883 esp000000000004 "$(printf 'بانک ملت\nبرداشت:900,000\nمانده:2,000,000\n1405/07/21 11:00')"
+sleep 12
+adb logcat -d -s BankOrb:* | tee "$OUT/screen-off.txt"
+adb shell dumpsys notification --noredact | grep -E "android.title=.*برداشت" | head -3 | tee -a "$OUT/screen-off.txt"
+adb shell input keyevent KEYCODE_WAKEUP
+shot a10-screen-off-notification 2
+grep -q "esp000000000004" "$OUT/screen-off.txt" && grep -q "android.title" "$OUT/screen-off.txt" || { echo "SCREEN-OFF NOTIFICATION TEST FAILED"; exit 1; }
 
 # fail the job when the in-app voice does not work
 grep -q "speech_text=5/5" "$OUT/voice-test.txt" && grep -q "tts=ok" "$OUT/voice-test.txt" && grep -q "stt=ok" "$OUT/voice-test.txt" || { echo "VOICE TEST FAILED"; exit 1; }

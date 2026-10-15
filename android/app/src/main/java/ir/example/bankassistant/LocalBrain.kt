@@ -45,8 +45,10 @@ class LocalBrain(private val context: Context, prefs: Prefs, private val onChang
         runCatching {
             wm.addView(w, WindowManager.LayoutParams(1, 1, overlayType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START; alpha = 0f })
+                PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START })
         }
+        // one transparent pixel, but «visible»: Android does not freeze a page on screen
+        w.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         w.loadUrl(local.orbUrl)
         web = w
     }
@@ -67,6 +69,9 @@ class LocalBrain(private val context: Context, prefs: Prefs, private val onChang
         return Api.Reply(text, o.optString("reply"), o.optString("state"))
     }
 
+    /** A bank SMS the native link got (NativeLink): into the books now; then what is waiting. */
+    suspend fun take(m: JSONObject): List<Api.Pending> = pendingOf(JSONObject(call("take", m.toString())).getJSONArray("pending"))
+
     private fun pendingOf(a: JSONArray) = (0 until a.length()).map { i ->
         val t = a.getJSONObject(i)
         Api.Pending(t.getInt("id"), t.getString("direction") == "in", t.getLong("amount"))
@@ -74,6 +79,7 @@ class LocalBrain(private val context: Context, prefs: Prefs, private val onChang
 
     private suspend fun call(what: String, arg: String): String {
         val w = web ?: throw ApiException("orb آماده نیست")
+        w.onResume(); w.resumeTimers()
         withTimeout(20_000) { ready.await() }
         val id = "o" + ids.incrementAndGet()
         val d = CompletableDeferred<String>()
