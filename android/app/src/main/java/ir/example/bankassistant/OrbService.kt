@@ -83,12 +83,15 @@ class OrbService : Service() {
         @Volatile private var self: OrbService? = null
 
         /** A Bale notification with an ESP32 message (BaleWatch): the orb comes up and asks. */
-        fun baleNotice(c: Context, text: String) {
+        /** true when the orb took it; otherwise it waits for the app (LocalMode.queueNotice). */
+        fun baleNotice(c: Context, text: String): Boolean {
             val s = self
-            if (s != null) { s.scope.launch { s.onNotice(text) }; return }
+            if (s != null && s.brain != null) { s.scope.launch { s.onNotice(text) }; return true }
+            LocalMode.queueNotice(c, text)
             val prefs = Prefs(c)
-            if (!prefs.orbEnabled || !canDrawOverlays(c)) return
-            runCatching { ContextCompat.startForegroundService(c, Intent(c, OrbService::class.java).putExtra(EXTRA_NOTICE, text)) }
+            if (!prefs.orbEnabled || !canDrawOverlays(c)) return false
+            // the orb comes up and its books read the waiting notification on the first look
+            return runCatching { ContextCompat.startForegroundService(c, Intent(c, OrbService::class.java)) }.isSuccess
         }
     }
 
@@ -152,7 +155,7 @@ class OrbService : Service() {
                 .onFailure { Log.e("BankOrb", "local books for the orb", it) }.getOrNull()
             if (demo) showDemo() else startPolling()
         }
-        intent?.getStringExtra(EXTRA_NOTICE)?.let { t -> scope.launch { onNotice(t) } }
+
         if (intent?.action == ACTION_TALK) onTap()
         return START_STICKY
     }

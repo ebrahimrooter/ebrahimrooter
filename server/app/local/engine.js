@@ -527,8 +527,8 @@
     if (syncing) return syncing;
     refresh();
     // one reader of Bale at a time (the app and the orb): getUpdates' offset is shared
-    try { if (N && N.lock && !N.lock()) return Promise.resolve(0); } catch (e) { /* no lock */ }
-    newCount = 0;
+    try { if (N && N.lock && !N.lock()) return Promise.resolve(drainNotices()); } catch (e) { /* no lock */ }
+    newCount = drainNotices();
     syncing = bale('getUpdates', { offset: S.bale.offset || 0, timeout: 0, limit: 100 }).then(function (list) {
       list = list || [];
       var chain = Promise.resolve();
@@ -565,12 +565,26 @@
   function unlock() { try { if (N && N.unlock) N.unlock(); } catch (e) { /* no lock */ } }
 
   /** The text of a Bale notification (Android: the orb reads them): an ESP32 message → booked, no tap needed. */
-  function notice(text) {
+  function notice(text, at) {
     refresh();
-    var r = relaySms(text);
-    if (!r || r.otp) return null;
-    var res = ingest('ESP32 via Bale', r.sms, new Date());
+    var r = relaySms(text), sms;
+    if (r) { if (r.otp) return null; sms = r.sms; }
+    else {
+      // a notification that shows the message without the separators: the bank SMS as it is
+      sms = String(text || '').trim();
+      if (!SMS.parseSms(sms, new Date())) sms = sms.split('\n').slice(1).join('\n').trim();   // a heading line first
+      if (!sms || !SMS.parseSms(sms, new Date())) return null;
+    }
+    var res = ingest('ESP32 via Bale', sms, at ? new Date(at) : new Date());
     return res.transaction && !res.duplicate ? res.transaction : null;
+  }
+  /** Android: Bale notifications seen while neither the app nor the orb was running (BaleWatch.kt). */
+  function drainNotices() {
+    var list = [];
+    try { list = N && N.takeNotices ? JSON.parse(N.takeNotices() || '[]') : []; } catch (e) { list = []; }
+    var n = 0;
+    list.forEach(function (x) { try { if (notice(x.text, x.at)) n++; } catch (e) { log('notice: ' + e.message); } });
+    return n;
   }
   function pendingList() {
     refresh();

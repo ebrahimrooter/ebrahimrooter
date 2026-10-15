@@ -62,6 +62,11 @@ class Prefs(context: Context) {
         get() = plain.getInt("orb_y", -1)
         set(v) = plain.edit().putInt("orb_y", v).apply()
 
+    /** The last Bale notification the app saw (settings show it: is the reader working at all?). */
+    var baleLast: String?
+        get() = plain.getString("bale_last", null)
+        set(v) = plain.edit().putString("bale_last", v).apply()
+
     /** Pending transaction ids already announced. */
     var seenPending: Set<String>
         get() = plain.getStringSet("seen_pending", emptySet()) ?: emptySet()

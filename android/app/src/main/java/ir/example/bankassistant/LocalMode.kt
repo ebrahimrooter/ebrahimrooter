@@ -147,6 +147,14 @@ class LocalMode(private val context: Context, private val prefs: Prefs) {
         }
         @JavascriptInterface fun unlock() = synchronized(Shared) { Shared.lockUntil = 0L }
 
+        /** Bale notifications kept while nothing was running (BaleWatch); read once. */
+        @JavascriptInterface fun takeNotices(): String = synchronized(Shared) {
+            val f = noticesFile(context)
+            val t = runCatching { f.readText() }.getOrNull() ?: "[]"
+            f.delete()
+            t
+        }
+
         @JavascriptInterface fun saveFile(id: String, name: String, mime: String, b64: String) = background(id) {
             this@LocalMode.saveFile(safeName(name), mime, Base64.decode(b64, Base64.DEFAULT))
         }
@@ -168,6 +176,18 @@ class LocalMode(private val context: Context, private val prefs: Prefs) {
         }
 
         private fun safeName(n: String) = n.replace(Regex("[^\\w.\\-]"), "_").take(80).ifBlank { "file" }
+    }
+
+    companion object {
+        private fun noticesFile(c: Context) = File(c.filesDir, "bale-notices.json")
+
+        /** A Bale notification's text, for the books engine to read the next time it runs. */
+        fun queueNotice(c: Context, text: String) = synchronized(Shared) {
+            val f = noticesFile(c)
+            val a = runCatching { org.json.JSONArray(f.readText()) }.getOrNull() ?: org.json.JSONArray()
+            if (a.length() < 200) a.put(JSONObject().put("text", text).put("at", System.currentTimeMillis()))
+            f.writeText(a.toString())
+        }
     }
 
     /** The same books for every copy of the engine in this process (the app's page and the orb's). */

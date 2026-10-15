@@ -91,6 +91,11 @@ const SMS2 = 'بانک ملی ایران\nواریز:7,000,000\nمانده:12,50
   await p.evaluate(() => BA_LOCAL.sync());
   check('a tap later on the same SMS: the same transaction', (await p.evaluate(() => BA_LOCAL.state().txs.length)) === 3 && (await p.evaluate(id => BA_LOCAL.state().txs.find(t => t.id === id).status, n1.id)) === 'ignored');
 
+  const n3 = await p.evaluate(t => BA_LOCAL.notice(t), 'ربات بانک\nبانک صادرات\nبرداشت:300,000\nمانده:9,100,000\n1405/07/22 08:30');
+  check('notification without the separators (heading + bank SMS) → booked', n3 && n3.amount === 300000 && n3.direction === 'out', JSON.stringify(n3));
+  check('a chat message is not a transaction', (await p.evaluate(() => BA_LOCAL.notice('سلام، فردا میای؟'))) === null);
+  await p.evaluate(id => { const s = BA_LOCAL.state(); s.txs.find(t => t.id === id).status = 'ignored'; }, n3.id);
+
   // 3c) the orb's own page (app/local/headless.html)
   const h = await ctx.newPage();
   h.on('pageerror', e => errors.push('headless: ' + e.message));

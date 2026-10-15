@@ -532,6 +532,7 @@ class MainActivity : AppCompatActivity() {
 
         /** Without a server: the orb reads Bale notifications (BaleWatch), so no tap in Bale is needed. */
         @JavascriptInterface fun baleNotices() = BaleWatch.allowed(this@MainActivity)
+        @JavascriptInterface fun baleLast(): String = prefs.baleLast ?: ""
         @JavascriptInterface fun openBaleNotices() = runOnUiThread {
             runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
         }

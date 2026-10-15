@@ -1520,7 +1520,9 @@
       '<button class="btn ghost" type="button" id="andTalk">صحبت با orb</button></div>' +
       (LOCAL && AND.baleNotices ? '<p>' + (AND.baleNotices() ? '🟢 orb نوتیف‌های بله را می‌بیند: پیامک بانک که در بله آمد، orb همان لحظه می‌پرسد «بابت چی بود؟» (بدون زدن دکمه در بله).' :
         '⚪️ orb هنوز نوتیف‌های بله را نمی‌بیند؛ تا آن را ندهی، فقط وقتی در بله دکمه را بزنی یا Reply کنی می‌فهمد.') + '</p>' +
-        (AND.baleNotices() ? '' : '<div class="btns"><button class="btn ghost" type="button" id="andNotif">اجازه‌ی خواندن نوتیف بله</button></div>') : '') +
+        (AND.baleNotices() ? '' : '<div class="btns"><button class="btn ghost" type="button" id="andNotif">اجازه‌ی خواندن نوتیف بله</button></div>') +
+        (AND.baleNotices() ? '<p class="muted">آخرین نوتیف بله که اپ دید: <span class="num">' + esc((AND.baleLast && AND.baleLast()) || 'هنوز هیچ') + '</span>' +
+          ' (✓ یعنی پیامک بانک در آن بود)</p>' : '') : '') +
       (LOCAL ? '' : '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>');
     var on1 = function (id, fn) { var el = document.getElementById(id); if (el) el.onclick = fn; };
     on1('andStart', function () { androidPair(); AND.startOrb(); setTimeout(androidSettings, 800); });

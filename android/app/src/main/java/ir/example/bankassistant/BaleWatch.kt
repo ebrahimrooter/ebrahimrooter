@@ -1,6 +1,19 @@
 package ir.example.bankassistant
 
+import android.Manifest
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
@@ -34,7 +47,6 @@ class BaleWatch : NotificationListenerService() {
     private fun posted(sbn: StatusBarNotification) {
         if (!watched(sbn.packageName)) return
         val prefs = Prefs(this)
-        if (!prefs.local) return
         val x = sbn.notification.extras
         val texts = mutableListOf<String>()
         x.getCharSequence(Notification.EXTRA_BIG_TEXT)?.let { texts += it.toString() }
@@ -44,14 +56,42 @@ class BaleWatch : NotificationListenerService() {
         x.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { m ->
             (m as? android.os.Bundle)?.getCharSequence("text")?.let { texts += it.toString() }
         }
-        texts.filter { it.contains("──────────") }.distinct().forEach { t ->
+        val title = x.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+        val bank = texts.filter { looksLikeBank(it) }.distinct()
+        // what settings show: does the app see Bale's notifications at all, and what was in them
+        prefs.baleLast = SimpleDateFormat("HH:mm", Locale.US).format(Date()) + " · " + title.take(30) + " · " +
+            (texts.firstOrNull() ?: "(بدون متن)").replace('\n', ' ').take(70) + if (bank.isNotEmpty()) " ✓" else ""
+        if (!prefs.local) return
+        bank.forEach { t ->
             val h = t.hashCode()
             synchronized(recent) {
                 if (h in recent) return@forEach
                 recent.addLast(h)
                 if (recent.size > 50) recent.removeFirst()
             }
-            OrbService.baleNotice(this, t)
+            Log.i("BankOrb", "bale notification: bank SMS")
+            if (!OrbService.baleNotice(this, t)) alert()
         }
+    }
+
+    /** The ESP32's message (between its separators), or a bank SMS shown as it is. */
+    private fun looksLikeBank(t: String) = t.contains("──────────") ||
+        (Regex("واریز|برداشت|انتقال|خرید|مانده|موجودی|برداشت").containsMatchIn(t) && Regex("[0-9۰-۹]{3}").containsMatchIn(t))
+
+    /** No orb on the screen: a notification of ours that opens the app (which then asks). */
+    private fun alert() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("tx", "واریز و برداشت", NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(this, 4, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(200, NotificationCompat.Builder(this, "tx")
+            .setSmallIcon(R.drawable.ic_orb_small)
+            .setContentTitle("پیامک بانک از بله رسید")
+            .setContentText("ثبت شد؛ بزن تا بپرسم بابت چی بود.")
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build())
     }
 }
