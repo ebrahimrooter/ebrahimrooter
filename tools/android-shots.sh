@@ -70,7 +70,7 @@ ok = (2500000 in t and t[2500000]["direction"] == "out" and 7000000 in t and t[7
       and "esp=ok" in esp and (s.get("link") or {}).get("status", {}).get("sig") == 18)
 print("local=" + ("ok" if ok else "fail"), "txs=", len(s.get("txs", [])), "|", esp.strip())
 PY
-grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; adb logcat -d | grep -iE "chromium|BankWeb|link" | tail -40; exit 1; }
+grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; adb logcat -d | grep -iE "chromium|BankWeb|link" | grep -v "Mixed Content\|non-secure WebSocket" | tail -40; cat /tmp/mosquitto.log; exit 1; }
 
 # on the Home Screen: a new bank SMS from the ESP32 → the floating orb books it and asks
 adb shell input keyevent KEYCODE_HOME

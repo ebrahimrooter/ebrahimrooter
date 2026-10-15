@@ -22,7 +22,7 @@
   var N = window.BANative || null;
   var realFetch = window.fetch.bind(window);
   /** Test builds of the iPhone app keep these lines (Application Support/local-debug.txt). */
-  function log(m) { try { if (N && N.log) N.log(String(m)); } catch (e) { /* no log */ } }
+  function log(m) { try { if (N && N.log) N.log(String(m)); else if (window.console) console.log('BA ' + m); } catch (e) { /* no log */ } }
 
   /* ---------------------------------------------------------------- books */
 

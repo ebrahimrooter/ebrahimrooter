@@ -50,8 +50,10 @@ jobs:
         run: |
           sh tools/demo/run.sh /tmp/demo
           sudo apt-get install -y -q mosquitto >/dev/null
-          printf 'listener 1883 0.0.0.0\nallow_anonymous true\nlistener 9001 0.0.0.0\nprotocol websockets\n' > /tmp/mq.conf
+          printf 'log_type all\nlistener 1883 0.0.0.0\nallow_anonymous true\nlistener 9001\nprotocol websockets\n' > /tmp/mq.conf
           (nohup mosquitto -c /tmp/mq.conf > /tmp/mosquitto.log 2>&1 &)
+          sleep 2; mosquitto -h 2>&1 | head -1; cat /tmp/mosquitto.log; ss -ltn | grep -E ':(1883|9001) ' || echo "::warning::broker ports not open"
+          curl -s -m 5 -i -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Protocol: mqtt' http://127.0.0.1:9001/ | head -5 || true
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
