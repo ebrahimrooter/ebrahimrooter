@@ -1,3 +1,3 @@
 --------- beginning of main
-10-15 11:46:21.044  3477  3632 I VOICE_TEST: ear=true stt=ok stt_ms=4173 heard=بانک ملی وز هفت میلیون تومان با بچه چی بود
-10-15 11:46:21.092  3477  3632 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=155636 ms=65211 phone_listen=true
+10-15 11:54:17.931  3592  3683 I VOICE_TEST: ear=true stt=ok stt_ms=1860 heard=وانک ملی واریز هفت میلیون تومان با بچه چی بود
+10-15 11:54:18.089  3592  3683 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=150698 ms=36246 phone_listen=true
