@@ -148,7 +148,8 @@ class OrbService : Service() {
             running = true
             self = this
             addViews()
-            if (prefs.local && !demo) brain = LocalBrain(this, prefs).also { it.attach(wm, overlayType()) }
+            if (prefs.local && !demo) brain = runCatching { LocalBrain(this, prefs).also { it.attach(wm, overlayType()) } }
+                .onFailure { Log.e("BankOrb", "local books for the orb", it) }.getOrNull()
             if (demo) showDemo() else startPolling()
         }
         intent?.getStringExtra(EXTRA_NOTICE)?.let { t -> scope.launch { onNotice(t) } }

@@ -28,6 +28,10 @@ class BaleWatch : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        runCatching { posted(sbn) }   // someone else's notification must never close the app
+    }
+
+    private fun posted(sbn: StatusBarNotification) {
         if (!watched(sbn.packageName)) return
         val prefs = Prefs(this)
         if (!prefs.local) return

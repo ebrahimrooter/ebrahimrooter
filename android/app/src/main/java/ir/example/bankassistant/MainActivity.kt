@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         }
         window.statusBarColor = Color.parseColor("#07140C")
         if (prefs.local) showLocal() else if (prefs.base == null) showSetup() else showWeb()
+        showLastCrash()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val w = web
@@ -413,6 +414,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun notifyWeb() {
         web?.evaluateJavascript("window.onAndroidOrb && window.onAndroidOrb()", null)
+    }
+
+    /** The app closed by itself last time: say so once, with the error to copy (App.kt). */
+    private fun showLastCrash() {
+        val f = App.crashFile(this)
+        val text = runCatching { f.readText() }.getOrNull() ?: return
+        f.delete()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("اپ دفعه‌ی قبل بسته شد")
+            .setMessage("orb شناور خاموش شد تا اپ باز شود. اگر دوباره پیش آمد، این متن را کپی کن و بفرست:\n\n" + text.take(1500))
+            .setPositiveButton("کپی خطا") { _, _ ->
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("crash", text))
+                Toast.makeText(this, "کپی شد", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("بستن", null)
+            .show()
     }
 
     private fun hasMic() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED

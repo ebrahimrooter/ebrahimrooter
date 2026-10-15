@@ -11,8 +11,8 @@ android {
         applicationId = "ir.example.bankassistant"
         minSdk = 26                // floating orb: TYPE_APPLICATION_OVERLAY
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
     // the voice model is read straight from the APK
     androidResources { noCompress += listOf("onnx") }
