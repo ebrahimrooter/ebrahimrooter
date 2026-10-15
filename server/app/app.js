@@ -2140,6 +2140,7 @@
     inn: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M15 9l-6 6M9 10v5h5"/></svg>',
     out: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9 15l6-6M10 9h5v5"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    key: '<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>',
     grid: '<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="8" r="2.2"/><circle cx="8" cy="16" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>',
     eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     eyeOff: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
@@ -2161,6 +2162,7 @@
           '<button type="button" class="tile t-in" data-f="in">' + ICON.inn + '<span>واریزها</span></button>' +
           '<button type="button" class="tile t-out" data-f="out">' + ICON.out + '<span>برداشت‌ها</span></button>' +
           '<a class="tile t-add" href="#/manual">' + ICON.plus + '<span>ثبت دستی</span></a>' +
+          '<a class="tile t-otp" href="#/otp">' + ICON.key + '<span>رمز پویا</span><b class="tile-badge" id="otpBadge" hidden></b></a>' +
           '<a class="tile t-more" href="#/acc">' + ICON.grid + '<span>حسابداری</span></a>' +
         '</div>' +
         (AND ? '<a class="gh-ios" href="#" id="ghAnd"></a>' : store('ba_ios') ? '<a class="gh-ios" href="bankassistant://listen">🎙 دستیار حسابداری (اپ آیفون)</a>' : '') +
@@ -2174,6 +2176,8 @@
     return Promise.all([api('list', { query: q }), api('report', { query: q }), api('pending'), api('list', { query: q6 })]).then(function (r) {
       var items = r[0].items, wallets = r[1].wallets, pending = r[2].items, half = r[3].items;
       setBadge(pending.length);
+      var otpN = wallets.reduce(function (n, w) { return n + (+w.otps || 0); }, 0), ob = document.getElementById('otpBadge');
+      if (ob) { ob.hidden = !otpN; ob.textContent = faDigits(otpN); }
       document.getElementById('heroHint').textContent = pending.length
         ? faDigits(pending.length) + ' تراکنش بی‌جواب — روی دستیار بزن تا بپرسد'
         : 'برای حرف زدن روی دستیار بزن';

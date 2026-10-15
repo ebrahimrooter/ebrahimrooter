@@ -128,6 +128,13 @@ struct HomeView: View {
                 tile("arrow.down.left", "واریزها", tint: Theme.leaf) { list = ListFilter(direction: "in") }
                 tile("arrow.up.right", "برداشت‌ها", tint: Color(red: 0.75, green: 0.6, blue: 0.25)) { list = ListFilter(direction: "out") }
                 tile("plus", "ثبت دستی", tint: Color(red: 0.3, green: 0.6, blue: 0.7)) { manual = ManualDraft() }
+                // «رمز پویا»: the card with a code waiting, else the first bank card
+                tile("key.fill", "رمز پویا", tint: Color(red: 0.59, green: 0.43, blue: 0.94), badge: otpCount) {
+                    let ws = store.home?.wallets ?? []
+                    if let w = ws.first(where: { ($0.otps ?? 0) > 0 }) ?? ws.first(where: { $0.kind != "cash" }) {
+                        card = CardRoute(walletID: w.id, tab: .otp)
+                    }
+                }
                 Button { tab = .accounting } label: {
                     VStack(spacing: 6) {
                         Image(systemName: "square.grid.2x2").font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.ink)
@@ -165,7 +172,9 @@ struct HomeView: View {
         .background(Capsule().fill(.white.opacity(0.07)))
     }
 
-    private func tile(_ icon: String, _ title: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private var otpCount: Int { (store.home?.wallets ?? []).reduce(0) { $0 + ($1.otps ?? 0) } }
+
+    private func tile(_ icon: String, _ title: String, tint: Color, badge: Int = 0, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
@@ -176,6 +185,14 @@ struct HomeView: View {
             .frame(maxWidth: .infinity).frame(height: 76)
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(tint.opacity(0.22)))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(tint.opacity(0.65), lineWidth: 1))
+            .overlay(alignment: .topLeading) {
+                if badge > 0 {
+                    Text(badge.formatted()).font(.fa(11, .heavy)).foregroundStyle(.white)
+                        .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                        .background(Capsule().fill(Color(red: 0.9, green: 0.28, blue: 0.3)))
+                        .padding(6)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
