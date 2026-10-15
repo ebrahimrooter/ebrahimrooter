@@ -79,8 +79,6 @@ class OrbService : Service() {
 
         @Volatile var running = false
             private set
-
-    }
     }
 
     private lateinit var prefs: Prefs
