@@ -14,6 +14,7 @@ jobs:
         run: sh firmware/host-test/run.sh
       - name: arduino-cli, the ESP32 core and the libraries
         run: |
+          mkdir -p $HOME/bin
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
           echo "$HOME/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/bin:$PATH"
