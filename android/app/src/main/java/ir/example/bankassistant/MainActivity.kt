@@ -329,8 +329,12 @@ class MainActivity : AppCompatActivity() {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, req.url)) }
                 return true
             }
+            override fun onReceivedError(view: WebView, req: WebResourceRequest, err: android.webkit.WebResourceError) {
+                if (req.isForMainFrame) pageError = "${err.description} (${err.errorCode})"
+            }
         }
         w.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean = noteConsole(m)
             override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                 fileCallback?.onReceiveValue(null)
                 fileCallback = cb
@@ -339,6 +343,68 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(w)
         w.loadUrl(local.startUrl)
+        guard(w, local = true)
+    }
+
+    // ------------------------------------------------------------ never a black screen
+
+    private var pageError: String? = null
+
+    private fun noteConsole(m: android.webkit.ConsoleMessage): Boolean {
+        if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+            Log.w("BankWeb", "${m.message()} @${m.sourceId()}:${m.lineNumber()}")
+            if (pageError == null) pageError = "${m.message()} (${m.sourceId().substringAfterLast('/')}:${m.lineNumber()})"
+        }
+        return false
+    }
+
+    /** The page did not load, or broke before showing anything: say why, with a way out. */
+    private fun guard(w: WebView, local: Boolean) {
+        pageError = null
+        w.postDelayed({
+            if (web !== w || isFinishing) return@postDelayed
+            w.evaluateJavascript("(function(){var a=document.getElementById('app');return !!(a&&a.children.length)})()") { ok ->
+                if (web === w && ok != "true") showLoadError(local)
+            }
+        }, if (local) 12000 else 20000)
+    }
+
+    private fun showLoadError(local: Boolean) {
+        val why = pageError
+        web?.destroy()
+        web = null
+        val p = dp(24)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(p, p, p, p)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setBackgroundColor(Color.parseColor("#07140C"))
+        }
+        root.addView(text("صفحه باز نشد", 26f, Color.WHITE, bold = true))
+        root.addView(text(if (local) "صفحه‌ی اپ (نسخه‌ی بدون سرور) بالا نیامد." else
+            "سرور جواب نداد: ${prefs.base}\nکامپیوتر یا سرور روشن است؟ گوشی به همان شبکه یا اینترنت وصل است؟",
+            15f, Color.argb(190, 255, 255, 255)).apply { setPadding(0, dp(10), 0, dp(10)) })
+        if (why != null) root.addView(text("خطا: $why", 13f, Color.parseColor("#FCA5A5")).apply {
+            textDirection = View.TEXT_DIRECTION_LTR
+            setTextIsSelectable(true)
+            setPadding(0, 0, 0, dp(16))
+        })
+        fun button(label: String, filled: Boolean, go: () -> Unit) = root.addView(Button(this).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(if (filled) Color.parseColor("#07140C") else Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(if (filled) Color.parseColor("#4ADE80") else Color.argb(25, 255, 255, 255))
+            }
+            setOnClickListener { go() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(10) })
+        button("دوباره", true) { if (local) showLocal() else showWeb() }
+        button(if (local) "تغییر حالت (با سرور / بدون سرور)" else "تغییر سرور یا حالت", false) {
+            if (local) leaveLocal() else showSetup()
+        }
+        setContentView(root)
     }
 
     /** Settings ← «تغییر حالت»: back to the first screen (the books stay on the phone). */
@@ -380,8 +446,12 @@ class MainActivity : AppCompatActivity() {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, u)) }
                 return true
             }
+            override fun onReceivedError(view: WebView, req: WebResourceRequest, err: android.webkit.WebResourceError) {
+                if (req.isForMainFrame) pageError = "${err.description} (${err.errorCode})"
+            }
         }
         w.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean = noteConsole(m)
             override fun onPermissionRequest(request: PermissionRequest) {
                 runOnUiThread {
                     if (PermissionRequest.RESOURCE_AUDIO_CAPTURE !in request.resources) return@runOnUiThread request.deny()
@@ -410,6 +480,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         w.loadUrl(base + "app/?android=1")
+        guard(w, local = false)
     }
 
     private fun notifyWeb() {
