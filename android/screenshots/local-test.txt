@@ -1,1 +1,1 @@
-local=fail txs= 0 | esp=fail acked= []
+local=ok txs= 2 | esp=ok acked= ['esp000000000001', 'esp000000000002']
