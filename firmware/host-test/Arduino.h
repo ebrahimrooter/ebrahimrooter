@@ -48,6 +48,8 @@ class String {
   const std::string &std() const { return s; }
 };
 
+typedef uint8_t byte;
+uint32_t esp_random();
 extern unsigned long g_now;
 inline unsigned long millis() { return g_now; }
 void delay(unsigned long ms);

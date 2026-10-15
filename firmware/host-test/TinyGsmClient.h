@@ -24,4 +24,5 @@ class TinyGsm {
 class TinyGsmClient {
  public:
   explicit TinyGsmClient(TinyGsm &) {}
+  void stop() {}
 };

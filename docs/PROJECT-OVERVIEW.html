@@ -79,7 +79,7 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
   <div class="card"><h4>🤳 اپ اندروید</h4>Kotlin؛ وب‌اپ داخل اپ + <b>orb شناور روی صفحه‌ی اصلی</b> با کارت پایین صفحه؛ خودش تراکنش تازه را می‌پرسد.</div>
   <div class="card"><h4>🌐 وب‌اپ و پنل</h4>وب‌اپ گوشی (PWA با نوتیف و orb) و پنل حسابداری روی کامپیوتر؛ داخل هر دو اپ هم هست.</div>
   <div class="card"><h4>🎙 صدای فارسی</h4>اپ اندروید و آیفون خودشان فارسی حرف می‌زنند (Piper) و می‌فهمند (Shenava)، داخل خود اپ و بدون سرور. صدای سرور اختیاری است (فقط ویس بله و وب‌اپ در مرورگر).</div>
-  <div class="card"><h4>📴 حالت بدون سرور</h4>فقط گوشی + ESP32 + بله: ESP32 پیامک را به ربات بله می‌فرستد، با یک ضربه یا Reply در بله اپ آن را می‌خواند، روی کارت در خود گوشی ثبت می‌کند، می‌پرسد و اکسل می‌سازد (در گوشی یا به بله).</div>
+  <div class="card"><h4>📴 حالت بدون سرور</h4>فقط گوشی + ESP32: ESP32 پیامک را رمزشده (با کد اتصال اپ) مستقیم به اپ اندروید یا آیفون می‌فرستد؛ اپ روی کارت در خود گوشی ثبت می‌کند، می‌پرسد و اکسل می‌سازد. پیامک تا «گرفتم» اپ روی سیم‌کارت می‌ماند.</div>
 </div>
 
 <h2 id="map">۲. نقشه‌ی کلی اتصال <small>همه‌ی بخش‌ها و راه ارتباطشان</small></h2>
@@ -188,7 +188,7 @@ svg text{font-family:Vazirmatn,Tahoma,sans-serif}
 <b>sim800_test</b>: آزمایش ماژول، بدون اینترنت.<br>
 <b>gprs_forwarder</b> ⭐: با اینترنت سیم‌کارت (APN مثل <code>mcinet</code>) به سرور.<br>
 <b>sms_forwarder</b>: با وای‌فای به سرور.<br>
-<b>bale_direct</b>: بدون سرور، مستقیم به بله.</div>
+<b>app_direct</b>: بدون سرور، رمزشده مستقیم به اپ گوشی.</div>
 <div class="card"><h4>گزارش سلامت (heartbeat)</h4>هر ۱۰ دقیقه: آنتن (CSQ ۰ تا ۳۱)، ثبت در شبکه، تعداد پیامک روی سیم، وای‌فای، زمان روشن بودن، نسخه. بیش از ۳۰ دقیقه بی‌خبری یا ۲۵ پیامک مانده ← هشدار در بله و نوتیف.</div>
 </div>
 
@@ -291,7 +291,7 @@ server/             سرور (PHP)
   app/              وب‌اپ گوشی (+ android/bank-assistant.apk)
   acc/              پنل حسابداری
   tests/            تست‌های خودکار
-firmware/           ESP32: sim800_test, gprs_forwarder, sms_forwarder, bale_direct
+firmware/           ESP32: sim800_test, gprs_forwarder, sms_forwarder, app_direct
 voice/              صدای فارسی محلی (Whisper + Piper)
 ios/                اپ آیفون (SwiftUI, XcodeGen)
 android/            اپ اندروید (Kotlin, Gradle)

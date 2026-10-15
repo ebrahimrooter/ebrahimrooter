@@ -11,6 +11,8 @@ int g_resets = 0;
 struct Restart {};
 static int rstLevel = 1;
 void delay(unsigned long ms) { g_now += ms; }
+static uint32_t g_rand = 12345;
+uint32_t esp_random() { g_rand = g_rand * 1103515245u + 12345u; return g_rand >> 8; }
 void pinMode(int, int) {}
 void digitalWrite(int pin, int v) {
   if (pin == 4) {

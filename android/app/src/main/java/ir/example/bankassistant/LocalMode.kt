@@ -17,17 +17,13 @@ import android.webkit.WebView
 import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
-import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.UUID
 
 /**
  * The app without a server: the phone web app with its own books
- * (assets/www, made by tools/local-app/build.sh), the bank SMS from Bale.
+ * (assets/www, made by tools/local-app/build.sh); the bank SMS come straight from the ESP32
+ * (app/local/link.js, over a WebSocket from the page itself).
  *   https://appassets.androidplatform.net/assets/www/app/   the bundled web app
- *   …/__bale/<method>?q=<json>                               Bale Bot API, token added here
  * The books are a file in the app's private storage (local-books.json). The floating orb
  * (OrbService) runs its own copy of the engine (app/local/headless.html) on the same file.
  */
@@ -45,59 +41,10 @@ class LocalMode(private val context: Context, private val prefs: Prefs) {
     fun intercept(req: WebResourceRequest): WebResourceResponse? {
         val u = req.url
         if (!isOwnPage(u)) return null
-        val path = u.path ?: return null
-        if (path.startsWith("/__bale/")) {
-            val method = path.removePrefix("/__bale/").takeWhile { it.isLetterOrDigit() }
-            val body = runCatching { bale(method, u.getQueryParameter("q") ?: "{}") }
-                .getOrElse { JSONObject().put("ok", false).put("description", it.message ?: "بله در دسترس نیست").toString() }
-            return WebResourceResponse("application/json", "utf-8", ByteArrayInputStream(body.toByteArray()))
-                .apply { responseHeaders = mapOf("Cache-Control" to "no-store") }
-        }
         return assets.shouldInterceptRequest(u)
     }
 
-    private fun base() = (prefs.baleBase ?: "https://tapi.bale.ai").trimEnd('/')
-
-    /** One Bot API call (JSON in, JSON out). Blocking: WebView asks on its own thread. */
-    fun bale(method: String, json: String): String {
-        val token = prefs.baleToken ?: return """{"ok":false,"description":"توکن ربات بله گذاشته نشده"}"""
-        val c = URL("${base()}/bot$token/$method").openConnection() as HttpURLConnection
-        c.connectTimeout = 15000
-        c.readTimeout = 30000
-        c.requestMethod = "POST"
-        c.doOutput = true
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        c.outputStream.use { it.write(json.toByteArray()) }
-        val s = (if (c.responseCode < 400) c.inputStream else c.errorStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-        c.disconnect()
-        return s.ifBlank { """{"ok":false,"description":"بله جواب نداد (${c.responseCode})"}""" }
-    }
-
-    private fun sendDocument(chatId: String, name: String, bytes: ByteArray, caption: String): String {
-        val token = prefs.baleToken ?: throw IllegalStateException("توکن ربات بله گذاشته نشده")
-        val b = "----ba" + UUID.randomUUID().toString().replace("-", "")
-        val c = URL("${base()}/bot$token/sendDocument").openConnection() as HttpURLConnection
-        c.connectTimeout = 15000
-        c.readTimeout = 60000
-        c.requestMethod = "POST"
-        c.doOutput = true
-        c.setRequestProperty("Content-Type", "multipart/form-data; boundary=$b")
-        c.outputStream.use { o ->
-            fun field(k: String, v: String) = o.write("--$b\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n".toByteArray())
-            field("chat_id", chatId)
-            if (caption.isNotBlank()) field("caption", caption)
-            o.write("--$b\r\nContent-Disposition: form-data; name=\"document\"; filename=\"$name\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray())
-            o.write(bytes)
-            o.write("\r\n--$b--\r\n".toByteArray())
-        }
-        val s = (if (c.responseCode < 400) c.inputStream else c.errorStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-        c.disconnect()
-        val j = runCatching { JSONObject(s) }.getOrNull()
-        if (j?.optBoolean("ok") != true) throw IllegalStateException(j?.optString("description")?.ifBlank { null } ?: "به بله نرفت (${c.responseCode})")
-        return "ok"
-    }
-
-    /** Download folder (Android 10+) and the share sheet (Excel, Bale, Drive…). */
+    /** Download folder (Android 10+) and the share sheet (Excel, a messenger, Drive…). */
     private fun saveFile(name: String, mime: String, bytes: ByteArray): String {
         var where = ""
         if (Build.VERSION.SDK_INT >= 29) runCatching {
@@ -140,28 +87,13 @@ class LocalMode(private val context: Context, private val prefs: Prefs) {
         /** Changes on every save (by the app or the orb): the other copy then reads the file again. */
         @JavascriptInterface fun rev(): String = synchronized(Shared) { Shared.rev.toString() }
 
-        /** One reader of Bale at a time (getUpdates' offset is in the books). */
-        @JavascriptInterface fun lock(): Boolean = synchronized(Shared) {
-            val now = System.currentTimeMillis()
-            if (now < Shared.lockUntil) false else { Shared.lockUntil = now + 90_000; true }
-        }
-        @JavascriptInterface fun unlock() = synchronized(Shared) { Shared.lockUntil = 0L }
-
-        /** Bale notifications kept while nothing was running (BaleWatch); read once. */
-        @JavascriptInterface fun takeNotices(): String = synchronized(Shared) {
-            val f = noticesFile(context)
-            val t = runCatching { f.readText() }.getOrNull() ?: "[]"
-            f.delete()
-            t
-        }
-
         @JavascriptInterface fun saveFile(id: String, name: String, mime: String, b64: String) = background(id) {
             this@LocalMode.saveFile(safeName(name), mime, Base64.decode(b64, Base64.DEFAULT))
         }
 
-        @JavascriptInterface fun sendDocument(id: String, chatId: String, name: String, b64: String, caption: String) = background(id) {
-            this@LocalMode.sendDocument(chatId, safeName(name), Base64.decode(b64, Base64.DEFAULT), caption)
-        }
+        /** Test builds only: a pretend ESP32's pairing code and broker (tools/demo/fake_esp32.py). */
+        @JavascriptInterface fun linkCode(): String? = if (BuildConfig.DEBUG) prefs.testLinkCode else null
+        @JavascriptInterface fun mqttUrl(): String? = if (BuildConfig.DEBUG) prefs.testMqttUrl else null
 
         /** Leave the mode without a server (settings ← «تغییر حالت»). */
         @JavascriptInterface fun changeMode() { main.post { (context as? MainActivity)?.leaveLocal() } }
@@ -178,21 +110,8 @@ class LocalMode(private val context: Context, private val prefs: Prefs) {
         private fun safeName(n: String) = n.replace(Regex("[^\\w.\\-]"), "_").take(80).ifBlank { "file" }
     }
 
-    companion object {
-        private fun noticesFile(c: Context) = File(c.filesDir, "bale-notices.json")
-
-        /** A Bale notification's text, for the books engine to read the next time it runs. */
-        fun queueNotice(c: Context, text: String) = synchronized(Shared) {
-            val f = noticesFile(c)
-            val a = runCatching { org.json.JSONArray(f.readText()) }.getOrNull() ?: org.json.JSONArray()
-            if (a.length() < 200) a.put(JSONObject().put("text", text).put("at", System.currentTimeMillis()))
-            f.writeText(a.toString())
-        }
-    }
-
     /** The same books for every copy of the engine in this process (the app's page and the orb's). */
     private object Shared {
         var rev = 0L
-        var lockUntil = 0L
     }
 }

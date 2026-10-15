@@ -4,30 +4,31 @@ import UIKit
 import WebKit
 
 /// The app without a server: the phone web app with its own books (Resources/www,
-/// made by tools/local-app/build.sh), the bank SMS from Bale. Same as the Android app:
+/// made by tools/local-app/build.sh); the bank SMS come straight from the ESP32
+/// (app/local/link.js, over a WebSocket from the page). Same as the Android app:
 ///   bankapp://local/app/index.html     the bundled web app
-///   bankapp://local/__bale/<method>    Bale Bot API, the token is added here (never in the page)
 /// The books are a file in Application Support (local-books.json); speaking and listening
 /// use the app's own Persian voice and ear (LocalVoice / LocalEar).
 enum LocalMode {
-    static let tokenKey = "bale_bot_token"
     static let flagKey = "localMode"
     static var enabled: Bool {
         get { UserDefaults.standard.bool(forKey: flagKey) }
         set { UserDefaults.standard.set(newValue, forKey: flagKey) }
     }
-    static var token: String? {
-        if let t = KeychainStore.get(tokenKey) { return t }
+    /// Test builds only: a pretend ESP32 (-linkCode CODE -mqttUrl fake|ws://…).
+    static var testLinkCode: String? {
         #if DEBUG
-        // tests: an unsigned simulator build has no Keychain (-localToken X)
-        return UserDefaults.standard.string(forKey: "localToken")
+        return UserDefaults.standard.string(forKey: "linkCode")
         #else
         return nil
         #endif
     }
-    /// Only for tests (a pretend Bale: -baleBase http://localhost:8841).
-    static var base: String {
-        UserDefaults.standard.string(forKey: "baleBase") ?? "https://tapi.bale.ai"
+    static var testMqttUrl: String? {
+        #if DEBUG
+        return UserDefaults.standard.string(forKey: "mqttUrl")
+        #else
+        return nil
+        #endif
     }
 
     /// Test builds: what happened, in Application Support/local-debug.txt (read by CI).
@@ -46,43 +47,9 @@ enum LocalMode {
         return dir.appendingPathComponent("local-books.json")
     }
 
-    /// One Bot API call, JSON in and out.
-    static func bale(_ method: String, json: Data, token: String? = LocalMode.token) async throws -> Data {
-        #if DEBUG
-        if base == "fake" { return FakeBale.answer(method, json) }
-        #endif
-        guard let token, let url = URL(string: "\(base)/bot\(token)/\(method)") else { throw APIError.server("توکن ربات بله گذاشته نشده") }
-        var req = URLRequest(url: url, timeoutInterval: 30)
-        req.httpMethod = "POST"
-        req.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        req.httpBody = json
-        return try await URLSession.shared.data(for: req).0
-    }
-
-    static func sendDocument(chat: String, name: String, data: Data, caption: String) async throws {
-        #if DEBUG
-        if base == "fake" { _ = FakeBale.answer("sendDocument", Data("{\"bytes\":\(data.count)}".utf8)); return }
-        #endif
-        guard let token, let url = URL(string: "\(base)/bot\(token)/sendDocument") else { throw APIError.server("توکن ربات بله گذاشته نشده") }
-        let b = "----ba" + UUID().uuidString
-        var body = Data()
-        func field(_ k: String, _ v: String) { body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!) }
-        field("chat_id", chat)
-        if !caption.isEmpty { field("caption", caption) }
-        body.append("--\(b)\r\nContent-Disposition: form-data; name=\"document\"; filename=\"\(name)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(data)
-        body.append("\r\n--\(b)--\r\n".data(using: .utf8)!)
-        var req = URLRequest(url: url, timeoutInterval: 60)
-        req.httpMethod = "POST"
-        req.setValue("multipart/form-data; boundary=\(b)", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-        let (d, _) = try await URLSession.shared.data(for: req)
-        let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
-        if (j?["ok"] as? Bool) != true { throw APIError.server((j?["description"] as? String) ?? "به بله نرفت") }
-    }
 }
 
-/// Files, Bale and the voice for the page (WKURLSchemeHandler + window.webkit.messageHandlers.ba).
+/// Files and the voice for the page (WKURLSchemeHandler + window.webkit.messageHandlers.ba).
 @MainActor
 final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
     weak var web: WKWebView?
@@ -91,25 +58,11 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
     private let player = SpeechPlayer()
     private lazy var dictation = Dictation()
 
-    // MARK: bankapp:// — the bundled files and /__bale/
+    // MARK: bankapp:// — the bundled files
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url else { return }
         let path = url.path
-        if path.hasPrefix("/__bale/") {
-            let method = String(path.dropFirst("/__bale/".count)).filter { $0.isLetter || $0.isNumber }
-            let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? "{}"
-            Task { @MainActor in
-                let data: Data
-                do { data = try await LocalMode.bale(method, json: Data(q.utf8)) } catch {
-                    LocalMode.debug("bale \(method) failed: \(error)")
-                    data = (try? JSONSerialization.data(withJSONObject: ["ok": false, "description": error.localizedDescription])) ?? Data()
-                }
-                LocalMode.debug("bale \(method) -> \(data.count) bytes")
-                self.respond(task, data, mime: "application/json")
-            }
-            return
-        }
         LocalMode.debug("load \(path)")
         guard let root, let file = Optional(root.appendingPathComponent(path)),
               file.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path),
@@ -165,13 +118,6 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
             do { try data.write(to: f, options: .atomic) } catch { return done(id, false, error.localizedDescription) }
             share(f)
             done(id, true, "")
-        case "sendDocument":
-            guard let chat = m["chat"] as? String, let name = m["name"] as? String, let b64 = m["b64"] as? String,
-                  let data = Data(base64Encoded: b64) else { return done(id, false, "فایل خراب بود") }
-            Task { @MainActor in
-                do { try await LocalMode.sendDocument(chat: chat, name: name, data: data, caption: m["caption"] as? String ?? ""); self.done(id, true, "") }
-                catch { self.done(id, false, error.localizedDescription) }
-            }
         case "speak":
             let text = m["text"] as? String ?? ""
             Task { @MainActor in
@@ -238,7 +184,8 @@ final class LocalBridge: NSObject, WKURLSchemeHandler, WKScriptMessageHandler {
             load: function () { return books; },
             save: function (s) { books = s; post({ op: 'save', data: s }); },
             saveFile: function (id, name, mime, b64) { post({ op: 'saveFile', id: id, name: name, mime: mime, b64: b64 }); },
-            sendDocument: function (id, chat, name, b64, caption) { post({ op: 'sendDocument', id: id, chat: chat, name: name, b64: b64, caption: caption }); },
+            linkCode: function () { return \(LocalMode.testLinkCode.map { q($0) } ?? "null"); },
+            mqttUrl: function () { return \(LocalMode.testMqttUrl.map { q($0) } ?? "null"); },
             changeMode: function () { post({ op: 'changeMode' }); },
             log: function (t) { post({ op: 'log', text: t }); }
           };
@@ -281,99 +228,28 @@ struct LocalModeView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
-/// The first step of the mode without a server: the Bale bot token (the same one the ESP32 sends with).
+/// The first step of the mode without a server: what it is; the pairing code is in the app's settings.
 struct LocalSetupView: View {
     var onDone: () -> Void
     var onBack: () -> Void
-    @State private var token = ""
-    @State private var busy = false
-    @State private var error: String?
 
     var body: some View {
         ZStack {
             Theme.darkBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Image(systemName: "paperplane.circle.fill").font(.system(size: 54)).foregroundStyle(Theme.lime).padding(.top, 50)
+                    Image(systemName: "antenna.radiowaves.left.and.right.circle.fill").font(.system(size: 54)).foregroundStyle(Theme.lime).padding(.top, 50)
                     Text("بدون سرور").font(.fa(30, .bold)).foregroundStyle(.white)
-                    Text("۱) در بله از ‎@botfather یک ربات بساز و توکنش را اینجا بگذار (همان توکنی که در فریمور ESP32 هست).\n۲) در بله به ربات خودت ‎/start بفرست.\n۳) زیر هر پیامک بانک در بله «ثبت در حسابداری» را بزن یا Reply کن؛ اپ آن را می‌خواند، ثبت می‌کند و اکسلش را می‌سازد.")
+                    Text("ESP32 پیامک‌های بانک را مستقیم به همین اپ می‌فرستد (رمزشده؛ بدون سرور).\n۱) «شروع» را بزن.\n۲) در تنظیمات اپ، «اتصال به ESP32»، کد اتصال را ببین و در فریمور ESP32 (PAIR_CODE) بگذار.\n۳) هر پیامک بانک روی کارت همان بانک ثبت می‌شود و اپ می‌پرسد «بابت چی بود؟»؛ اکسلش را هم همین‌جا می‌سازی.")
                         .font(.fa(15)).foregroundStyle(.white.opacity(0.7))
-                    TextField("", text: $token, prompt: Text("توکن ربات بله").foregroundColor(.white.opacity(0.3)))
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .font(.fa(16, .medium)).foregroundStyle(.white)
-                        .environment(\.layoutDirection, .leftToRight)
-                        .padding(.horizontal, 18).frame(height: 56)
-                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white.opacity(0.07)))
-                    if let error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill").font(.fa(14)).foregroundStyle(Color(red: 1, green: 0.55, blue: 0.5))
+                    ArrowPillButton(title: "شروع", busy: false) {
+                        LocalMode.enabled = true
+                        onDone()
                     }
-                    ArrowPillButton(title: "شروع", busy: busy) { Task { await start() } }
-                        .disabled(busy || token.count < 10)
                     Button("برگشت", action: onBack).font(.fa(15)).foregroundStyle(.white.opacity(0.7))
                 }
                 .padding(24)
             }
         }
     }
-
-    private func start() async {
-        let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        busy = true
-        error = nil
-        defer { busy = false }
-        do {
-            let d = try await LocalMode.bale("getMe", json: Data("{}".utf8), token: t)
-            let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
-            guard (j?["ok"] as? Bool) == true else { error = "بله این توکن را قبول نکرد."; return }
-            try KeychainStore.set(t, for: LocalMode.tokenKey)
-            LocalMode.enabled = true
-            onDone()
-        } catch {
-            self.error = "به بله وصل نشد؛ اینترنت را ببین."
-        }
-    }
 }
-
-#if DEBUG
-/// Tests (-baleBase fake): the same pretend Bale as tools/demo/fakebale.py, inside the
-/// simulator build. The owner sends /start, taps under an ESP32 Mellat SMS and replies
-/// under a Melli one; every call goes to Application Support/fakebale.log.
-enum FakeBale {
-    static func answer(_ method: String, _ body: Data) -> Data {
-        let log = LocalMode.booksURL.deletingLastPathComponent().appendingPathComponent("fakebale.log")
-        let line = method + " " + String(decoding: body, as: UTF8.self) + "\n"
-        if let h = try? FileHandle(forWritingTo: log) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
-        else { try? Data(line.utf8).write(to: log) }
-        let sep = "──────────"
-        func relay(_ head: String, _ sms: String) -> String {
-            "\(head)\n\(sep)\n\(sms)\n\(sep)\n✍️ بابت چی بود؟ دکمه را بزن یا روی همین پیام Reply کن و بنویس."
-        }
-        let t = Int(Date().timeIntervalSince1970)
-        let chat: [String: Any] = ["id": 555, "type": "private"]
-        let start: [String: Any] = ["message_id": 1, "chat": chat, "date": t - 300, "text": "/start"]
-        let tapped: [String: Any] = ["message_id": 10, "chat": chat, "date": t - 200,
-                                     "text": relay("🔴 برداشت 250,000 تومان", "بانک ملت\nبرداشت:2,500,000\nمانده:45,000,000\n0720-14:25")]
-        let original: [String: Any] = ["message_id": 11, "chat": chat, "date": t - 150,
-                                       "text": relay("🟢 واریز 700,000 تومان", "بانک ملی ایران\nواریز:7,000,000\nمانده:12,500,000\n10:05")]
-        let reply: [String: Any] = ["message_id": 21, "chat": chat, "date": t - 100, "text": "فروش لپ تاپ از علی رضایی", "reply_to_message": original]
-        let callback: [String: Any] = ["id": "cb1", "data": "relay:ans", "message": tapped]
-        let updates: [[String: Any]] = [
-            ["update_id": 1, "message": start],
-            ["update_id": 2, "callback_query": callback],
-            ["update_id": 3, "message": reply],
-        ]
-        let q = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
-        var result: Any = true
-        switch method {
-        case "getMe": result = ["id": 1, "username": "test_bank_bot", "is_bot": true] as [String: Any]
-        case "getUpdates":
-            let off = (q["offset"] as? Int) ?? 0
-            result = updates.filter { ($0["update_id"] as? Int ?? 0) >= off }
-        case "sendMessage": result = ["message_id": 900] as [String: Any]
-        default: break
-        }
-        let out: [String: Any] = ["ok": true, "result": result]
-        return (try? JSONSerialization.data(withJSONObject: out)) ?? Data()
-    }
-}
-#endif

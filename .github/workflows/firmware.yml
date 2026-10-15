@@ -1,0 +1,26 @@
+name: ESP32 firmware
+on:
+  push:
+    paths: ["firmware/**", "server/app/local/link.js", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulated SIM800 + broker + the app's sealing (host tests)
+        run: sh firmware/host-test/run.sh
+      - name: arduino-cli, the ESP32 core and the libraries
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/bin:$PATH"
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install TinyGSM PubSubClient ESP_SSLClient
+      - name: Real ESP32 compile of every sketch
+        run: sh firmware/host-test/compile_real.sh

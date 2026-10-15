@@ -9,11 +9,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         PushManager.registerCategories()
         #if DEBUG
-        // tests: the mode without a server against a pretend Bale (-localToken X -baleBase http://localhost:8841)
-        if let t = UserDefaults.standard.string(forKey: "localToken") {
-            try? KeychainStore.set(t, for: LocalMode.tokenKey)
-            LocalMode.enabled = true
-        }
+        // tests: the mode without a server with a pretend ESP32 (-linkCode CODE -mqttUrl fake)
+        if UserDefaults.standard.string(forKey: "linkCode") != nil { LocalMode.enabled = true }
         #endif
         LocalVoice.shared.warmUp()
         LocalEar.shared.warmUp()

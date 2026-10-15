@@ -19,9 +19,10 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * The floating orb without a server: its own copy of the books engine (app/local/headless.html)
  * in a WebView that is never shown, on the same books file as the app (LocalMode).
- * The same answers as [Api] (pending, ask), plus a Bale notification → booked. Main thread only.
+ * The same answers as [Api] (pending, ask); [onChange] when a bank SMS from the ESP32 was booked.
+ * Main thread only.
  */
-class LocalBrain(private val context: Context, prefs: Prefs) {
+class LocalBrain(private val context: Context, prefs: Prefs, private val onChange: () -> Unit) {
     private val local = LocalMode(context, prefs)
     private var web: WebView? = null
     private var ready = CompletableDeferred<Unit>()
@@ -34,6 +35,7 @@ class LocalBrain(private val context: Context, prefs: Prefs) {
         val w = WebView(context)
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
+        if (BuildConfig.DEBUG) w.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         w.addJavascriptInterface(local.Bridge { web }, "BANative")
         w.addJavascriptInterface(Host(), "OrbHost")
         w.webViewClient = object : WebViewClient() {
@@ -57,18 +59,12 @@ class LocalBrain(private val context: Context, prefs: Prefs) {
         ready = CompletableDeferred()
     }
 
-    /** Reads Bale (taps / replies), then what is still waiting for «بابت چی بود؟». */
+    /** What is still waiting for «بابت چی بود؟» (and the link to the ESP32 kept up). */
     suspend fun pending(): List<Api.Pending> = pendingOf(JSONArray(call("sync", "")))
 
     suspend fun ask(text: String): Api.Reply {
         val o = JSONObject(call("ask", text))
         return Api.Reply(text, o.optString("reply"), o.optString("state"))
-    }
-
-    /** A Bale notification's text; true when it was a new bank transaction. */
-    suspend fun notice(text: String): Pair<Boolean, List<Api.Pending>> {
-        val o = JSONObject(call("notice", text))
-        return Pair(!o.isNull("tx"), pendingOf(o.getJSONArray("pending")))
     }
 
     private fun pendingOf(a: JSONArray) = (0 until a.length()).map { i ->
@@ -88,6 +84,7 @@ class LocalBrain(private val context: Context, prefs: Prefs) {
 
     inner class Host {
         @JavascriptInterface fun ready() { ready.complete(Unit) }
+        @JavascriptInterface fun changed() { android.os.Handler(android.os.Looper.getMainLooper()).post { onChange() } }
         @JavascriptInterface fun done(id: String, ok: Boolean, json: String) {
             val d = waiting[id] ?: return
             if (ok) d.complete(json)

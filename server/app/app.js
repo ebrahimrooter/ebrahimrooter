@@ -639,7 +639,8 @@
     var lines = [];
     lines.push(Voice.faVoice ? '🔊 صدای فارسی: دارد (' + esc(Voice.faVoice.name) + ')' : '🔊 صدای فارسی روی این گوشی نیست؛ سؤال‌ها با یک «دینگ» و متن نشان داده می‌شوند.');
     lines.push(Voice.SR && !Voice.srBroken ? '🎙 تشخیص گفتار مرورگر: دارد' : (Voice.canRecord() ? '🎙 تشخیص گفتار: از طریق سرور' : '🎙 تشخیص گفتار: ندارد (از میکروفون کیبورد استفاده کن)'));
-    lines.push(state.me && state.me.bale ? '💬 ربات بله: فعال — می‌توانی همان‌جا هم جواب بدهی' : '💬 ربات بله: تنظیم نشده');
+    if (LOCAL) lines.push(state.me && state.me.link ? '📟 اتصال به ESP32: وصل' : '📟 اتصال به ESP32: هنوز وصل نیست (تنظیمات)');
+    else lines.push(state.me && state.me.bale ? '💬 ربات بله: فعال — می‌توانی همان‌جا هم جواب بدهی' : '💬 ربات بله: تنظیم نشده');
     var dev = state.me && state.me.device;
     if (dev) {
       var mins = Math.round((Date.now() - new Date(dev.last_seen.replace(' ', 'T')).getTime()) / 60000);
@@ -1032,7 +1033,7 @@
       '<p class="muted">بعد بگو «Hey Siri, Bank» یا با دو ضربه به پشت گوشی (Back Tap) اجرایش کن.</p></div>'
       ))) +
       '<h2 id="perms">دسترسی‌ها</h2><div class="card" id="permBox"></div>' +
-      '<h2>ربات بله</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
+      '<h2>' + (LOCAL ? 'اتصال به ESP32' : 'ربات بله') + '</h2><div class="card" id="bale"><p class="muted">…</p></div>' +
       '<h2>' + (LOCAL ? 'اکسل و پشتیبان' : 'پشتیبان‌گیری') + '</h2><div class="card" id="bkBox"><p class="muted">…</p></div>' +
       voiceInfo() +
       '<div class="btns"><button class="btn ghost" id="testVoice">آزمایش صدا و میکروفون</button></div>' +
@@ -1094,7 +1095,7 @@
     };
     renderPerms(document.getElementById('permBox'));
     settingsTail();
-    if (LOCAL) { localBaleSettings(); localBackupSettings(); androidSettings(); return; }
+    if (LOCAL) { localLinkSettings(); localBackupSettings(); androidSettings(); return; }
     baleSettings();
     backupSettings();
     if (IS_ANDROID) androidSettings(); else iosSettings();
@@ -1103,32 +1104,47 @@
   /* ------------- the app without a server: Bale card, Excel and backup ------------- */
 
   function localIntro() {
-    return '<h2>نسخه‌ی بدون سرور</h2><div class="card"><p>همه‌چیز روی همین گوشی است. پیامک‌های بانک را ESP32 به چت ربات بله‌ات می‌فرستد؛ ' +
-      'زیر هر پیامک در بله دکمه‌ی <b>«✍️ ثبت در حسابداری»</b> را بزن (یا روی آن Reply کن و بنویس بابت چی بود) تا این اپ بخواندش، روی کارتش ثبت کند و بپرسد.</p>' +
-      '<p class="muted">ربات بله پیام‌های خودش را نمی‌بیند؛ برای همین آن یک ضربه در بله لازم است. اپ هر بار که باز است، هر ۲۰ ثانیه بله را می‌خواند.' +
-      (AND ? ' در اندروید، orb شناور اگر اجازه‌ی خواندن نوتیف بله را داشته باشد، بدون آن ضربه هم با رسیدن نوتیف روی صفحه‌ی اصلی می‌آید و می‌پرسد.' : '') + '</p></div>';
+    return '<h2>نسخه‌ی بدون سرور</h2><div class="card"><p>همه‌چیز روی همین گوشی است. ESP32 پیامک‌های بانک را <b>مستقیم</b> به همین اپ می‌فرستد ' +
+      '(رمزشده با کد اتصال؛ بدون سرور و بدون پیام‌رسان). اپ آن را روی کارت همان بانک ثبت می‌کند و می‌پرسد «بابت چی بود؟»؛ ESP32 پیامک را فقط وقتی از سیم‌کارت پاک می‌کند که اپ گرفته باشد.</p>' +
+      '<p class="muted">' + (AND ? 'با orb شناور روشن، پیامک همان لحظه می‌رسد حتی وقتی اپ بسته است؛ وگرنه با باز کردن اپ.' :
+        'پیامک‌هایی که وقتی اپ بسته بود آمده‌اند، با باز کردن اپ می‌رسند.') + '</p></div>';
   }
 
-  function localBaleSettings() {
+  function localLinkSettings() {
     var box = document.getElementById('bale');
     if (!box) return;
     api('settings').then(function (st) {
-      box.innerHTML = '<p>🤖 ربات: <b class="num">' + esc(st.bot || '—') + '</b></p>' +
-        '<p>💬 چت تو: ' + (st.chat_id ? '<b class="num">' + esc(st.chat_id) + '</b> ✅' : '<span class="warn">هنوز وصل نیست: در بله به ربات بفرست <b class="num">/start</b></span>') + '</p>' +
-        '<p class="muted">آخرین خواندن از بله: <span class="num">' + esc(st.last_sync || '—') + '</span>' + (st.last_error ? ' · <span class="warn">' + esc(st.last_error) + '</span>' : '') + '</p>' +
-        '<label class="check"><input type="checkbox" id="lDaily"' + (st.daily_excel ? ' checked' : '') + '> هر روز یک بار، فایل اکسل حساب‌ها به چت بله برود</label>' +
-        '<div class="btns"><button class="btn" type="button" id="lSync">همین حالا از بله بخوان</button></div>' +
-        '<p class="muted">در فریمور ESP32 (firmware/bale_direct) همان توکن ربات و عدد chat id بالا را بگذار.</p>' +
-        (window.BANative && BANative.changeMode ? '<div class="btns"><button class="btn plain" type="button" id="lMode">تغییر حالت (با سرور / توکن دیگر)</button></div>' : '');
-      document.getElementById('lSync').onclick = function () {
-        var b = this;
-        b.disabled = true;
-        api('local_sync', { body: {} }).then(function (d) { toast(d.new ? faDigits(d.new) + ' پیامک جدید' : 'پیام تازه‌ای در بله نبود'); localBaleSettings(); },
-          function (e) { toast(e.message); }).then(function () { b.disabled = false; });
+      var d = st.device, state = st.state === 'online' ? '🟢 اپ به سرویس پیام وصل است' : '⚪️ اپ هنوز وصل نشده' + (st.error ? ' (' + esc(st.error) + ')' : '');
+      box.innerHTML = '<p>کد اتصال این گوشی (همین را در فریمور ESP32، در <b class="num">PAIR_CODE</b> بگذار):</p>' +
+        '<div class="sms num" style="user-select:all;font-size:22px;letter-spacing:2px;text-align:center;direction:ltr">' + esc(st.code) + '</div>' +
+        '<div class="btns"><button class="btn ghost" type="button" id="lCopy">کپی کد</button></div>' +
+        '<p>' + state + '</p>' +
+        '<p>' + (d ? '📟 ESP32: آخرین خبر <span class="num">' + esc(d.seen || '—') + '</span>' + (d.sig != null ? ' · آنتن <span class="num">' + faDigits(d.sig) + '/31</span>' : '') +
+          (d.wait != null ? ' · پیامک در صف <span class="num">' + faDigits(d.wait) + '</span>' : '') :
+          '<span class="warn">هنوز خبری از ESP32 نرسیده: کد بالا را در فریمور بگذار و آپلود کن.</span>') + '</p>' +
+        '<p class="muted">آخرین پیامک رسیده: <span class="num">' + esc(st.last_msg || '—') + '</span></p>' +
+        '<div class="btns"><button class="btn" type="button" id="lSync">دوباره وصل شو</button></div>' +
+        '<details><summary class="muted">گوشی دوم، کد تازه، سرویس پیام دیگر</summary>' +
+        '<p class="muted">گوشی دوم: کد گوشی اول را اینجا بزن (هر پیامک را اولین گوشی‌ای که بگیرد ثبت می‌کند).</p>' +
+        '<div class="btns"><input id="lCode" class="num" placeholder="XXXX-XXXX-XXXX-XXXX" style="direction:ltr"><button class="btn ghost" type="button" id="lSetCode">این کد</button></div>' +
+        '<div class="btns"><button class="btn plain" type="button" id="lNewCode">ساختن کد تازه</button></div>' +
+        '<p class="muted">سرویس پیام (MQTT روی WebSocket): <span class="num" style="direction:ltr">' + esc(st.broker) + '</span></p>' +
+        '<div class="btns"><input id="lBroker" class="num" placeholder="wss://…/mqtt" style="direction:ltr" value="' + (st.custom_broker ? esc(st.broker) : '') + '">' +
+        '<button class="btn ghost" type="button" id="lSetBroker">ذخیره</button></div></details>' +
+        (window.BANative && BANative.changeMode ? '<div class="btns"><button class="btn plain" type="button" id="lMode">تغییر حالت (با سرور)</button></div>' : '');
+      var on = function (id, fn) { var el = document.getElementById(id); if (el) el.onclick = fn; };
+      var set = function (body, msg) {
+        api('local_settings', { body: body }).then(function () { toast(msg); setTimeout(localLinkSettings, 1500); }, function (e) { toast(e.message); });
       };
-      var lm = document.getElementById('lMode');
-      if (lm) lm.onclick = function () { if (confirm('به صفحه‌ی اول برگردی؟ اطلاعات این گوشی می‌ماند.')) BANative.changeMode(); };
-      document.getElementById('lDaily').onchange = function () { api('local_settings', { body: { daily_excel: this.checked } }); };
+      on('lCopy', function () {
+        var c = st.code;
+        (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(function () { toast('کپی شد'); }, function () { toast(c); });
+      });
+      on('lSync', function () { api('local_sync', { body: {} }).then(function () { setTimeout(localLinkSettings, 2500); }); });
+      on('lSetCode', function () { set({ code: document.getElementById('lCode').value }, 'کد عوض شد'); });
+      on('lNewCode', function () { if (confirm('کد تازه بسازی؟ بعد باید آن را در فریمور ESP32 هم بگذاری و دوباره آپلود کنی.')) set({ new_code: true }, 'کد تازه ساخته شد'); });
+      on('lSetBroker', function () { set({ broker: document.getElementById('lBroker').value }, 'ذخیره شد'); });
+      on('lMode', function () { if (confirm('به صفحه‌ی اول برگردی؟ اطلاعات این گوشی می‌ماند.')) BANative.changeMode(); });
     }, function (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; });
   }
 
@@ -1136,17 +1152,12 @@
     var box = document.getElementById('bkBox');
     if (!box) return;
     box.innerHTML = '<p class="muted">فایل اکسل: خلاصه، کارت‌ها، همه‌ی تراکنش‌ها (با متن پیامک)، طرف‌حساب‌ها؛ مبلغ‌ها به تومان.</p>' +
-      '<div class="btns"><button class="btn" type="button" id="lXlsx">⬇ اکسل حساب‌ها</button><button class="btn ghost" type="button" id="lXlsxBale">📊 اکسل به بله</button></div>' +
+      '<div class="btns"><button class="btn" type="button" id="lXlsx">⬇ اکسل حساب‌ها</button></div>' +
       '<p class="muted">پشتیبان کامل (برای بردن به گوشی دیگر یا بعد از نصب دوباره):</p>' +
       '<div class="btns"><button class="btn ghost" type="button" id="lBk">⬇ فایل پشتیبان</button><label class="btn plain" style="cursor:pointer">برگرداندن از فایل<input type="file" id="lRestore" accept=".json,application/json" hidden></label></div>';
     document.getElementById('lXlsx').onclick = function () {
       BA_LOCAL.saveFile(BA_LOCAL.excelName(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', BA_LOCAL.excelBytes())
         .then(function () { toast('فایل اکسل آماده شد'); }, function (e) { toast(e.message); });
-    };
-    document.getElementById('lXlsxBale').onclick = function () {
-      var b = this;
-      b.disabled = true;
-      api('backup_excel_bale', { body: {} }).then(function () { toast('اکسل به بله رفت'); }, function (e) { toast(e.message); }).then(function () { b.disabled = false; });
     };
     document.getElementById('lBk').onclick = function () { api('local_backup', { body: {} }).then(function () { toast('فایل پشتیبان آماده شد'); }, function (e) { toast(e.message); }); };
     document.getElementById('lRestore').onchange = function () {
@@ -1294,7 +1305,7 @@
       otp.pin = '';
       box.innerHTML = '<div class="card"><p class="muted">رمزهای پویای «' + esc(w.name) + '» که روی سیم‌کارت دستگاه می‌آیند، رمزشده و فقط چند دقیقه اینجا می‌مانند. رمز کارت‌های دیگر در پنل خودشان است.</p>' +
         (state.me && !state.me.otp_ready ? '<p class="warn">اول otp_pin را در config.php سرور بگذار.</p>' : '') +
-        (LOCAL ? '<p class="muted">در نسخه‌ی بدون سرور، رمزهای پویا در خود چت بله می‌آیند (ESP32 آن‌ها را بدون دکمه می‌فرستد). اینجا فقط رمزهایی است که در بله Reply کرده باشی. بار اول هر PIN چهار رقمی که بزنی، PIN همین گوشی می‌شود.</p>' : '') +
+        (LOCAL ? '<p class="muted">رمزهای پویا را ESP32 مستقیم به همین اپ می‌فرستد. بار اول هر PIN چهار رقمی که بزنی، PIN همین گوشی می‌شود.</p>' : '') +
         '<form id="pinf"><label for="pin">PIN رمزها</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" required>' +
         '<div class="btns"><button class="btn">باز کن</button></div></form></div>';
       document.getElementById('pinf').onsubmit = function (e) {
@@ -1518,17 +1529,11 @@
       '<label class="check"><input type="checkbox" id="andAuto"' + (AND.autoAsk() ? ' checked' : '') + '> وقتی واریز یا برداشت رسید، خودش بپرسد «بابت چی بود؟»</label>' +
       '<div class="btns">' + (on ? '<button class="btn ghost" type="button" id="andStop">خاموش کردن orb</button>' : '<button class="btn" type="button" id="andStart">روشن کردن orb</button>') +
       '<button class="btn ghost" type="button" id="andTalk">صحبت با orb</button></div>' +
-      (LOCAL && AND.baleNotices ? '<p>' + (AND.baleNotices() ? '🟢 orb نوتیف‌های بله را می‌بیند: پیامک بانک که در بله آمد، orb همان لحظه می‌پرسد «بابت چی بود؟» (بدون زدن دکمه در بله).' :
-        '⚪️ orb هنوز نوتیف‌های بله را نمی‌بیند؛ تا آن را ندهی، فقط وقتی در بله دکمه را بزنی یا Reply کنی می‌فهمد.') + '</p>' +
-        (AND.baleNotices() ? '' : '<div class="btns"><button class="btn ghost" type="button" id="andNotif">اجازه‌ی خواندن نوتیف بله</button></div>') +
-        (AND.baleNotices() ? '<p class="muted">آخرین نوتیف بله که اپ دید: <span class="num">' + esc((AND.baleLast && AND.baleLast()) || 'هنوز هیچ') + '</span>' +
-          ' (✓ یعنی پیامک بانک در آن بود)</p>' : '') : '') +
       (LOCAL ? '' : '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>');
     var on1 = function (id, fn) { var el = document.getElementById(id); if (el) el.onclick = fn; };
     on1('andStart', function () { androidPair(); AND.startOrb(); setTimeout(androidSettings, 800); });
     on1('andStop', function () { AND.stopOrb(); setTimeout(androidSettings, 500); });
     on1('andTalk', function () { androidPair(); AND.talk(); });
-    on1('andNotif', function () { AND.openBaleNotices(); });
     on1('andServer', function () { if (confirm('اتصال این گوشی به سرور فعلی قطع شود و آدرس دیگری بزنی؟')) AND.changeServer(); });
     document.getElementById('andAuto').onchange = function () { AND.setAutoAsk(this.checked); };
   }

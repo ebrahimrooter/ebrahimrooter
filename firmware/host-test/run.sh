@@ -6,19 +6,22 @@ set -e
 # Same preprocessing as the Arduino IDE (prototypes on top), so errors like
 # "'X' does not name a type" show up here too.
 mkdir -p build
-for s in sms_forwarder sim800_test bale_direct gprs_forwarder; do
+for s in sms_forwarder sim800_test app_direct gprs_forwarder; do
   python3 arduino_preprocess.py ../$s/$s.ino build/$s.cpp
 done
 FLAGS="-std=gnu++17 -Wall -Wextra -Wno-unused-parameter -I."
 g++ $FLAGS -x c++ test_forwarder.cpp -o /tmp/ba_test_forwarder
 g++ $FLAGS -x c++ test_sim800.cpp -o /tmp/ba_test_sim800
-g++ $FLAGS -x c++ test_bale.cpp -o /tmp/ba_test_bale
+node make_fixture.js > build/app_fixture.h
+g++ $FLAGS -x c++ test_app.cpp -o /tmp/ba_test_app
 g++ $FLAGS -x c++ test_gprs.cpp -o /tmp/ba_test_gprs
 echo "### sms_forwarder against a simulated SIM800"
 /tmp/ba_test_forwarder
 echo
-echo "### bale_direct against a simulated SIM800 + Bale API"
-/tmp/ba_test_bale
+echo "### app_direct against a simulated SIM800 + MQTT broker + the app"
+/tmp/ba_test_app
+echo "### the app (server/app/local/link.js) opens what the firmware sealed"
+node check_sealed.js build/sealed.txt build/status.txt
 echo
 echo "### gprs_forwarder -> the real accounting program (server/api.php) + simulated Bale"
 T=$(mktemp -d)

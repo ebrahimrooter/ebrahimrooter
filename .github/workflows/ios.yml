@@ -61,10 +61,10 @@ jobs:
           shot 7-manual -demo -sheet manual
           shot 8-list -demo -sheet list
           shot 9-pip -demo -sheet pip
-          # last: the mode without a server against a pretend Bale inside the test build
-          # (a server on the Mac runner can't be reached from the simulator; -baleBase fake)
+          # last: the mode without a server with a pretend ESP32 on a broker inside the page
+          # (a broker on the Mac runner can't be reached from the simulator; -mqttUrl fake)
           xcrun simctl terminate "$UDID" $BID || true
-          xcrun simctl launch "$UDID" $BID -localToken 123456789:test-token-abcdef -baleBase fake
+          xcrun simctl launch "$UDID" $BID -linkCode TESTCODE2345ABCD -mqttUrl fake
           sleep 25
           xcrun simctl io "$UDID" screenshot shots/16-local.png
           DATA=$(xcrun simctl get_app_container "$UDID" $BID data)
@@ -74,13 +74,14 @@ jobs:
               s = json.load(open(sys.argv[1]))
           except Exception as e:
               print("local=fail no books file:", e); sys.exit(0)
-          t = {x.get("bale_mid"): x for x in s.get("txs", [])}
-          a, b = t.get(10), t.get(11)
-          ok = (s.get("bale", {}).get("chat_id") == "555" and a and a["status"] == "pending" and a["amount"] == 2500000
-                and b and b["status"] == "confirmed" and b.get("party") == "علی رضایی")
-          print("local=" + ("ok" if ok else "fail"), "chat=", s.get("bale", {}).get("chat_id"), "txs=", len(s.get("txs", [])), "last_error=", s.get("bale", {}).get("last_error"))
+          t = {x["amount"]: x for x in s.get("txs", [])}
+          link = s.get("link") or {}
+          ok = (2500000 in t and t[2500000]["direction"] == "out" and t[2500000]["status"] == "pending"
+                and 7000000 in t and t[7000000]["direction"] == "in"
+                and link.get("code") == "TESTCODE2345ABCD" and (link.get("status") or {}).get("sig") == 18
+                and set(link.get("acked") or []) >= {"demo0000000000a1", "demo0000000000a2"})
+          print("local=" + ("ok" if ok else "fail"), "txs=", len(s.get("txs", [])), "acked=", link.get("acked"))
           PY
-          grep -E "^(sendMessage|editMessageReplyMarkup|answerCallbackQuery|sendDocument)" "$DATA/Library/Application Support/fakebale.log" | cut -c1-120 | tee -a shots/local-test.txt || true
           grep -q "local=ok" shots/local-test.txt || { echo "::error::local mode test failed"; head -60 "$DATA/Library/Application Support/local-debug.txt" || true; exit 1; }
           xcrun simctl launch "$UDID" com.apple.Preferences || true
           sleep 5

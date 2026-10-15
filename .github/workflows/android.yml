@@ -46,10 +46,12 @@ jobs:
           ls -la app/build/outputs/apk/*/*.apk
           # GitHub keeps files up to 100 MB, and your own server hands this to the phone
           [ "$(stat -c %s app/build/outputs/apk/release/app-release.apk)" -lt 95000000 ] || { echo "::error::release APK too big"; exit 1; }
-      - name: Demo server (sample books) and a pretend Bale
+      - name: Demo server (sample books) and an MQTT broker for a pretend ESP32
         run: |
           sh tools/demo/run.sh /tmp/demo
-          (nohup python3 tools/demo/fakebale.py 8841 > /tmp/fakebale-server.log 2>&1 &)
+          sudo apt-get install -y -q mosquitto >/dev/null
+          printf 'listener 1883 0.0.0.0\nallow_anonymous true\nlistener 9001 0.0.0.0\nprotocol websockets\n' > /tmp/mq.conf
+          (nohup mosquitto -c /tmp/mq.conf > /tmp/mosquitto.log 2>&1 &)
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

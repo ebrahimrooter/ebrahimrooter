@@ -1,21 +1,17 @@
 /*
  * The app without a server. Every request the phone web app sends to api.php
  * is answered here, from books kept on the phone itself, and the bank SMS
- * come from Bale:
+ * come straight from the ESP32:
  *
- *   bank SMS → ESP32 (firmware/bale_direct) → your Bale bot chat
- *            → you tap «✍️ ثبت در حسابداری» under it, or Reply to it
- *            → this app (holding the same bot token) reads it, books it on its card,
- *              asks «بابت چی بود؟», saves, and makes the Excel file.
- *
- * A Bale bot never receives its own messages, so the ESP32's message reaches
- * the app only through that tap / reply (both carry the full SMS text) — the
- * same way the server version's bot reads them (server/bot.php).
+ *   bank SMS → SIM800 → ESP32 (firmware/app_direct), sealed with the pairing code
+ *            → a public MQTT broker (only sealed bytes; local/link.js)
+ *            → this app: books it on its card, asks «بابت چی بود؟», saves, makes the Excel file,
+ *              and answers «got it» so the ESP32 deletes the SMS from the SIM.
  *
  * Native side (Android MainActivity / iOS LocalModeView), window.BANative:
- *   load() → saved books (string) · save(string)
- *   saveFile(id, name, mime, base64) · sendDocument(id, name, base64, caption)  → window.__baCb(id, ok, message)
- *   Bale Bot API calls: GET /__bale/<method>?q=<json>  (the token is added natively; this page never sees it)
+ *   load() → saved books (string) · save(string) · rev()
+ *   saveFile(id, name, mime, base64) → window.__baCb(id, ok, message)
+ *   test builds: linkCode(), mqttUrl()
  * Without it (a plain browser, the tests) localStorage and a download are used.
  */
 (function () {
@@ -37,7 +33,7 @@
     SEED.categories.forEach(function (c) { maxC = Math.max(maxC, c.id); });
     return { v: 1, wallets: JSON.parse(JSON.stringify(SEED.wallets)), cats: JSON.parse(JSON.stringify(SEED.categories)),
       txs: [], parties: [], otps: [], sms: [], senders: [], next: { tx: 1, wallet: maxW + 1, cat: maxC + 1, otp: 1, sms: 1 },
-      bale: { offset: 0, chat_id: '', last_sync: null, last_error: null, bot: null, excel_day: null }, ctx: null, otp_pin: null,
+      link: null, ctx: null, otp_pin: null,
       created: new Date().toISOString() };
   }
   function load() {
@@ -411,206 +407,86 @@
     return Promise.resolve('');
   }
 
-  /* ---------------------------------------------------------------- Bale */
+  /* ---------------------------------------------------------------- the ESP32, directly (local/link.js) */
 
-  // XMLHttpRequest, not fetch: WKWebView's fetch does not reach a custom scheme (bankapp://)
-  function bale(method, params) {
-    log('bale → ' + method);
-    return new Promise(function (resolve, reject) {
-      var x = new XMLHttpRequest();
-      x.open('GET', '/__bale/' + method + '?q=' + encodeURIComponent(JSON.stringify(params || {})));
-      x.timeout = 45000;
-      x.onload = function () {
-        var d = null;
-        try { d = JSON.parse(x.responseText); } catch (e) { /* not JSON */ }
-        if (!d || !d.ok) reject(new Error((d && d.description) || 'بله جواب نداد'));
-        else resolve(d.result);
-      };
-      x.onerror = function () { log('bale ' + method + ' xhr error ' + x.status); reject(new Error('بله در دسترس نیست')); };
-      x.ontimeout = function () { reject(new Error('بله جواب نداد (وقت تمام شد)')); };
-      x.send();
-    });
-  }
-  function baleSendDocument(name, bytes, caption) {
-    if (!S.bale.chat_id) return Promise.reject(new Error('هنوز به چت بله وصل نیست: در بله به ربات /start بفرست.'));
-    if (N && N.sendDocument) return nativeCall('sendDocument', [String(S.bale.chat_id), name, b64(bytes), caption || '']);
-    var fd = new FormData();   // tests / a browser with a proxy
-    fd.append('chat_id', S.bale.chat_id);
-    fd.append('caption', caption || '');
-    fd.append('document', new Blob([bytes]), name);
-    return realFetch('/__bale/sendDocument', { method: 'POST', body: fd }).then(function (r) { return r.json(); })
-      .then(function (d) { if (!d.ok) throw new Error(d.description || 'نشد'); return ''; });
+  var L = window.BALink;
+  var BROKER = 'wss://broker.emqx.io:8084/mqtt';
+  var client = null, linkKeys = null, linkState = 'offline', linkError = null;
+
+  function link() {
+    if (!S.link) S.link = { code: null, broker: null, acked: [], status: null, last_msg: null };
+    var forced = null;
+    try { forced = N && N.linkCode ? N.linkCode() : null; } catch (e) { forced = null; }   // test builds
+    if (forced && L.cleanCode(forced) !== S.link.code) { S.link.code = L.cleanCode(forced); save(); }
+    if (!S.link.code) { S.link.code = L.newCode(); save(); }
+    return S.link;
   }
 
-  function relaySms(text) {
-    var parts = String(text || '').split(SEP);
-    if (parts.length < 2) return null;
-    var sms = parts[1].trim();
-    if (!sms) return null;
-    return { sms: sms, otp: parts[0].indexOf('🔐') !== -1 };
+  /** The modem's time of an SMS, «26/10/02,00:40:50+14» (yy/MM/dd,hh:mm:ss). */
+  function smsDate(w) {
+    var m = /^(\d\d)\/(\d\d)\/(\d\d),(\d\d):(\d\d):(\d\d)/.exec(String(w || ''));
+    if (!m) return null;
+    var d = new Date(2000 + +m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    return isNaN(d.getTime()) || d.getTime() > Date.now() + 864e5 ? null : d;
   }
 
-  /** The SMS inside an ESP32 message in Bale, booked once (same message → same transaction). */
-  function relayTx(msg) {
-    var mid = +msg.message_id || 0;
-    var known = mid && S.txs.filter(function (t) { return t.bale_mid === mid; })[0];
-    if (known) return known;
-    var r = relaySms(msg.text);
-    if (!r) return null;
-    var res = ingest('ESP32 via Bale', r.sms, msg.date ? new Date(msg.date * 1000) : new Date());
-    var t = res.transaction;
-    if (t && mid) { t.bale_mid = mid; save(); }
-    return t || null;
+  function newSms(n) {
+    if (!n) return;
+    if (window.Island) Island.trigger({ title: n.toLocaleString('fa-IR') + ' پیامک بانک رسید', icon: '↓', accent: '#16A34A', duration: 2800 });
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    try { if (window.OrbHost && OrbHost.changed) OrbHost.changed(); } catch (e) { /* no orb */ }
   }
 
-  function isOwner(chat) {
-    if (!chat) return false;
-    if (!S.bale.chat_id) return false;
-    return String(chat.id) === String(S.bale.chat_id);
+  function sendAck() {
+    if (client && linkKeys) client.publish('ba/' + linkKeys.id + '/ack', L.seal(linkKeys, { v: 1, ids: link().acked.slice(-60) }), true);
   }
 
-  var newCount = 0;
-  function handleUpdate(u) {
-    var cq = u.callback_query;
-    if (cq && cq.message) {
-      if (!isOwner(cq.message.chat)) return Promise.resolve();
-      var parts = String(cq.data || '').split(':');
-      if (parts[0] !== 'relay') return bale('answerCallbackQuery', { callback_query_id: cq.id }).catch(function () {});
-      var t = relayTx(cq.message), act = parts[1] || 'ans';
-      if (!t) return bale('answerCallbackQuery', { callback_query_id: cq.id, text: 'این پیامک واریز یا برداشت نیست.' }).catch(function () {});
-      newCount++;
-      if (act === 'ign') {
-        if (t.status === 'pending') { t.status = 'ignored'; save(); }
-        return Promise.all([
-          bale('answerCallbackQuery', { callback_query_id: cq.id, text: 'نادیده گرفته شد' }),
-          bale('editMessageReplyMarkup', { chat_id: S.bale.chat_id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: '🚫 نادیده گرفته شد', callback_data: 'relay:noop' }]] } })
-        ]).catch(function () {});
-      }
-      if (act === 'noop') return bale('answerCallbackQuery', { callback_query_id: cq.id }).catch(function () {});
-      return Promise.all([
-        bale('answerCallbackQuery', { callback_query_id: cq.id, text: t.status === 'confirmed' ? 'قبلاً ثبت شده' : 'در اپ است؛ بابت چی بود؟' }),
-        bale('editMessageReplyMarkup', { chat_id: S.bale.chat_id, message_id: cq.message.message_id,
-          reply_markup: { inline_keyboard: [[{ text: t.status === 'confirmed' ? '✅ ثبت شد' : '📲 در اپ است — Reply کن و بنویس بابت چی بود', callback_data: 'relay:noop' }]] } })
-      ]).catch(function () {});
-    }
-    var m = u.message;
-    if (!m || !m.chat) return Promise.resolve();
-    var text = String(m.text || '').trim();
-    if (!S.bale.chat_id && /^\/start/.test(text) && m.chat.type === 'private') {
-      S.bale.chat_id = String(m.chat.id);
-      save();
-      return bale('sendMessage', { chat_id: m.chat.id, text: '✅ این چت به اپ «دستیار بانک» (بدون سرور) وصل شد.\n\nchat id: ' + m.chat.id +
-        '\nهمین عدد را در BALE_CHAT_ID فریمور ESP32 (bale_direct) بگذار.\n\nزیر هر پیامک بانک «✍️ ثبت در حسابداری» را بزن یا روی آن Reply کن و بنویس بابت چی بود؛ اپ با باز شدن آن را می‌خواند.' }).catch(function () {});
-    }
-    if (!isOwner(m.chat)) return Promise.resolve();
-    if (m.reply_to_message) {
-      var rt = relayTx(m.reply_to_message);
-      if (rt) {
-        newCount++;
-        if (!text) return Promise.resolve();
-        var g = interpret(text, rt.direction), reply;
-        try {
-          var done = confirmTx(rt.id, g.description, g.party, g.category_id);
-          reply = '✅ ثبت شد: ' + done.description + (done.party ? ' — ' + done.party : '') + (done.category_name ? ' (' + done.category_name + ')' : '');
-        } catch (e) { reply = '⚠️ ' + e.message + ' در اپ کاملش کن.'; }
-        return bale('sendMessage', { chat_id: S.bale.chat_id, reply_to_message_id: m.message_id, text: reply }).catch(function () {});
-      }
-    }
-    if (/^\/excel/.test(text)) return sendExcelToBale().catch(function (e) { return bale('sendMessage', { chat_id: S.bale.chat_id, text: '⚠️ ' + e.message }); }).catch(function () {});
-    if (!text || /^\/start/.test(text)) return Promise.resolve();
-    return bale('sendMessage', { chat_id: S.bale.chat_id, reply_to_message_id: m.message_id, text: ask(text).reply }).catch(function () {});
-  }
-
-  var syncing = null;
-  /** Reads what is waiting in Bale (taps and replies under the ESP32's messages). */
-  function sync() {
-    if (syncing) return syncing;
+  /** One message from the broker: an SMS the ESP32 is holding, or its status. */
+  function onLinkMessage(topic, bytes) {
+    var k = linkKeys, base = 'ba/' + k.id + '/', text = new TextDecoder().decode(bytes);
+    if (!text) return;                                  // a cleared retained message
+    var m = L.open(k, text);
+    if (!m) { log('link: a message not sealed with this code on ' + topic); return; }
     refresh();
-    // one reader of Bale at a time (the app and the orb): getUpdates' offset is shared
-    try { if (N && N.lock && !N.lock()) return Promise.resolve(drainNotices()); } catch (e) { /* no lock */ }
-    newCount = drainNotices();
-    syncing = bale('getUpdates', { offset: S.bale.offset || 0, timeout: 0, limit: 100 }).then(function (list) {
-      list = list || [];
-      var chain = Promise.resolve();
-      list.forEach(function (u) {
-        chain = chain.then(function () {
-          S.bale.offset = Math.max(S.bale.offset || 0, u.update_id + 1);
-          return handleUpdate(u);
-        }).catch(function () {});
-      });
-      return chain.then(function () {
-        S.bale.last_sync = stamp();
-        S.bale.last_error = null;
-        save();
-        if (list.length === 100) return sync();
-        return newCount;
-      });
-    }, function (e) {
-      log('sync failed: ' + e.message);
-      S.bale.last_error = e.message;
-      save();
-      throw e;
-    }).then(function (n) {
-      syncing = null;
-      unlock();
-      if (n) {
-        if (window.Island) Island.trigger({ title: n.toLocaleString('fa-IR') + ' پیامک بانک از بله رسید', icon: '↓', accent: '#16A34A', duration: 2800 });
-        window.dispatchEvent(new HashChangeEvent('hashchange'));
-      }
-      dailyExcel();
-      return n;
-    }, function (e) { syncing = null; unlock(); throw e; });
-    return syncing;
-  }
-  function unlock() { try { if (N && N.unlock) N.unlock(); } catch (e) { /* no lock */ } }
-
-  /** The text of a Bale notification (Android: the orb reads them): an ESP32 message → booked, no tap needed. */
-  function notice(text, at) {
-    refresh();
-    var r = relaySms(text), sms;
-    if (r) { if (r.otp) return null; sms = r.sms; }
-    else {
-      // a notification that shows the message without the separators: the bank SMS as it is
-      sms = String(text || '').trim();
-      if (!SMS.parseSms(sms, new Date())) sms = sms.split('\n').slice(1).join('\n').trim();   // a heading line first
-      if (!sms || !SMS.parseSms(sms, new Date())) return null;
-    }
-    var res = ingest('ESP32 via Bale', sms, at ? new Date(at) : new Date());
-    return res.transaction && !res.duplicate ? res.transaction : null;
-  }
-  /** Android: Bale notifications seen while neither the app nor the orb was running (BaleWatch.kt). */
-  function drainNotices() {
-    var list = [];
-    try { list = N && N.takeNotices ? JSON.parse(N.takeNotices() || '[]') : []; } catch (e) { list = []; }
+    var lk = link();
+    if (topic === base + 'st') { lk.status = Object.assign({}, m, { seen: stamp() }); save(); return; }
+    if (topic.indexOf(base + 'sms/') !== 0 || !m.id || typeof m.text !== 'string') return;
     var n = 0;
-    list.forEach(function (x) { try { if (notice(x.text, x.at)) n++; } catch (e) { log('notice: ' + e.message); } });
-    return n;
+    if (lk.acked.indexOf(m.id) === -1) {
+      var res = ingest(String(m.from || 'ESP32'), m.text, smsDate(m.when) || new Date());
+      if (res.transaction && !res.duplicate) n++;
+      lk.acked.push(m.id);
+      if (lk.acked.length > 80) lk.acked = lk.acked.slice(-80);
+      lk.last_msg = stamp();
+      save();
+    }
+    sendAck();                                          // the ESP32 deletes it from the SIM after this
+    newSms(n);
+    // the orb's copy: the app's own page may have booked it first; the orb still asks
+    if (!n && window.BA_HEADLESS) try { if (window.OrbHost && OrbHost.changed) OrbHost.changed(); } catch (e) { /* no orb */ }
   }
+
+  function startLink() {
+    if (client) client.stop();
+    var lk = link(), url = lk.broker || null;
+    try { if (!url && N && N.mqttUrl) url = N.mqttUrl(); } catch (e) { url = null; }
+    url = url || BROKER;
+    linkKeys = L.keys(lk.code);
+    var socket = null;
+    if (url === 'fake') { window.__fakeBroker = window.__fakeBroker || L.fakeBroker(lk.code, true); socket = window.__fakeBroker.socket; }
+    if (window.BA_TEST_BROKER) socket = window.BA_TEST_BROKER.socket;
+    client = new L.Client({ url: url, socket: socket,
+      clientId: 'ba-app-' + linkKeys.id.slice(0, 6) + '-' + Math.random().toString(36).slice(2, 8),
+      topics: ['ba/' + linkKeys.id + '/sms/+', 'ba/' + linkKeys.id + '/st'],
+      onMessage: onLinkMessage,
+      onState: function (st, why) { linkState = st; linkError = why || null; log('link ' + st + (why ? ': ' + why : '')); } });
+    client.start();
+  }
+  function sync() { if (!client || linkState !== 'online') startLink(); return Promise.resolve(0); }
   function pendingList() {
     refresh();
     return S.txs.filter(function (t) { return t.status === 'pending'; })
       .map(function (t) { return { id: t.id, direction: t.direction, amount: t.amount }; });
-  }
-
-  function sendExcelToBale(caption) {
-    return baleSendDocument(excelName(), excelBytes(), caption || '📊 اکسل حساب‌ها');
-  }
-  /** Once a day (the first time the app reads Bale that day), the Excel file goes to your Bale chat. */
-  function dailyExcel() {
-    var day = isoDate();
-    if (!S.bale.chat_id || S.bale.excel_day === day || S.bale.daily_excel === false || !S.txs.length) return;
-    S.bale.excel_day = day;
-    save();
-    sendExcelToBale('📊 اکسل روزانه‌ی حساب‌ها').catch(function () { S.bale.excel_day = null; save(); });
-  }
-
-  var timer = null;
-  function startSync() {
-    clearInterval(timer);
-    var run = function () { if (!document.hidden || window.BA_HEADLESS) sync().catch(function () {}); };
-    run();
-    timer = setInterval(run, 20000);
-    document.addEventListener('visibilitychange', run);
   }
 
   /* ---------------------------------------------------------------- backup file (to move to another phone) */
@@ -633,7 +509,7 @@
       switch (r) {
         case 'ping': return json({ ok: true });
         case 'me':
-          return json({ ok: true, local: true, stt: false, tts: false, accounting_webhook: false, bale: !!S.bale.chat_id, device: null,
+          return json({ ok: true, local: true, stt: false, tts: false, accounting_webhook: false, bale: false, link: linkState === 'online', device: null,
             otp_ready: true, wallets: wallets(), push_subs: 0 });
         case 'wallets': return json({ ok: true, items: wallets() });
         case 'banks': return json({ ok: true, items: Object.keys(SMS.BANKS).map(function (k) { return { code: k, name: SMS.BANKS[k].name, color: SMS.BANKS[k].color }; }) });
@@ -745,22 +621,32 @@
         case 'assistant_web': return json(Object.assign({ ok: true, heard: b.text || '' }, ask(String(b.text || ''))));
         case 'inventory': return json({ ok: true, items: [], warehouses: [], totals: { value: 0, items: 0, low: 0, out: 0 } });
         case 'reconciliations': return json({ ok: true, items: [] });
-        case 'backups': return json({ ok: true, local: true, items: [], last: null, encrypted: false, to_bale: !!S.bale.chat_id });
+        case 'backups': return json({ ok: true, local: true, items: [], last: null, encrypted: false, to_bale: false });
         case 'backup_excel':
           return Promise.resolve(new Response(new Blob([excelBytes()], { type: XLSX_MIME }),
             { status: 200, headers: { 'Content-Type': XLSX_MIME, 'Content-Disposition': 'attachment; filename="' + excelName() + '"' } }));
         case 'export':
           return Promise.resolve(new Response(new Blob([excelBytes()], { type: XLSX_MIME }), { status: 200, headers: { 'Content-Type': XLSX_MIME } }));
-        case 'backup_excel_bale': return sendExcelToBale().then(function () { return json({ ok: true }); }, function (e) { return fail(e.message, 502); });
-        case 'settings':
-          return json({ ok: true, local: true, has_token: true, bot: S.bale.bot, chat_id: S.bale.chat_id, last_sync: S.bale.last_sync, last_error: S.bale.last_error,
-            daily_excel: S.bale.daily_excel !== false, polling: true });
-        case 'local_sync': return sync().then(function (n) { return json({ ok: true, new: n || 0, last_sync: S.bale.last_sync }); }, function (e) { return fail(e.message, 502); });
-        case 'local_settings':
-          if ('daily_excel' in b) S.bale.daily_excel = !!b.daily_excel;
-          if ('chat_id' in b) S.bale.chat_id = String(b.chat_id || '').trim();
+        case 'settings': {
+          var lk = link();
+          return json({ ok: true, local: true, code: L.showCode(lk.code), id: linkKeys ? linkKeys.id : null, state: linkState, error: linkError,
+            device: lk.status, last_msg: lk.last_msg, broker: lk.broker || BROKER, custom_broker: !!lk.broker });
+        }
+        case 'local_sync': startLink(); return json({ ok: true, state: linkState });
+        case 'local_settings': {
+          var l2 = link();
+          if (b.new_code) l2.code = L.newCode();
+          if (b.code) {
+            var c = L.cleanCode(b.code);
+            if (c.length < 12) return fail('کد اتصال کوتاه است (۱۶ حرف و عدد).');
+            l2.code = c;
+          }
+          if ('broker' in b) l2.broker = /^wss?:\/\/./.test(String(b.broker || '')) ? String(b.broker).trim() : null;
+          if (b.new_code || b.code) { l2.acked = []; l2.status = null; }
           save();
-          return json({ ok: true });
+          startLink();
+          return json({ ok: true, code: L.showCode(l2.code) });
+        }
         case 'local_backup': return saveFile('bank-assistant-backup.json', 'application/json', backupBytes()).then(function () { return json({ ok: true }); });
         case 'local_restore': restore(String(b.data || '')); return json({ ok: true });
         default:
@@ -789,15 +675,14 @@
   try { if (!localStorage.getItem('ba_token')) localStorage.setItem('ba_token', 'local'); } catch (e) { /* private mode */ }
   document.documentElement.classList.add('local');
   window.BA_LOCAL = {
-    sync: sync, saveFile: saveFile, excelBytes: excelBytes, excelName: excelName, sendExcelToBale: sendExcelToBale,
-    backupBytes: backupBytes, restore: restore, state: function () { refresh(); return S; }, ingest: ingest, bale: bale,
-    notice: notice, pending: pendingList, ask: function (text) { refresh(); var a = ask(text); save(); return a; }
+    sync: sync, saveFile: saveFile, excelBytes: excelBytes, excelName: excelName,
+    backupBytes: backupBytes, restore: restore, state: function () { refresh(); return S; }, ingest: ingest,
+    link: function () { return { state: linkState, error: linkError, keys: linkKeys, code: link().code }; }, pending: pendingList, ask: function (text) { refresh(); var a = ask(text); save(); return a; }
   };
   saveNow();   // the books exist on the phone from the first start
   log('engine ready, ' + document.readyState + ', hidden=' + document.hidden);
   document.addEventListener('DOMContentLoaded', function () {
     log('DOMContentLoaded');
-    bale('getMe', {}).then(function (me) { S.bale.bot = me && me.username ? '@' + me.username : null; save(); }).catch(function () {});
-    if (!window.BA_HEADLESS) startSync();   // the orb's copy reads Bale when OrbService asks
+    startLink();
   });
 })();

@@ -20,21 +20,19 @@ class Prefs(context: Context) {
         get() = plain.getString("base", null)
         set(v) = plain.edit().putString("base", v).apply()
 
-    /** "local": the app without a server (books on the phone, bank SMS from Bale; LocalMode.kt). */
+    /** "local": the app without a server (books on the phone, bank SMS straight from the ESP32; LocalMode.kt). */
     var mode: String?
         get() = plain.getString("mode", null)
         set(v) = plain.edit().putString("mode", v).apply()
     val local: Boolean get() = mode == "local"
 
-    /** The Bale bot token in the mode without a server (the same one the ESP32 uses). */
-    var baleToken: String?
-        get() = secret.getString("bale_token", null)
-        set(v) = secret.edit().putString("bale_token", v).apply()
-
-    /** Only for tests (a pretend Bale on the demo server). */
-    var baleBase: String?
-        get() = plain.getString("bale_base", null)
-        set(v) = plain.edit().putString("bale_base", v).apply()
+    /** Only for tests: the pairing code and broker of a pretend ESP32 (tools/demo/fake_esp32.py). */
+    var testLinkCode: String?
+        get() = plain.getString("test_link_code", null)
+        set(v) = plain.edit().putString("test_link_code", v).apply()
+    var testMqttUrl: String?
+        get() = plain.getString("test_mqtt_url", null)
+        set(v) = plain.edit().putString("test_mqtt_url", v).apply()
 
     var deviceToken: String?
         get() = secret.getString("device_token", null)
@@ -61,11 +59,6 @@ class Prefs(context: Context) {
     var orbY: Int
         get() = plain.getInt("orb_y", -1)
         set(v) = plain.edit().putInt("orb_y", v).apply()
-
-    /** The last Bale notification the app saw (settings show it: is the reader working at all?). */
-    var baleLast: String?
-        get() = plain.getString("bale_last", null)
-        set(v) = plain.edit().putString("bale_last", v).apply()
 
     /** Pending transaction ids already announced. */
     var seenPending: Set<String>

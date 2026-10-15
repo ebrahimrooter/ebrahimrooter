@@ -66,12 +66,12 @@ struct PairingView: View {
                         .opacity(ready ? 1 : 0.55)
                         .padding(.top, 8)
 
-                    // the mode without a server: only Bale and the ESP32
+                    // the mode without a server: the ESP32 straight to this app
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("یا بدون سرور: پیامک‌های بانک را ESP32 به ربات بله‌ات می‌فرستد و همه‌چیز روی همین گوشی ثبت می‌شود.")
+                        Text("یا بدون سرور: ESP32 پیامک‌های بانک را مستقیم به همین اپ می‌فرستد و همه‌چیز روی همین گوشی ثبت می‌شود.")
                             .font(.fa(14)).foregroundStyle(.white.opacity(0.6))
                         Button(action: onLocal) {
-                            Text("بدون سرور (فقط بله و ESP32)").font(.fa(16, .semibold)).foregroundStyle(.white)
+                            Text("بدون سرور (مستقیم از ESP32)").font(.fa(16, .semibold)).foregroundStyle(.white)
                                 .frame(maxWidth: .infinity).frame(height: 54)
                                 .overlay(Capsule().strokeBorder(.white.opacity(0.45), lineWidth: 1))
                         }

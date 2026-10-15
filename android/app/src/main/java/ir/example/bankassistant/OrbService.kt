@@ -59,7 +59,6 @@ class OrbService : Service() {
         const val ACTION_STOP = "stop"
         const val ACTION_TALK = "talk"
         const val EXTRA_DEMO = "demo"
-        const val EXTRA_NOTICE = "notice"
         private const val CHANNEL_ORB = "orb"
         private const val CHANNEL_TX = "tx"
         private const val NOTE_ID = 7
@@ -80,19 +79,8 @@ class OrbService : Service() {
 
         @Volatile var running = false
             private set
-        @Volatile private var self: OrbService? = null
 
-        /** A Bale notification with an ESP32 message (BaleWatch): the orb comes up and asks. */
-        /** true when the orb took it; otherwise it waits for the app (LocalMode.queueNotice). */
-        fun baleNotice(c: Context, text: String): Boolean {
-            val s = self
-            if (s != null && s.brain != null) { s.scope.launch { s.onNotice(text) }; return true }
-            LocalMode.queueNotice(c, text)
-            val prefs = Prefs(c)
-            if (!prefs.orbEnabled || !canDrawOverlays(c)) return false
-            // the orb comes up and its books read the waiting notification on the first look
-            return runCatching { ContextCompat.startForegroundService(c, Intent(c, OrbService::class.java)) }.isSuccess
-        }
+    }
     }
 
     private lateinit var prefs: Prefs
@@ -149,9 +137,8 @@ class OrbService : Service() {
         }
         if (!running) {
             running = true
-            self = this
             addViews()
-            if (prefs.local && !demo) brain = runCatching { LocalBrain(this, prefs).also { it.attach(wm, overlayType()) } }
+            if (prefs.local && !demo) brain = runCatching { LocalBrain(this, prefs) { onBooksChanged() }.also { it.attach(wm, overlayType()) } }
                 .onFailure { Log.e("BankOrb", "local books for the orb", it) }.getOrNull()
             if (demo) showDemo() else startPolling()
         }
@@ -162,7 +149,6 @@ class OrbService : Service() {
 
     override fun onDestroy() {
         running = false
-        self = null
         brain?.detach(wm)
         brain = null
         scope.cancel()
@@ -496,12 +482,12 @@ class OrbService : Service() {
         }
     }
 
-    /** The text of a Bale notification (BaleWatch). */
-    private suspend fun onNotice(text: String) {
+    /** The orb's books got a new bank SMS from the ESP32 (LocalBrain): ask right away. */
+    private fun onBooksChanged() {
         val b = brain ?: return
-        val r = runCatching { b.notice(text) }.getOrNull() ?: return
-        Log.i("BankOrb", "bale notice: new=${r.first} pending=${r.second.size}")
-        if (r.first && session?.isActive != true) onPending(r.second)
+        if (session?.isActive == true) return
+        Log.i("BankOrb", "a bank SMS from the ESP32 was booked")
+        scope.launch { runCatching { b.pending() }.onSuccess { onPending(it) } }
     }
 
     private fun onPending(list: List<Api.Pending>) {

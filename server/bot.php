@@ -281,7 +281,7 @@ function bot_person($name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* SMS relayed by the ESP32 (firmware/bale_direct) through Bale         */
+/* SMS relayed through Bale (an older ESP32 firmware, bale_direct)     */
 /* ------------------------------------------------------------------ */
 /*
  * The ESP32 posts each bank SMS into the owner's chat as this same bot,

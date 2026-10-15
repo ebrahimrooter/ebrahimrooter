@@ -45,14 +45,14 @@ struct RootView: View {
     @Environment(FinanceStore.self) private var store
     @Binding var pairing: DeepLink?
     @State private var paired = APIClient.shared.isPaired || Demo.enabled
-    @State private var local = LocalMode.enabled && LocalMode.token != nil
+    @State private var local = LocalMode.enabled
     @State private var localSetup = false
     @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
         Group {
             if local {
-                // without a server: books on the phone, bank SMS from Bale (LocalModeView.swift)
+                // without a server: books on the phone, bank SMS straight from the ESP32 (LocalModeView.swift)
                 LocalModeView().ignoresSafeArea()
             } else if localSetup {
                 LocalSetupView(onDone: { onboarded = true; localSetup = false; local = true }, onBack: { localSetup = false })
@@ -78,7 +78,7 @@ struct RootView: View {
             IslandCenter.shared.trigger(n)
         }
         .onReceive(NotificationCenter.default.publisher(for: .localModeChanged)) { _ in
-            local = LocalMode.enabled && LocalMode.token != nil
+            local = LocalMode.enabled
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceUnpaired)) { _ in
             store.reset()

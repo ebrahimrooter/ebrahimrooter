@@ -48,39 +48,35 @@ adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys activity services $PKG | grep -i -E "OrbService|isForeground" | head -5
 adb logcat -d -s AndroidRuntime:E | tail -30
 
-# the app without a server: books on the phone, the bank SMS from (a pretend) Bale
+# the app without a server: books on the phone, the bank SMS straight from (a pretend) ESP32
+CODE=TESTCODE2345ABCD
+python3 tools/demo/fake_esp32.py publish $CODE 127.0.0.1 1883
+python3 tools/demo/fake_esp32.py wait-ack $CODE 127.0.0.1 1883 120 esp000000000001 esp000000000002 > "$OUT/esp-ack.txt" 2>&1 &
+ACK=$!
 adb shell am force-stop $PKG
-adb shell am start -W -n $PKG/.MainActivity --es local_token 123456789:test-token-abcdef --es bale_base http://10.0.2.2:8841
+adb shell am start -W -n $PKG/.MainActivity --es link_code $CODE --es mqtt_url ws://10.0.2.2:9001
 shot a7-local-home 20
+wait $ACK
 adb shell run-as $PKG cat files/local-books.json > "$OUT/local-books.json" || true
-python3 - "$OUT/local-books.json" <<'PY' | tee "$OUT/local-test.txt"
+python3 - "$OUT/local-books.json" "$OUT/esp-ack.txt" <<'PY' | tee "$OUT/local-test.txt"
 import json, sys
 try:
     s = json.load(open(sys.argv[1]))
 except Exception as e:
     print("local=fail no books file:", e); sys.exit(0)
-t = {x.get("bale_mid"): x for x in s.get("txs", [])}
-a, b = t.get(10), t.get(11)
-ok = (s.get("bale", {}).get("chat_id") == "555" and a and a["status"] == "pending" and a["amount"] == 2500000
-      and b and b["status"] == "confirmed" and b.get("party") == "علی رضایی")
-print("local=" + ("ok" if ok else "fail"), "chat=", s.get("bale", {}).get("chat_id"), "txs=", len(s.get("txs", [])), "last_error=", s.get("bale", {}).get("last_error"))
+t = {x["amount"]: x for x in s.get("txs", [])}
+esp = open(sys.argv[2]).read()
+ok = (2500000 in t and t[2500000]["direction"] == "out" and 7000000 in t and t[7000000]["direction"] == "in"
+      and "esp=ok" in esp and (s.get("link") or {}).get("status", {}).get("sig") == 18)
+print("local=" + ("ok" if ok else "fail"), "txs=", len(s.get("txs", [])), "|", esp.strip())
 PY
-grep -E "^(sendMessage|editMessageReplyMarkup|answerCallbackQuery|sendDocument)" /tmp/fakebale.log | cut -c1-120 | tee -a "$OUT/local-test.txt" || true
-grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; exit 1; }
+grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; adb logcat -d | grep -iE "chromium|BankWeb|link" | tail -40; exit 1; }
 
-# without a server, on the Home Screen: the Bale notification of an ESP32 message → the floating orb books it and asks
-adb shell cmd notification allow_listener $PKG/.BaleWatch
+# on the Home Screen: a new bank SMS from the ESP32 → the floating orb books it and asks
 adb shell input keyevent KEYCODE_HOME
 sleep 4
 adb logcat -c
-adb shell "cmd notification post -S bigtext -t 'ربات بانک' bale1 '🔴 برداشت 120,000 تومان
-──────────
-بانک صادرات
-برداشت:1,200,000
-مانده:3,300,000
-1405/07/21 10:05
-──────────
-✍️ بابت چی بود؟'"
+python3 tools/demo/fake_esp32.py sms $CODE 127.0.0.1 1883 esp000000000003 "$(printf 'بانک صادرات\nبرداشت:1,200,000\nمانده:3,300,000\n1405/07/21 10:05')"
 shot a8-local-orb-notice 8
 shot a9-local-orb-asking 6
 adb logcat -d -s BankOrb:* | tee "$OUT/local-orb.txt"
@@ -92,7 +88,7 @@ hit = [x for x in s.get("txs", []) if x.get("amount") == 1200000 and x.get("dire
 print("orb=" + ("ok" if len(hit) == 1 else "fail"), "txs=", len(s.get("txs", [])))
 PY
 adb logcat -d -s AndroidRuntime:E | tail -30
-grep -q "orb=ok" "$OUT/local-orb.txt" || { echo "LOCAL ORB (BALE NOTIFICATION) TEST FAILED"; exit 1; }
+grep -q "orb=ok" "$OUT/local-orb.txt" && grep -q "was booked" "$OUT/local-orb.txt" || { echo "LOCAL ORB TEST FAILED"; exit 1; }
 
 # fail the job when the in-app voice does not work
 grep -q "speech_text=5/5" "$OUT/voice-test.txt" && grep -q "tts=ok" "$OUT/voice-test.txt" && grep -q "stt=ok" "$OUT/voice-test.txt" || { echo "VOICE TEST FAILED"; exit 1; }
