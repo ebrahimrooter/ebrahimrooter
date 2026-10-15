@@ -47,16 +47,28 @@
     try { var s = raw ? JSON.parse(raw) : null; if (s && s.v === 1) return s; } catch (e) { /* broken: start again, keep a copy */ try { localStorage.setItem(KEY + '-broken', raw); } catch (e2) {} }
     return fresh();
   }
-  var S = load();
+  /** Android: the app and the floating orb each run a copy of this engine on the same books file;
+   *  N.rev() changes on every save, so a copy reads the file again before it works on stale books. */
+  function rev() { try { return N && N.rev ? String(N.rev()) : null; } catch (e) { return null; } }
+  var S = load(), seenRev = rev();
   var saveTimer = null;
   function save() {
     clearTimeout(saveTimer);
+    if (seenRev !== null) return saveNow();   // shared file: no window for the other copy to miss it
     saveTimer = setTimeout(saveNow, 50);
   }
   function saveNow() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
     var raw = JSON.stringify(S);
     try { if (N && N.save) N.save(raw); } catch (e) { /* fall back below */ }
+    seenRev = rev();
     try { localStorage.setItem(KEY, raw); } catch (e) { /* full / private mode */ }
+  }
+  function refresh() {
+    if (seenRev === null || saveTimer) return;
+    var r = rev();
+    if (r !== seenRev) { S = load(); seenRev = r; }
   }
   window.addEventListener('pagehide', saveNow);
 
@@ -513,6 +525,9 @@
   /** Reads what is waiting in Bale (taps and replies under the ESP32's messages). */
   function sync() {
     if (syncing) return syncing;
+    refresh();
+    // one reader of Bale at a time (the app and the orb): getUpdates' offset is shared
+    try { if (N && N.lock && !N.lock()) return Promise.resolve(0); } catch (e) { /* no lock */ }
     newCount = 0;
     syncing = bale('getUpdates', { offset: S.bale.offset || 0, timeout: 0, limit: 100 }).then(function (list) {
       list = list || [];
@@ -537,14 +552,30 @@
       throw e;
     }).then(function (n) {
       syncing = null;
+      unlock();
       if (n) {
         if (window.Island) Island.trigger({ title: n.toLocaleString('fa-IR') + ' پیامک بانک از بله رسید', icon: '↓', accent: '#16A34A', duration: 2800 });
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       }
       dailyExcel();
       return n;
-    }, function (e) { syncing = null; throw e; });
+    }, function (e) { syncing = null; unlock(); throw e; });
     return syncing;
+  }
+  function unlock() { try { if (N && N.unlock) N.unlock(); } catch (e) { /* no lock */ } }
+
+  /** The text of a Bale notification (Android: the orb reads them): an ESP32 message → booked, no tap needed. */
+  function notice(text) {
+    refresh();
+    var r = relaySms(text);
+    if (!r || r.otp) return null;
+    var res = ingest('ESP32 via Bale', r.sms, new Date());
+    return res.transaction && !res.duplicate ? res.transaction : null;
+  }
+  function pendingList() {
+    refresh();
+    return S.txs.filter(function (t) { return t.status === 'pending'; })
+      .map(function (t) { return { id: t.id, direction: t.direction, amount: t.amount }; });
   }
 
   function sendExcelToBale(caption) {
@@ -562,7 +593,7 @@
   var timer = null;
   function startSync() {
     clearInterval(timer);
-    var run = function () { if (!document.hidden) sync().catch(function () {}); };
+    var run = function () { if (!document.hidden || window.BA_HEADLESS) sync().catch(function () {}); };
     run();
     timer = setInterval(run, 20000);
     document.addEventListener('visibilitychange', run);
@@ -581,6 +612,7 @@
   /* ---------------------------------------------------------------- api.php */
 
   function route(url, init) {
+    refresh();
     var u = new URL(url, location.href), r = u.searchParams.get('r') || '', P = {}, b = bodyOf(init);
     u.searchParams.forEach(function (v, k) { P[k] = v; });
     try {
@@ -744,13 +776,14 @@
   document.documentElement.classList.add('local');
   window.BA_LOCAL = {
     sync: sync, saveFile: saveFile, excelBytes: excelBytes, excelName: excelName, sendExcelToBale: sendExcelToBale,
-    backupBytes: backupBytes, restore: restore, state: function () { return S; }, ingest: ingest, bale: bale
+    backupBytes: backupBytes, restore: restore, state: function () { refresh(); return S; }, ingest: ingest, bale: bale,
+    notice: notice, pending: pendingList, ask: function (text) { refresh(); var a = ask(text); save(); return a; }
   };
   saveNow();   // the books exist on the phone from the first start
   log('engine ready, ' + document.readyState + ', hidden=' + document.hidden);
   document.addEventListener('DOMContentLoaded', function () {
     log('DOMContentLoaded');
     bale('getMe', {}).then(function (me) { S.bale.bot = me && me.username ? '@' + me.username : null; save(); }).catch(function () {});
-    startSync();
+    if (!window.BA_HEADLESS) startSync();   // the orb's copy reads Bale when OrbService asks
   });
 })();

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>orb</title></head>
+<body>
+<!-- Android: the floating orb's own copy of the books engine (OrbService, no screen).
+     Kotlin calls orbCall(id, what, arg); the answer comes back through OrbHost.done(id, ok, json). -->
+<script>window.BA_HEADLESS = true;</script>
+<script src="seed.js"></script>
+<script src="sms.js"></script>
+<script src="xlsx.js"></script>
+<script src="engine.js"></script>
+<script>
+  window.orbCall = function (id, what, arg) {
+    var L = window.BA_LOCAL;
+    Promise.resolve().then(function () {
+      if (what === 'sync') return L.sync().then(function () { return L.pending(); }, function () { return L.pending(); });
+      if (what === 'pending') return L.pending();
+      if (what === 'ask') return L.ask(arg);
+      if (what === 'notice') return { tx: L.notice(arg), pending: L.pending() };
+      throw new Error('?' + what);
+    }).then(function (r) { OrbHost.done(id, true, JSON.stringify(r)); },
+      function (e) { OrbHost.done(id, false, JSON.stringify(String(e && e.message || e))); });
+  };
+  OrbHost.ready();
+</script>
+</body></html>

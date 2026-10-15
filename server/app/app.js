@@ -1017,7 +1017,7 @@
     var kindSelect = function (k) {
       return '<select name="kind" style="width:auto">' + ['pl', 'party', 'transfer'].map(function (x) { return '<option value="' + x + '"' + (k === x ? ' selected' : '') + '>' + kindLabel[x] + '</option>'; }).join('') + '</select>';
     };
-    app.innerHTML = '<h1>تنظیمات</h1>' + (LOCAL ? localIntro() : '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
+    app.innerHTML = '<h1>تنظیمات</h1>' + (LOCAL ? localIntro() + (AND ? androidCard() : '') : '<h2>حسابداری</h2><div class="card"><p class="muted">همه‌ی امکانات حسابداری (فاکتور، انبار، چک، خزانه، مالیات، پیامک، گزارش‌ها…) در تب «حسابداری» همین اپ است؛ تراکنش‌هایی که اینجا تأیید کنی خودکار در دفاتر ثبت می‌شوند. دستیار صوتی هم به همه‌ی آن وصل است.</p>' +
       '<div class="btns"><a class="btn ghost" href="#/acc">رفتن به حسابداری</a><a class="btn plain" href="../acc/" target="_blank" rel="noopener">پنل در مرورگر</a></div></div>' +
       (IS_ANDROID ? androidCard() : (
       '<h2>اپ دستیار آیفون</h2><div class="card" id="iosBox"><p class="muted">اپ همراه «دستیار حسابداری» (پوشه‌ی ios/) با صدا به سؤال‌های حسابداری جواب می‌دهد و وقتی به صفحه‌ی اصلی گوشی بروی، وضعیتش در Dynamic Island و صفحه‌ی قفل می‌ماند. رمز این اپ به آن داده نمی‌شود؛ با یک کد یک‌بارمصرف وصل می‌شود.</p>' +
@@ -1090,7 +1090,7 @@
     };
     renderPerms(document.getElementById('permBox'));
     settingsTail();
-    if (LOCAL) { localBaleSettings(); localBackupSettings(); return; }
+    if (LOCAL) { localBaleSettings(); localBackupSettings(); androidSettings(); return; }
     baleSettings();
     backupSettings();
     if (IS_ANDROID) androidSettings(); else iosSettings();
@@ -1101,7 +1101,8 @@
   function localIntro() {
     return '<h2>نسخه‌ی بدون سرور</h2><div class="card"><p>همه‌چیز روی همین گوشی است. پیامک‌های بانک را ESP32 به چت ربات بله‌ات می‌فرستد؛ ' +
       'زیر هر پیامک در بله دکمه‌ی <b>«✍️ ثبت در حسابداری»</b> را بزن (یا روی آن Reply کن و بنویس بابت چی بود) تا این اپ بخواندش، روی کارتش ثبت کند و بپرسد.</p>' +
-      '<p class="muted">ربات بله پیام‌های خودش را نمی‌بیند؛ برای همین آن یک ضربه در بله لازم است. اپ هر بار که باز است، هر ۲۰ ثانیه بله را می‌خواند.</p></div>';
+      '<p class="muted">ربات بله پیام‌های خودش را نمی‌بیند؛ برای همین آن یک ضربه در بله لازم است. اپ هر بار که باز است، هر ۲۰ ثانیه بله را می‌خواند.' +
+      (AND ? ' در اندروید، orb شناور اگر اجازه‌ی خواندن نوتیف بله را داشته باشد، بدون آن ضربه هم با رسیدن نوتیف روی صفحه‌ی اصلی می‌آید و می‌پرسد.' : '') + '</p></div>';
   }
 
   function localBaleSettings() {
@@ -1513,11 +1514,15 @@
       '<label class="check"><input type="checkbox" id="andAuto"' + (AND.autoAsk() ? ' checked' : '') + '> وقتی واریز یا برداشت رسید، خودش بپرسد «بابت چی بود؟»</label>' +
       '<div class="btns">' + (on ? '<button class="btn ghost" type="button" id="andStop">خاموش کردن orb</button>' : '<button class="btn" type="button" id="andStart">روشن کردن orb</button>') +
       '<button class="btn ghost" type="button" id="andTalk">صحبت با orb</button></div>' +
-      '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>';
+      (LOCAL && AND.baleNotices ? '<p>' + (AND.baleNotices() ? '🟢 orb نوتیف‌های بله را می‌بیند: پیامک بانک که در بله آمد، orb همان لحظه می‌پرسد «بابت چی بود؟» (بدون زدن دکمه در بله).' :
+        '⚪️ orb هنوز نوتیف‌های بله را نمی‌بیند؛ تا آن را ندهی، فقط وقتی در بله دکمه را بزنی یا Reply کنی می‌فهمد.') + '</p>' +
+        (AND.baleNotices() ? '' : '<div class="btns"><button class="btn ghost" type="button" id="andNotif">اجازه‌ی خواندن نوتیف بله</button></div>') : '') +
+      (LOCAL ? '' : '<div class="btns"><button class="btn plain" type="button" id="andServer">تغییر سرور</button></div>');
     var on1 = function (id, fn) { var el = document.getElementById(id); if (el) el.onclick = fn; };
     on1('andStart', function () { androidPair(); AND.startOrb(); setTimeout(androidSettings, 800); });
     on1('andStop', function () { AND.stopOrb(); setTimeout(androidSettings, 500); });
     on1('andTalk', function () { androidPair(); AND.talk(); });
+    on1('andNotif', function () { AND.openBaleNotices(); });
     on1('andServer', function () { if (confirm('اتصال این گوشی به سرور فعلی قطع شود و آدرس دیگری بزنی؟')) AND.changeServer(); });
     document.getElementById('andAuto').onchange = function () { AND.setAutoAsk(this.checked); };
   }

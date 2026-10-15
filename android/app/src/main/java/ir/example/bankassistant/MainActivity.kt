@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         }
         // restart the orb if the user had it on
         if (prefs.orbEnabled && !OrbService.running && OrbService.canDrawOverlays(this)) OrbService.start(this)
+        notifyWeb()   // back from a settings screen (overlay, notification access)
     }
 
     override fun onDestroy() {
@@ -409,7 +410,13 @@ class MainActivity : AppCompatActivity() {
     /** What the web app can ask from the Android side. */
     inner class Bridge {
         @JavascriptInterface fun version() = 1
-        @JavascriptInterface fun isPaired() = prefs.paired
+        @JavascriptInterface fun isPaired() = prefs.paired || prefs.local
+
+        /** Without a server: the orb reads Bale notifications (BaleWatch), so no tap in Bale is needed. */
+        @JavascriptInterface fun baleNotices() = BaleWatch.allowed(this@MainActivity)
+        @JavascriptInterface fun openBaleNotices() = runOnUiThread {
+            runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        }
         @JavascriptInterface fun orbOn() = OrbService.running
         @JavascriptInterface fun canOverlay() = OrbService.canDrawOverlays(this@MainActivity)
         @JavascriptInterface fun autoAsk() = prefs.autoAsk

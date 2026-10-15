@@ -18,6 +18,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -58,6 +59,7 @@ class OrbService : Service() {
         const val ACTION_STOP = "stop"
         const val ACTION_TALK = "talk"
         const val EXTRA_DEMO = "demo"
+        const val EXTRA_NOTICE = "notice"
         private const val CHANNEL_ORB = "orb"
         private const val CHANNEL_TX = "tx"
         private const val NOTE_ID = 7
@@ -78,12 +80,25 @@ class OrbService : Service() {
 
         @Volatile var running = false
             private set
+        @Volatile private var self: OrbService? = null
+
+        /** A Bale notification with an ESP32 message (BaleWatch): the orb comes up and asks. */
+        fun baleNotice(c: Context, text: String) {
+            val s = self
+            if (s != null) { s.scope.launch { s.onNotice(text) }; return }
+            val prefs = Prefs(c)
+            if (!prefs.orbEnabled || !canDrawOverlays(c)) return
+            runCatching { ContextCompat.startForegroundService(c, Intent(c, OrbService::class.java).putExtra(EXTRA_NOTICE, text)) }
+        }
     }
 
     private lateinit var prefs: Prefs
     private lateinit var api: Api
     private lateinit var wm: WindowManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** The books on this phone (the mode without a server); null: the server answers. */
+    private var brain: LocalBrain? = null
+    private fun ready() = prefs.paired || prefs.local
     private var session: Job? = null
     private var poller: Job? = null
     private lateinit var recorder: Recorder
@@ -131,15 +146,21 @@ class OrbService : Service() {
         }
         if (!running) {
             running = true
+            self = this
             addViews()
+            if (prefs.local && !demo) brain = LocalBrain(this, prefs).also { it.attach(wm, overlayType()) }
             if (demo) showDemo() else startPolling()
         }
+        intent?.getStringExtra(EXTRA_NOTICE)?.let { t -> scope.launch { onNotice(t) } }
         if (intent?.action == ACTION_TALK) onTap()
         return START_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        self = null
+        brain?.detach(wm)
+        brain = null
         scope.cancel()
         recorder.cancel()
         speaker.stop()
@@ -340,7 +361,7 @@ class OrbService : Service() {
             endSession("بسته شد")
             return
         }
-        if (!prefs.paired && !demo) {
+        if (!ready() && !demo) {
             say("اول اپ را باز کن و وارد شو تا دستیار وصل شود.")
             openApp()
             return
@@ -391,7 +412,7 @@ class OrbService : Service() {
                         }
                         set(Phase.PROCESSING, "در حال فکر کردن…")
                         heard = try {
-                            withContext(Dispatchers.IO) { LocalEar.transcribe(this@OrbService, wav) ?: api.transcribe(wav) }
+                            withContext(Dispatchers.IO) { LocalEar.transcribe(this@OrbService, wav) ?: if (prefs.local) "" else api.transcribe(wav) }
                         } catch (e: ApiException) {
                             if (e.code == 401) throw e
                             throw ApiException("تشخیص گفتار فارسی روی این گوشی نیست (برنامه‌ی Google را نصب و به‌روز کن) و سرور هم صدای فارسی ندارد.", 0)
@@ -403,11 +424,11 @@ class OrbService : Service() {
                     say("«$heard»")
                 }
                 set(Phase.PROCESSING, if (first != null && heard == first) "دارم تراکنش‌های بانک را نگاه می‌کنم؛ چند لحظه صبر کن." else "«$heard»\nچند لحظه صبر کن…")
-                val r = withContext(Dispatchers.IO) { api.ask(heard) }
+                val r = brain?.ask(heard) ?: withContext(Dispatchers.IO) { api.ask(heard) }
                 set(Phase.SPEAKING, r.reply)
                 // the app's own Persian voice first; the server's only when the app has none
                 val audio = withContext(Dispatchers.IO) {
-                    LocalVoice.wav(this@OrbService, r.reply) ?: runCatching { api.speak(r.reply) }.getOrNull()
+                    LocalVoice.wav(this@OrbService, r.reply) ?: if (prefs.local) null else runCatching { api.speak(r.reply) }.getOrNull()
                 }
                 if (audio != null) {
                     val levelJob = scope.launch { while (isActive) { orb.level = speaker.level; cardOrb.level = speaker.level; delay(50) } }
@@ -417,7 +438,7 @@ class OrbService : Service() {
                 }
             }
         } catch (e: ApiException) {
-            if (e.code == 401) { prefs.unpair(); endSession(e.message); return }
+            if (e.code == 401 && !prefs.local) { prefs.unpair(); endSession(e.message); return }
             set(Phase.ERROR, e.message ?: "خطا")
             delay(2500)
             endSession(null)
@@ -462,19 +483,29 @@ class OrbService : Service() {
         poller = scope.launch {
             delay(3000)
             while (isActive) {
-                if (prefs.paired && session?.isActive != true) {
-                    runCatching { withContext(Dispatchers.IO) { api.pending() } }.onSuccess { list -> onPending(list) }
+                if (ready() && session?.isActive != true) {
+                    val b = brain
+                    runCatching { b?.pending() ?: withContext(Dispatchers.IO) { api.pending() } }.onSuccess { list -> onPending(list) }
                 }
                 delay(30_000)
             }
         }
     }
 
+    /** The text of a Bale notification (BaleWatch). */
+    private suspend fun onNotice(text: String) {
+        val b = brain ?: return
+        val r = runCatching { b.notice(text) }.getOrNull() ?: return
+        Log.i("BankOrb", "bale notice: new=${r.first} pending=${r.second.size}")
+        if (r.first && session?.isActive != true) onPending(r.second)
+    }
+
     private fun onPending(list: List<Api.Pending>) {
         val seen = prefs.seenPending
-        val fresh = list.filter { it.id.toString() !in seen }
+        val key = { p: Api.Pending -> (if (prefs.local) "L" else "") + p.id }   // the phone's books have their own ids
+        val fresh = list.filter { key(it) !in seen }
         orb.attention = list.isNotEmpty()
-        prefs.seenPending = list.map { it.id.toString() }.toSet()   // forget answered ones
+        prefs.seenPending = list.map(key).toSet()   // forget answered ones
         val t = fresh.firstOrNull() ?: return
         val what = (if (t.incoming) "واریز " else "برداشت ") + toman(t.amountRial) + " تومان"
         notifyTx(what)

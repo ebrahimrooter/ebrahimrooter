@@ -68,5 +68,31 @@ PY
 grep -E "^(sendMessage|editMessageReplyMarkup|answerCallbackQuery|sendDocument)" /tmp/fakebale.log | cut -c1-120 | tee -a "$OUT/local-test.txt" || true
 grep -q "local=ok" "$OUT/local-test.txt" || { echo "LOCAL MODE TEST FAILED"; exit 1; }
 
+# without a server, on the Home Screen: the Bale notification of an ESP32 message → the floating orb books it and asks
+adb shell cmd notification allow_listener $PKG/.BaleWatch
+adb shell input keyevent KEYCODE_HOME
+sleep 4
+adb logcat -c
+adb shell "cmd notification post -S bigtext -t 'ربات بانک' bale1 '🔴 برداشت 120,000 تومان
+──────────
+بانک صادرات
+برداشت:1,200,000
+مانده:3,300,000
+1405/07/21 10:05
+──────────
+✍️ بابت چی بود؟'"
+shot a8-local-orb-notice 8
+shot a9-local-orb-asking 6
+adb logcat -d -s BankOrb:* | tee "$OUT/local-orb.txt"
+adb shell run-as $PKG cat files/local-books.json > "$OUT/local-books-2.json" || true
+python3 - "$OUT/local-books-2.json" <<'PY' | tee -a "$OUT/local-orb.txt"
+import json, sys
+s = json.load(open(sys.argv[1]))
+hit = [x for x in s.get("txs", []) if x.get("amount") == 1200000 and x.get("direction") == "out"]
+print("orb=" + ("ok" if len(hit) == 1 else "fail"), "txs=", len(s.get("txs", [])))
+PY
+adb logcat -d -s AndroidRuntime:E | tail -30
+grep -q "orb=ok" "$OUT/local-orb.txt" || { echo "LOCAL ORB (BALE NOTIFICATION) TEST FAILED"; exit 1; }
+
 # fail the job when the in-app voice does not work
 grep -q "speech_text=5/5" "$OUT/voice-test.txt" && grep -q "tts=ok" "$OUT/voice-test.txt" && grep -q "stt=ok" "$OUT/voice-test.txt" || { echo "VOICE TEST FAILED"; exit 1; }

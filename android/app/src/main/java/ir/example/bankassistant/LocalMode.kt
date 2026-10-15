@@ -2,9 +2,12 @@ package ir.example.bankassistant
 
 import android.app.Activity
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Base64
 import android.webkit.JavascriptInterface
@@ -25,14 +28,17 @@ import java.util.UUID
  * (assets/www, made by tools/local-app/build.sh), the bank SMS from Bale.
  *   https://appassets.androidplatform.net/assets/www/app/   the bundled web app
  *   …/__bale/<method>?q=<json>                               Bale Bot API, token added here
- * The books are a file in the app's private storage (local-books.json).
+ * The books are a file in the app's private storage (local-books.json). The floating orb
+ * (OrbService) runs its own copy of the engine (app/local/headless.html) on the same file.
  */
-class LocalMode(private val activity: Activity, private val prefs: Prefs) {
+class LocalMode(private val context: Context, private val prefs: Prefs) {
     val startUrl = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/www/app/index.html?android=1"
+    val orbUrl = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/www/app/local/headless.html"
     private val assets = WebViewAssetLoader.Builder()
-        .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(activity))
+        .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
         .build()
-    private val books = File(activity.filesDir, "local-books.json")
+    private val books = File(context.filesDir, "local-books.json")
+    private val main = Handler(Looper.getMainLooper())
 
     fun isOwnPage(u: Uri) = u.host == WebViewAssetLoader.DEFAULT_DOMAIN
 
@@ -99,18 +105,20 @@ class LocalMode(private val activity: Activity, private val prefs: Prefs) {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
                 put(MediaStore.Downloads.MIME_TYPE, mime)
             }
-            activity.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v)?.let { uri ->
-                activity.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v)?.let { uri ->
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                 where = "در پوشه‌ی Download ذخیره شد"
             }
         }
-        val dir = File(activity.cacheDir, "share").apply { mkdirs() }
+        val dir = File(context.cacheDir, "share").apply { mkdirs() }
         val f = File(dir, name).apply { writeBytes(bytes) }
-        val uri = FileProvider.getUriForFile(activity, activity.packageName + ".files", f)
-        activity.runOnUiThread {
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
+        main.post {
             runCatching {
-                activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime)
-                    .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), name))
+                val chooser = Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime)
+                    .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), name)
+                if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
             }
         }
         return where
@@ -121,12 +129,23 @@ class LocalMode(private val activity: Activity, private val prefs: Prefs) {
         @JavascriptInterface fun load(): String? = runCatching { if (books.exists()) books.readText() else null }.getOrNull()
 
         @JavascriptInterface fun save(data: String) {
-            synchronized(this) {
+            synchronized(Shared) {
                 val tmp = File(books.parentFile, books.name + ".tmp")
                 tmp.writeText(data)
                 tmp.renameTo(books)
+                Shared.rev++
             }
         }
+
+        /** Changes on every save (by the app or the orb): the other copy then reads the file again. */
+        @JavascriptInterface fun rev(): String = synchronized(Shared) { Shared.rev.toString() }
+
+        /** One reader of Bale at a time (getUpdates' offset is in the books). */
+        @JavascriptInterface fun lock(): Boolean = synchronized(Shared) {
+            val now = System.currentTimeMillis()
+            if (now < Shared.lockUntil) false else { Shared.lockUntil = now + 90_000; true }
+        }
+        @JavascriptInterface fun unlock() = synchronized(Shared) { Shared.lockUntil = 0L }
 
         @JavascriptInterface fun saveFile(id: String, name: String, mime: String, b64: String) = background(id) {
             this@LocalMode.saveFile(safeName(name), mime, Base64.decode(b64, Base64.DEFAULT))
@@ -137,17 +156,23 @@ class LocalMode(private val activity: Activity, private val prefs: Prefs) {
         }
 
         /** Leave the mode without a server (settings ← «تغییر حالت»). */
-        @JavascriptInterface fun changeMode() = activity.runOnUiThread { (activity as? MainActivity)?.leaveLocal() }
+        @JavascriptInterface fun changeMode() { main.post { (context as? MainActivity)?.leaveLocal() } }
 
         private fun background(id: String, work: () -> String) {
             Thread {
                 val r = runCatching(work)
                 val ok = r.isSuccess
                 val msg = JSONObject.quote(r.getOrNull() ?: r.exceptionOrNull()?.message ?: "")
-                activity.runOnUiThread { web()?.evaluateJavascript("window.__baCb && window.__baCb(${JSONObject.quote(id)}, $ok, $msg)", null) }
+                main.post { web()?.evaluateJavascript("window.__baCb && window.__baCb(${JSONObject.quote(id)}, $ok, $msg)", null) }
             }.start()
         }
 
         private fun safeName(n: String) = n.replace(Regex("[^\\w.\\-]"), "_").take(80).ifBlank { "file" }
+    }
+
+    /** The same books for every copy of the engine in this process (the app's page and the orb's). */
+    private object Shared {
+        var rev = 0L
+        var lockUntil = 0L
     }
 }

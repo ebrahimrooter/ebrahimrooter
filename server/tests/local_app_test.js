@@ -81,6 +81,27 @@ const SMS2 = 'بانک ملی ایران\nواریز:7,000,000\nمانده:12,50
   check('another chat is not answered', !bale.sent.some(m => m.chat_id === 999));
   check('the same message again is not booked twice', (await p.evaluate(() => { const s = BA_LOCAL.state(); return s.txs.length; })) === 2);
 
+  // 3b) Android: a Bale notification of an ESP32 message (BaleWatch → the orb), no tap
+  const SMS3 = 'بانک صادرات\nبرداشت:1,200,000\nمانده:3,300,000\n1405/07/21 10:05';
+  const n1 = await p.evaluate(t => BA_LOCAL.notice(t), relay('🔴 برداشت 120,000 تومان', SMS3));
+  const n2 = await p.evaluate(t => BA_LOCAL.notice(t), relay('🔴 برداشت 120,000 تومان', SMS3));
+  check('notification → booked once, waiting for an answer', n1 && n1.status === 'pending' && n1.amount === 1200000 && n2 === null, JSON.stringify([n1, n2]));
+  check('orb: pending list', (await p.evaluate(() => BA_LOCAL.pending())).some(x => x.id === n1.id && x.direction === 'out'));
+  upd({ callback_query: { id: 'cb2', data: 'relay:ign', message: { message_id: 12, chat, date: 1760000500, text: relay('🔴 برداشت 120,000 تومان', SMS3) } } });
+  await p.evaluate(() => BA_LOCAL.sync());
+  check('a tap later on the same SMS: the same transaction', (await p.evaluate(() => BA_LOCAL.state().txs.length)) === 3 && (await p.evaluate(id => BA_LOCAL.state().txs.find(t => t.id === id).status, n1.id)) === 'ignored');
+
+  // 3c) the orb's own page (app/local/headless.html)
+  const h = await ctx.newPage();
+  h.on('pageerror', e => errors.push('headless: ' + e.message));
+  await h.addInitScript(() => { window.__done = {}; window.OrbHost = { ready() { window.__ready = true; }, done(id, ok, json) { window.__done[id] = [ok, JSON.parse(json)]; } }; });
+  await h.goto(base + '/app/local/headless.html');
+  await h.waitForFunction(() => window.__ready);
+  await h.evaluate(() => orbCall('a', 'pending', ''));
+  await h.waitForFunction(() => window.__done.a);
+  check('orb page: answers through OrbHost', await h.evaluate(() => window.__done.a[0] === true && Array.isArray(window.__done.a[1])));
+  await h.close();
+
   // 4) in the app: the pending one, answered by voice-assistant text
   await p.goto(base + '/app/#/');
   await p.waitForTimeout(1200);
