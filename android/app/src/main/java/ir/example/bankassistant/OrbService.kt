@@ -483,8 +483,8 @@ class OrbService : Service() {
     /** The orb's books got a new bank SMS from the ESP32 (LocalBrain): ask right away. */
     private fun onBooksChanged() {
         val b = brain ?: return
-        if (session?.isActive == true) return
         Log.i("BankOrb", "a bank SMS from the ESP32 was booked")
+        if (session?.isActive == true) return              // asked when this conversation ends (next look)
         scope.launch { runCatching { b.pending() }.onSuccess { onPending(it) } }
     }
 
