@@ -1563,7 +1563,11 @@
   function settingsTail() {
     document.getElementById('testVoice').onclick = function () {
       Voice.speak('سلام. یک جمله بگو.').then(function () { return Voice.listen(5000); })
-        .then(function (t) { toast(t ? 'شنیدم: ' + t : 'چیزی نشنیدم'); }, function (e) { toast('میکروفون: ' + e.message); });
+        .then(function (t) {
+          var info = '';
+          try { if (AND && AND.lastHear) info = AND.lastHear(); } catch (e) { info = ''; }
+          toast(t ? 'شنیدم: ' + t : 'چیزی نشنیدم' + (info ? ' (' + info + ')' : ''));
+        }, function (e) { toast('میکروفون: ' + e.message); });
     };
     document.getElementById('logout').onclick = function () { store(TOKEN_KEY, null); location.reload(); };
   }

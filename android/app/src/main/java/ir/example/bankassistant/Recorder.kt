@@ -11,14 +11,19 @@ import kotlin.math.sqrt
 /**
  * Microphone → 16 kHz mono WAV of one sentence. Starts at speech, ends after
  * 1.2 s of quiet; null if nothing was said within 7 s. Blocking: call off the main thread.
+ * «Speech» is measured against the room's own noise (the first 0.3 s): phone microphones
+ * differ a lot in level (Samsung's voice-recognition input is very quiet).
  */
 class Recorder(private val dir: File) {
     @Volatile var level = 0f            // 0…1, for the orb animation
         private set
     @Volatile private var cancelled = false
+    /** What the last recording saw (settings ← «آزمایش صدا و میکروفون»). */
+    @Volatile var lastInfo = ""
+        private set
 
     private val rate = 16_000
-    private val speechThreshold = 0.035f
+    private val minThreshold = 0.006f
     private val silenceToEndMs = 1_200
     private val noSpeechMs = 7_000
     private val maxMs = 15_000
@@ -42,6 +47,10 @@ class Recorder(private val dir: File) {
         val chunk = ShortArray(rate / 10)  // 100 ms
         val bytes = ByteArray(chunk.size * 2)
         var heard = false
+        var noise = 0f
+        var noiseN = 0
+        var threshold = 0.02f
+        var peak = 0f
         var startMs = 0L
         var lastLoud = 0L
         var t = 0L
@@ -61,12 +70,18 @@ class Recorder(private val dir: File) {
                     bytes[i * 2 + 1] = (chunk[i].toInt() shr 8 and 0xff).toByte()
                 }
                 val rms = sqrt(sum / n).toFloat()
-                level = (rms * 8).coerceIn(0f, 1f)
+                peak = maxOf(peak, rms)
+                level = (rms * 20).coerceIn(0f, 1f)
                 val piece = bytes.copyOf(n * 2)
                 if (!heard) {
                     pre.addLast(piece)
                     if (pre.size > 3) pre.removeFirst()
-                    if (rms > speechThreshold) {
+                    if (t <= 300) {                 // the room before anyone speaks
+                        noise += rms; noiseN++
+                        threshold = maxOf(minThreshold, noise / noiseN * 2.5f + 0.003f)
+                        continue
+                    }
+                    if (rms > threshold) {
                         heard = true
                         startMs = t
                         lastLoud = t
@@ -79,7 +94,7 @@ class Recorder(private val dir: File) {
                 }
                 raf.write(piece)
                 data += piece.size
-                if (rms > speechThreshold) lastLoud = t
+                if (rms > threshold) lastLoud = t
                 if (t - lastLoud > silenceToEndMs || t - startMs > maxMs) break
             }
         } finally {
@@ -87,6 +102,8 @@ class Recorder(private val dir: File) {
             rec.stop()
             rec.release()
         }
+        lastInfo = "صدای اتاق " + "%.3f".format(if (noiseN > 0) noise / noiseN else 0f) + " · بلندترین " + "%.3f".format(peak) +
+            " · مرز " + "%.3f".format(threshold) + (if (heard) " · حرف شنیده شد" else " · حرفی شنیده نشد")
         if (!heard || cancelled || data < rate / 2) {   // under ~0.25 s
             raf.close()
             out.delete()

@@ -451,7 +451,7 @@ class MainActivity : AppCompatActivity() {
                 if (wav == null) "" else try { LocalEar.transcribe(this@MainActivity, wav) } finally { wav.delete() }
             }
             if (text == null && PhoneListen.available(this@MainActivity)) text = PhoneListen.listen(this@MainActivity)
-            Log.i("BankVoice", "heard: " + (text ?: "<no recognizer>"))
+            Log.i("BankVoice", "heard: " + (text ?: "<no recognizer>") + " | " + webRecorder.lastInfo)
             heard(id, text)
         }
     }
@@ -525,6 +525,9 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface fun stopSpeaking() = runOnUiThread { speaker.stop() }
 
         /** The phone's Persian recognizer can listen (no server needed). */
+        /** What the microphone heard last time (levels), for the voice test in settings. */
+        @JavascriptInterface fun lastHear(): String = webRecorder.lastInfo
+
         @JavascriptInterface fun canListen() = LocalEar.bundled(this@MainActivity) || PhoneListen.available(this@MainActivity)
 
         /** Listens once; then window.onAndroidHeard(id, text) — text null when it could not listen. */

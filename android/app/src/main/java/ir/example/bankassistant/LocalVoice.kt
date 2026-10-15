@@ -149,6 +149,13 @@ object LocalEar {
         // 0.3 s of silence before and 0.6 s after: without it the last word gets lost
         val padded = FloatArray(4800 + samples.size + 9600)
         System.arraycopy(samples, 0, padded, 4800, samples.size)
+        // quiet microphones: bring the loudest part up to about 0.7 (the model was trained on normal levels)
+        var peak = 0f
+        for (v in samples) peak = maxOf(peak, kotlin.math.abs(v))
+        if (peak in 0.002f..0.5f) {
+            val g = minOf(0.7f / peak, 30f)
+            for (i in padded.indices) padded[i] *= g
+        }
         return synchronized(lock) {
             val s = e.createStream()
             try {
