@@ -39,6 +39,9 @@ jobs:
           BANK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BANK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # only the keystore file is the secret: without the other secrets, its default password and alias
+          export BANK_KEYSTORE_PASSWORD="${BANK_KEYSTORE_PASSWORD:-bank-assistant}" BANK_KEY_ALIAS="${BANK_KEY_ALIAS:-sideload}"
+          export BANK_KEY_PASSWORD="${BANK_KEY_PASSWORD:-$BANK_KEYSTORE_PASSWORD}"
           cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
           ls -la app/build/outputs/apk/*/*.apk
           # GitHub keeps files up to 100 MB, and your own server hands this to the phone
