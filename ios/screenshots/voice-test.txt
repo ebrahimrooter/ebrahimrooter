@@ -1,1 +1,1 @@
-speech_text=5/5 bundled=true tts=ok bytes=187436 ms=1617 phone_listen=false ear=true stt=ok stt_ms=549 heard=موجودی کارت ملت چهار میلیون و دویست و پنجاه هزار توممان است
+speech_text=5/5 bundled=true tts=ok bytes=181292 ms=2950 phone_listen=false ear=true stt=ok stt_ms=328 heard=موجودی کارت ملت چهار میلیون و دویست و پنجاه هزار توممان است
