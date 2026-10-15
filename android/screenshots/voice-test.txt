@@ -1,3 +1,3 @@
 --------- beginning of main
-10-15 06:09:56.344  3343  3499 I VOICE_TEST: ear=true stt=ok stt_ms=3411 heard=وامک ملی واریز هفت میلیون تومان باور چی بود
-10-15 06:09:56.491  3343  3499 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=152882 ms=84179 phone_listen=true
+10-15 09:48:44.103  3251  3462 I VOICE_TEST: ear=true stt=ok stt_ms=3165 heard=بانک ملی واریز هفت میلیون تومان بابت چی بود
+10-15 09:48:44.115  3251  3462 I VOICE_TEST: speech_text=5/5 bundled=true tts=ok bytes=152714 ms=58168 phone_listen=true
