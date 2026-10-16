@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         if (BuildConfig.DEBUG && intent.getBooleanExtra("demo_orb", false)) OrbService.start(this)
         if (BuildConfig.DEBUG && intent.getBooleanExtra("voice_test", false)) voiceTest()
+        if (intent.getStringExtra("open") == "otp" && prefs.local) web?.evaluateJavascript("location.hash = '#/otp'", null)
     }
 
     override fun onResume() {
@@ -278,7 +279,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setContentView(w)
-        w.loadUrl(local.startUrl)
+        // a tap on the «رمز پویا» notification opens that page
+        w.loadUrl(local.startUrl + if (intent?.getStringExtra("open") == "otp") "#/otp" else "")
         guard(w, local = true)
     }
 

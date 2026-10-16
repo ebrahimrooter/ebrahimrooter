@@ -160,6 +160,17 @@ class NativeLink(private val context: Context, private val onSms: (JSONObject) -
         private const val TAG = "BankOrb"
         private const val DEFAULT = "wss://broker.emqx.io:8084/mqtt"
 
+        /** The code of a bank one-time password («رمز پویا: 48213967»); null when it is not one. */
+        fun otpOf(text: String): String? {
+            val t = text.map { c -> if (c in '۰'..'۹') ('0' + (c - '۰')) else if (c in '٠'..'٩') ('0' + (c - '٠')) else c }.joinToString("")
+            if (!(t.contains("رمز") && (t.contains("پویا") || t.contains("یکبار") || t.contains("یک بار"))) && !t.contains("کد تایید") && !t.contains("کد تأیید")) return null
+            for (line in t.lines()) {
+                if (!Regex("رمز|کد").containsMatchIn(line)) continue
+                Regex("(?<![0-9])([0-9]{4,10})(?![0-9])").find(line.replace(Regex("[0-9,]+\\s*(ریال|تومان)"), " "))?.let { return it.groupValues[1] }
+            }
+            return ""
+        }
+
         /** «برداشت:2,500,000» → (false, 2500000 rial); null when it is not a deposit / withdrawal. */
         fun amountOf(text: String): Pair<Boolean, Long>? {
             val t = text.map { c -> if (c in '۰'..'۹') ('0' + (c - '۰')) else if (c in '٠'..'٩') ('0' + (c - '٠')) else c }.joinToString("")

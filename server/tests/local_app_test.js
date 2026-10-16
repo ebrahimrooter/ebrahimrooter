@@ -73,6 +73,11 @@ const OTP = 'بانک ملت\nرمز پویا: 48213967\nمبلغ: 1,250,000 ر�
   check('the same SMS is not booked twice', st2.txs.length === 2, String(st2.txs.length));
   check('a message sealed with another code is ignored', !st2.txs.some(t => t.amount === 9000000));
   check('OTP kept for «رمز پویا»', st2.otps.some(o => o.code === '48213967'));
+  // the SIM800's clock was never set (an SMS «from 2004»): the OTP is still valid when it arrives
+  await p.evaluate(() => { const k = BA_LOCAL.link().keys; __tb.publish('ba/' + k.id + '/sms/o2', BALink.seal(k, { v: 1, id: 'o2', from: 'Bank Melli', text: 'بانک ملی\nرمز پویا: 77665544', when: '04/01/01,00:01:10+14' }), true); });
+  await p.waitForTimeout(400);
+  const otpNow = await p.evaluate(() => fetch('../api.php?r=otp', { headers: { 'X-OTP-PIN': '1234' } }).then(r => r.json()));
+  check('OTP with a wrong modem clock: still shown, about 3 minutes left', (otpNow.items || []).some(o => o.code === '77665544' && o.seconds_left > 100), JSON.stringify(otpNow));
 
   // 4) the orb's own page (app/local/headless.html)
   const h = await ctx.newPage();

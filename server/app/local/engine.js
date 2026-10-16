@@ -152,8 +152,10 @@
       seen.otp++;
       if (otp.code) {
         var w = walletFor(SMS.detectBank(sender, body), null);
+        // valid from when it reached the phone if the SMS time is off (a wrong modem clock)
+        var from = Math.abs(Date.now() - now.getTime()) < 10 * 60e3 ? now.getTime() : Date.now();
         S.otps.push({ id: S.next.otp++, code: otp.code, amount: otp.amount, merchant: otp.merchant, wallet_id: w,
-          created_at: stamp(now), expires: now.getTime() + 1000 * (otp.ttl || 180) });
+          created_at: stamp(new Date(from)), expires: from + 1000 * (otp.ttl || 180) });
       }
       save();
       return { otp: true };
@@ -427,7 +429,8 @@
     var m = /^(\d\d)\/(\d\d)\/(\d\d),(\d\d):(\d\d):(\d\d)/.exec(String(w || ''));
     if (!m) return null;
     var d = new Date(2000 + +m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-    return isNaN(d.getTime()) || d.getTime() > Date.now() + 864e5 ? null : d;
+    // the SIM800's clock is often wrong (2004, 2000…) until the network sets it: then the time it arrived
+    return isNaN(d.getTime()) || d.getTime() > Date.now() + 864e5 || d.getTime() < Date.now() - 2 * 864e5 ? null : d;
   }
 
   function newSms(n) {

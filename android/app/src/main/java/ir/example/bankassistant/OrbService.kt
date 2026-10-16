@@ -521,7 +521,9 @@ class OrbService : Service() {
         val text = m.optString("text")
         synchronized(waitingSms) { waitingSms.add(m) }
         val a = NativeLink.amountOf(text)
-        if (a != null && !(text.contains("رمز") && text.contains("پویا"))) {
+        val otp = NativeLink.otpOf(text)
+        if (otp != null) notifyOtp(otp)
+        else if (a != null) {
             notified[(if (a.first) "in|" else "out|") + a.second] = System.currentTimeMillis()
             notifyTx((if (a.first) "واریز " else "برداشت ") + toman(a.second) + " تومان")
             bounce()
@@ -656,6 +658,28 @@ class OrbService : Service() {
         val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
         val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
         return pm.isInteractive && !km.isKeyguardLocked
+    }
+
+    /** A one-time password from the bank: the code in the notification (hidden on the lock screen); a tap opens «رمز پویا». */
+    private fun notifyOtp(code: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val open = PendingIntent.getActivity(this, 5, Intent(this, MainActivity::class.java).putExtra("open", "otp")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(this, CHANNEL_TX)
+            .setSmallIcon(R.drawable.ic_orb_small)
+            .setContentTitle(if (code.isEmpty()) "🔐 رمز پویا رسید" else "🔐 رمز پویا: $code")
+            .setContentText("تا چند دقیقه معتبر است")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(NotificationCompat.Builder(this, CHANNEL_TX).setSmallIcon(R.drawable.ic_orb_small)
+                .setContentTitle("🔐 رمز پویا رسید").build())
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setTimeoutAfter(180_000)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(300, n)
     }
 
     /** Also on the lock screen and with the screen off (sound + vibration); a tap: the orb asks. */
