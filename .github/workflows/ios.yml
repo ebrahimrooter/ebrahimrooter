@@ -98,6 +98,8 @@ jobs:
           rm -rf Payload && mkdir Payload
           cp -R build/device/Build/Products/Release-iphoneos/BankAssistant.app Payload/
           zip -qry ../bank-assistant-iphone.ipa Payload
+          # the widget extension on its own (small, kept in the repo next to the lite app)
+          (cd Payload/BankAssistant.app && zip -qry ../../../bank-assistant-iphone-plugins.zip PlugIns)
           # the same without the widget extension: easier to sign with a free Apple ID
           rm -rf Payload/BankAssistant.app/PlugIns
           zip -qry ../bank-assistant-iphone-simple.ipa Payload
@@ -118,6 +120,7 @@ jobs:
           for f in shots/*.png; do sips -Z 1200 "$f" --out "$K/$(basename "$f")" >/dev/null; done
           cp shots/voice-test.txt shots/local-test.txt "$K/" 2>/dev/null || true
           [ -f bank-assistant-iphone-lite.ipa ] && [ "$(stat -f %z bank-assistant-iphone-lite.ipa)" -lt 95000000 ] && cp bank-assistant-iphone-lite.ipa "$K/" || true
+          [ -f bank-assistant-iphone-plugins.zip ] && cp bank-assistant-iphone-plugins.zip "$K/" || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for i in 1 2 3 4 5; do
@@ -125,6 +128,7 @@ jobs:
             mkdir -p ios/screenshots ios/app
             cp "$K"/*.png "$K"/*.txt ios/screenshots/ 2>/dev/null || true
             [ -f "$K/bank-assistant-iphone-lite.ipa" ] && cp "$K/bank-assistant-iphone-lite.ipa" ios/app/
+            [ -f "$K/bank-assistant-iphone-plugins.zip" ] && cp "$K/bank-assistant-iphone-plugins.zip" ios/app/
             git add ios/screenshots ios/app
             git diff --cached --quiet && exit 0
             git commit -q -m "iOS screenshots and the lite iPhone app [skip ci]"
