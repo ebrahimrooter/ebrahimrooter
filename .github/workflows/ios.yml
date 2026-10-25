@@ -113,15 +113,25 @@ jobs:
       - name: Keep the screenshots in the repo (ios/screenshots)
         if: always() && github.event_name == 'push'
         run: |
-          mkdir -p ios/screenshots
-          for f in shots/*.png; do sips -Z 1200 "$f" --out "ios/screenshots/$(basename "$f")" >/dev/null; done
-          cp shots/voice-test.txt shots/local-test.txt ios/screenshots/ || true
-          mkdir -p ios/app
-          [ -f bank-assistant-iphone-lite.ipa ] && [ "$(stat -f %z bank-assistant-iphone-lite.ipa)" -lt 95000000 ] && cp bank-assistant-iphone-lite.ipa ios/app/ || true
+          # put aside, then lay them on the newest branch each try (another run may have pushed meanwhile)
+          K="$RUNNER_TEMP/keep"; mkdir -p "$K"
+          for f in shots/*.png; do sips -Z 1200 "$f" --out "$K/$(basename "$f")" >/dev/null; done
+          cp shots/voice-test.txt shots/local-test.txt "$K/" 2>/dev/null || true
+          [ -f bank-assistant-iphone-lite.ipa ] && [ "$(stat -f %z bank-assistant-iphone-lite.ipa)" -lt 95000000 ] && cp bank-assistant-iphone-lite.ipa "$K/" || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ios/screenshots ios/app
-          git diff --cached --quiet || { git commit -m "iOS screenshots and the lite iPhone app [skip ci]" && for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done; }
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD
+            mkdir -p ios/screenshots ios/app
+            cp "$K"/*.png "$K"/*.txt ios/screenshots/ 2>/dev/null || true
+            [ -f "$K/bank-assistant-iphone-lite.ipa" ] && cp "$K/bank-assistant-iphone-lite.ipa" ios/app/
+            git add ios/screenshots ios/app
+            git diff --cached --quiet && exit 0
+            git commit -q -m "iOS screenshots and the lite iPhone app [skip ci]"
+            git push -q origin "HEAD:$GITHUB_REF_NAME" && exit 0
+            sleep $((i * 4))
+          done
+          echo "::error::could not push"; exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: iphone-screens
