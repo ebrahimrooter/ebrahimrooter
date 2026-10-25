@@ -101,50 +101,27 @@ jobs:
           # the same without the widget extension: easier to sign with a free Apple ID
           rm -rf Payload/BankAssistant.app/PlugIns
           zip -qry ../bank-assistant-iphone-simple.ipa Payload
+          # «lite»: also without the Persian voice models (small; kept in the repo, downloadable without logging in)
+          rm -rf Payload/BankAssistant.app/FaVoice Payload/BankAssistant.app/FaEar
+          zip -qry ../bank-assistant-iphone-lite.ipa Payload
           ls -la ../bank-assistant-iphone*.ipa
       - uses: actions/upload-artifact@v4
         with:
           name: bank-assistant-iphone-ipa
           path: bank-assistant-iphone*.ipa
           retention-days: 90
-      - name: "Private test IPA: the pairing code from the TEST_LINK_CODE secret, encrypted with that same code"
-        env:
-          TEST_LINK_CODE: ${{ secrets.TEST_LINK_CODE }}
-        run: |
-          [ -n "$TEST_LINK_CODE" ] || { echo "no TEST_LINK_CODE secret: skipped"; exit 0; }
-          cd ios
-          python3 - <<'PY'
-          import os, re
-          code = re.sub(r'[^A-Z0-9]', '', os.environ['TEST_LINK_CODE'].upper())
-          p = 'Payload/BankAssistant.app/www/app/local/engine.js'
-          s = open(p).read()
-          old = "try { forced = N && N.linkCode ? N.linkCode() : null; } catch (e) { forced = null; }   // test builds"
-          assert old in s
-          open(p, 'w').write(s.replace(old, old + "\n    forced = forced || '" + code + "';   // private test build"))
-          PY
-          rm -f ../test.ipa && zip -qry ../test.ipa Payload
-          # the artifact can be downloaded by others: only the owner of the code can open it
-          command -v 7z >/dev/null || brew install sevenzip >/dev/null || brew install p7zip >/dev/null
-          Z=$(command -v 7z || command -v 7zz)
-          "$Z" a -t7z -mhe=on -p"$TEST_LINK_CODE" ../bank-assistant-iphone-test.7z ../test.ipa >/dev/null
-          rm -f ../test.ipa Payload/BankAssistant.app/www/app/local/engine.js
-          ls -la ../bank-assistant-iphone-test.7z
-      - uses: actions/upload-artifact@v4
-        with:
-          name: iphone-test-encrypted
-          path: bank-assistant-iphone-test.7z
-          if-no-files-found: ignore
-          retention-days: 30
       - name: Keep the screenshots in the repo (ios/screenshots)
         if: always() && github.event_name == 'push'
         run: |
           mkdir -p ios/screenshots
           for f in shots/*.png; do sips -Z 1200 "$f" --out "ios/screenshots/$(basename "$f")" >/dev/null; done
           cp shots/voice-test.txt shots/local-test.txt ios/screenshots/ || true
+          mkdir -p ios/app
+          [ -f bank-assistant-iphone-lite.ipa ] && [ "$(stat -f %z bank-assistant-iphone-lite.ipa)" -lt 95000000 ] && cp bank-assistant-iphone-lite.ipa ios/app/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ios/screenshots
-          git diff --cached --quiet || { git commit -m "iOS screenshots from the simulator [skip ci]" && for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done; }
+          git add ios/screenshots ios/app
+          git diff --cached --quiet || { git commit -m "iOS screenshots and the lite iPhone app [skip ci]" && for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done; }
       - uses: actions/upload-artifact@v4
         with:
           name: iphone-screens
